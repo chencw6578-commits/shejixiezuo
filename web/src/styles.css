@@ -235,3 +235,45 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .primary-btn { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; flex: none; }
 .primary-btn:hover:not(:disabled) { background: #0b87e0; }
 .hint { margin-top: 8px; line-height: 1.5; }
+
+/* ---------- 设计规范页 ---------- */
+.primary-link {
+  color: var(--accent); text-decoration: none; font-weight: 600; cursor: pointer;
+  background: none; border: none; padding: 4px 6px;
+}
+.primary-link:hover { text-decoration: underline; }
+.spec-page { max-width: 960px; margin: 0 auto; padding: 24px; width: 100%; }
+.spec-section { margin-bottom: 40px; }
+.spec-section h2 { font-size: 16px; margin-bottom: 16px; }
+.spec-section h2 .dim { font-size: 12px; font-weight: 400; margin-left: 8px; }
+
+.color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.color-card {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; text-align: left; font-size: 12px;
+}
+.color-card:hover { border-color: var(--accent); }
+.color-chip {
+  width: 22px; height: 22px; border-radius: 5px; flex: none;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.color-chip-lg { width: 28px; height: 28px; }
+
+.font-table { width: 100%; border-collapse: collapse; }
+.font-table th, .font-table td {
+  text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.font-table th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
+
+/* ---------- 批量切图菜单 ---------- */
+.export-menu { position: relative; }
+.export-menu summary { list-style: none; }
+.export-menu summary::-webkit-details-marker { display: none; }
+.export-menu-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+  background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.export-menu-pop p { padding: 0 4px; }

@@ -85,6 +85,84 @@ filesRouter.get('/:id/frames/:frameId', async (req, res) => {
   res.json({ frame, nodes });
 });
 
+/** 手动同步：版本有变化才重新导入 */
+filesRouter.post('/:id/sync', async (req, res) => {
+  const file = (
+    await pool.query<{ id: string; figma_key: string; version: string | null; status: string }>(
+      'SELECT id, figma_key, version, status FROM design_files WHERE id = $1',
+      [req.params.id]
+    )
+  ).rows[0];
+  if (!file) return res.status(404).json({ error: '文件不存在' });
+  if (file.status === 'pending' || file.status === 'processing') {
+    return res.status(409).json({ error: '文件正在处理中，请稍候' });
+  }
+  try {
+    const meta = await getFileMeta(file.figma_key);
+    if (file.status === 'ready' && meta.version === file.version) {
+      return res.json({ updated: false, version: meta.version });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return res.status(502).json({ error: `获取 Figma 文件失败：${message}` });
+  }
+  await pool.query("UPDATE design_files SET status = 'pending', error = NULL WHERE id = $1", [file.id]);
+  void enqueueImport(file.id, file.figma_key);
+  res.json({ updated: true });
+});
+
+/** 设计规范聚合：色板 / 渐变 / 字体 */
+filesRouter.get('/:id/spec', async (req, res) => {
+  const file = (
+    await pool.query('SELECT id, name FROM design_files WHERE id = $1', [req.params.id])
+  ).rows[0];
+  if (!file) return res.status(404).json({ error: '文件不存在' });
+
+  const { rows } = await pool.query<{ props: {
+    fills?: { type: string; visible: boolean; color?: { hex: string; rgba: string; alpha: number }; css?: string }[];
+    text?: { family?: string; size?: number; weight?: number; lineHeight?: number };
+  } }>('SELECT props FROM nodes WHERE file_id = $1', [req.params.id]);
+
+  const colors = new Map<string, { hex: string; rgba: string; alpha: number; count: number }>();
+  const gradients = new Map<string, { css: string; count: number }>();
+  const fonts = new Map<string, { family: string; size: number; weight: number; count: number }>();
+  let imageFillCount = 0;
+
+  for (const { props } of rows) {
+    for (const f of props.fills ?? []) {
+      if (!f.visible) continue;
+      if (f.type === 'solid' && f.color) {
+        const c = colors.get(f.color.hex) ?? { ...f.color, count: 0 };
+        c.count++;
+        colors.set(f.color.hex, c);
+      } else if (f.type === 'gradient' && f.css) {
+        const g = gradients.get(f.css) ?? { css: f.css, count: 0 };
+        g.count++;
+        gradients.set(f.css, g);
+      } else if (f.type === 'image') {
+        imageFillCount++;
+      }
+    }
+    const t = props.text;
+    if (t?.family && t.size) {
+      const key = `${t.family}|${t.size}|${t.weight ?? 400}`;
+      const f = fonts.get(key) ?? { family: t.family, size: t.size, weight: t.weight ?? 400, count: 0 };
+      f.count++;
+      fonts.set(key, f);
+    }
+  }
+
+  const byCountDesc = <T extends { count: number }>(m: Map<string, T>) =>
+    [...m.values()].sort((a, b) => b.count - a.count);
+
+  res.json({
+    colors: byCountDesc(colors).slice(0, 80),
+    gradients: byCountDesc(gradients).slice(0, 24),
+    fonts: byCountDesc(fonts).slice(0, 40),
+    stats: { nodeCount: rows.length, imageFillCount },
+  });
+});
+
 filesRouter.delete('/:id', async (req, res) => {
   await pool.query('DELETE FROM design_files WHERE id = $1', [req.params.id]);
   res.json({ ok: true });

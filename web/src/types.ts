@@ -110,3 +110,10 @@ export interface ExportResult {
   scale: number;
   size: number;
 }
+
+export interface SpecData {
+  colors: { hex: string; rgba: string; alpha: number; count: number }[];
+  gradients: { css: string; count: number }[];
+  fonts: { family: string; size: number; weight: number; count: number }[];
+  stats: { nodeCount: number; imageFillCount: number };
+}

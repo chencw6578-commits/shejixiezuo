@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { initDb } from './db.js';
 import { filesRouter } from './routes/files.js';
 import { assetsRouter } from './routes/assets.js';
+import { webhooksRouter } from './routes/webhooks.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
 
@@ -18,6 +19,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/files', filesRouter);
 app.use('/api/assets', assetsRouter);
+app.use('/api/webhooks', webhooksRouter);
 
 // 本地存储静态服务（S3/MinIO 模式下不需要）
 if (config.storage.driver === 'local') {

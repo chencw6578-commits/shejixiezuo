@@ -7,6 +7,8 @@ export default function FilePage() {
   const { fileId = '' } = useParams();
   const [file, setFile] = useState<FileDetail | null>(null);
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
 
   const load = useCallback(() => {
     api
@@ -38,6 +40,30 @@ export default function FilePage() {
         <span className={`status ${file.status === 'ready' ? 'status-ok' : file.status === 'failed' ? 'status-err' : 'status-wait status-pulse'}`}>
           {file.status === 'ready' ? `共 ${frames.length} 个画板` : file.status === 'failed' ? '解析失败' : '解析中…'}
         </span>
+        <span className="spacer" />
+        {syncMsg && <span className={`small ${syncMsg.includes('已') && !syncMsg.includes('失败') ? 'ok' : 'dim'}`}>{syncMsg}</span>}
+        <button
+          className="ghost-btn"
+          disabled={syncing || loading}
+          onClick={async () => {
+            setSyncing(true);
+            setSyncMsg('');
+            try {
+              const r = await api.syncFile(fileId);
+              setSyncMsg(r.updated ? '发现新版本，正在重新导入' : '已是最新版本');
+            } catch (e) {
+              setSyncMsg(`同步失败：${e instanceof Error ? e.message : e}`);
+            } finally {
+              setSyncing(false);
+              load();
+            }
+          }}
+        >
+          {syncing ? '同步中…' : '重新同步'}
+        </button>
+        {file.status === 'ready' && frames.length > 0 && (
+          <Link className="primary-link" to={`/files/${fileId}/spec`}>设计规范</Link>
+        )}
         <button
           className="ghost-btn"
           onClick={async () => {

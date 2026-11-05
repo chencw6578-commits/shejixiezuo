@@ -16,10 +16,6 @@ export default function ViewerPage() {
   const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
-    api.getFile(fileId).then((f) => setFile({ name: f.name })).catch((e) => setError(e.message));
-  }, [fileId]);
-
-  useEffect(() => {
     setData(null);
     setSelectedId(null);
     api
@@ -37,11 +33,28 @@ export default function ViewerPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // 画板列表
   const [frames, setFrames] = useState<{ id: string; name: string; page_name: string | null }[]>([]);
+  const [zipBusy, setZipBusy] = useState('');
   useEffect(() => {
-    api.getFile(fileId).then((f) => setFrames(f.frames ?? [])).catch(() => undefined);
+    api
+      .getFile(fileId)
+      .then((f) => {
+        setFile({ name: f.name });
+        setFrames(f.frames ?? []);
+      })
+      .catch((e) => setError(e.message));
   }, [fileId]);
+
+  const doExportZip = async (mode: 'presets' | 'all') => {
+    setZipBusy(mode);
+    try {
+      await api.exportZip({ fileId, frameId, mode, format: 'PNG', scale: 2 });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setZipBusy('');
+    }
+  };
 
   const onSelect = useCallback((id: string | null) => setSelectedId(id), []);
   const onHover = useCallback((id: string | null) => setHoverId(id), []);
@@ -59,6 +72,18 @@ export default function ViewerPage() {
         <h1>{file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
         <span className="spacer" />
+        <details className="export-menu">
+          <summary className="primary-link">批量切图</summary>
+          <div className="export-menu-pop">
+            <button disabled={!!zipBusy} onClick={() => doExportZip('presets')}>
+              {zipBusy === 'presets' ? '导出中…' : '按设计标记的导出预设'}
+            </button>
+            <button disabled={!!zipBusy} onClick={() => doExportZip('all')}>
+              {zipBusy === 'all' ? '导出中…' : '全部图层 PNG @2x'}
+            </button>
+            <p className="dim small">打包为 zip 下载（上限 600 项）</p>
+          </div>
+        </details>
         <span className="dim">{Math.round(zoom * 100)}%</span>
       </header>
 
