@@ -38,20 +38,6 @@ CREATE TABLE IF NOT EXISTS teams (
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_projects_team ON projects(team_id);
 
-CREATE TABLE IF NOT EXISTS comments (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  frame_id    UUID NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
-  parent_id   UUID REFERENCES comments(id) ON DELETE CASCADE, -- 回复
-  node_id     TEXT,        -- 可选：锚定图层
-  x           REAL,        -- 画板内坐标（未锚定图层时为自由钉点）
-  y           REAL,
-  author      TEXT NOT NULL,
-  body        TEXT NOT NULL,
-  resolved    BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_comments_frame ON comments(frame_id);
-
 CREATE TABLE IF NOT EXISTS frames (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   file_id     UUID NOT NULL REFERENCES design_files(id) ON DELETE CASCADE,
@@ -84,6 +70,20 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_frame ON nodes(frame_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_file_node ON nodes(file_id, node_id);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  frame_id    UUID NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
+  parent_id   UUID REFERENCES comments(id) ON DELETE CASCADE, -- 回复
+  node_id     TEXT,        -- 可选：锚定图层
+  x           REAL,        -- 画板内坐标（未锚定图层时为自由钉点）
+  y           REAL,
+  author      TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  resolved    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comments_frame ON comments(frame_id);
 
 CREATE TABLE IF NOT EXISTS assets (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
