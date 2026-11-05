@@ -26,16 +26,17 @@ export interface CommentItem {
 }
 
 export const api = {
-  importFile: (url: string) =>
+  importFile: (url: string, projectId?: string) =>
     request<{ id: string; name: string }>('/api/files', {
       method: 'POST',
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, projectId }),
     }),
 
-  /** 上传 .sketch / .psd 文件导入 */
-  uploadDesign: async (file: File): Promise<{ id: string; name: string }> => {
+  /** 上传 .sketch / .psd 文件导入（可指定所属项目） */
+  uploadDesign: async (file: File, projectId?: string): Promise<{ id: string; name: string }> => {
     const fd = new FormData();
     fd.append('file', file);
+    if (projectId) fd.append('projectId', projectId);
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error((data as { error?: string }).error ?? `上传失败 (${res.status})`);
@@ -67,7 +68,21 @@ export const api = {
 
   deleteComment: (id: string) => request<{ ok: boolean }>(`/api/comments/${id}`, { method: 'DELETE' }),
 
-  listFiles: () => request<FileDetail[]>('/api/files'),
+  listFiles: (projectId?: string) =>
+    request<FileDetail[]>(`/api/files${projectId ? `?projectId=${projectId}` : ''}`),
+
+  // ---- 项目 ----
+  listProjects: () =>
+    request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null }[]>(
+      '/api/projects'
+    ),
+  createProject: (name: string) =>
+    request<{ id: string; name: string }>('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  getProject: (id: string) => request<{ id: string; name: string }>(`/api/projects/${id}`),
+  deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   getFile: (id: string) => request<FileDetail>(`/api/files/${id}`),
 

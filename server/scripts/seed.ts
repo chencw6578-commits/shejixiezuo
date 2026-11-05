@@ -254,10 +254,19 @@ async function main() {
 
   // 幂等：清掉旧演示数据
   await pool.query("DELETE FROM design_files WHERE figma_key = 'DEMO'");
+  // 演示项目（幂等）
+  const proj = await pool.query<{ id: string }>('SELECT id FROM projects WHERE name = $1', ['演示项目']);
+  const projectId =
+    proj.rows[0]?.id ??
+    (await pool.query<{ id: string }>('INSERT INTO projects (name) VALUES ($1) RETURNING id', ['演示项目']))
+      .rows[0].id;
   const { rows: [file] } = await pool.query<{ id: string }>(
-    `INSERT INTO design_files (figma_key, name, version, status)
-     VALUES ('DEMO', '演示设计稿（本地示例）', 'demo-v1', 'ready') RETURNING id`
+    `INSERT INTO design_files (figma_key, name, version, status, project_id)
+     VALUES ('DEMO', '演示设计稿（本地示例）', 'demo-v1', 'ready', $1) RETURNING id`,
+    [projectId]
   );
+  // 其余未归属的稿子也挂到演示项目下
+  await pool.query('UPDATE design_files SET project_id = $1 WHERE project_id IS NULL', [projectId]);
 
   let sort = 0;
   for (const f of frames) {

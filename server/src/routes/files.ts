@@ -6,9 +6,13 @@ import { isFigmaConfigured } from '../config.js';
 
 export const filesRouter = Router();
 
-/** 导入 Figma 文件 */
+/** 导入 Figma 文件（可指定所属项目） */
 filesRouter.post('/', async (req, res) => {
-  const { url } = req.body ?? {};
+  const { url, projectId } = req.body ?? {};
+  if (projectId) {
+    const p = await pool.query('SELECT 1 FROM projects WHERE id = $1', [projectId]);
+    if (!p.rows[0]) return res.status(404).json({ error: '项目不存在' });
+  }
   if (!isFigmaConfigured()) {
     return res.status(503).json({ error: '服务端未配置 FIGMA_TOKEN，请先在 .env 中设置' });
   }
@@ -28,20 +32,34 @@ filesRouter.post('/', async (req, res) => {
   }
 
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO design_files (figma_key, name, version, status) VALUES ($1, $2, $3, 'pending') RETURNING id`,
-    [figmaKey, name, version]
+    `INSERT INTO design_files (figma_key, name, version, status, project_id) VALUES ($1, $2, $3, 'pending', $4) RETURNING id`,
+    [figmaKey, name, version, projectId ?? null]
   );
   const id = rows[0].id;
   void enqueueImport(id, figmaKey);
   res.json({ id, name, status: 'pending' });
 });
 
-/** 文件列表 */
-filesRouter.get('/', async (_req, res) => {
+/** 文件列表（支持 ?projectId= 过滤；无参数返回未归属项目的文件） */
+filesRouter.get('/', async (req, res) => {
+  const { projectId } = req.query;
+  if (typeof projectId === 'string' && projectId) {
+    const { rows } = await pool.query(
+      `SELECT f.id, f.name, f.status, f.error, f.source, f.created_at,
+              (SELECT count(*) FROM frames fr WHERE fr.file_id = f.id) AS frame_count
+       FROM design_files f
+       WHERE f.project_id = $1
+       ORDER BY f.created_at DESC LIMIT 200`,
+      [projectId]
+    );
+    return res.json(rows);
+  }
   const { rows } = await pool.query(
     `SELECT f.id, f.name, f.status, f.error, f.source, f.created_at,
             (SELECT count(*) FROM frames fr WHERE fr.file_id = f.id) AS frame_count
-     FROM design_files f ORDER BY f.created_at DESC LIMIT 100`
+     FROM design_files f
+     WHERE f.project_id IS NULL
+     ORDER BY f.created_at DESC LIMIT 100`
   );
   res.json(rows);
 });

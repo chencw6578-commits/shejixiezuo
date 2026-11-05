@@ -8,6 +8,7 @@ import { assetsRouter } from './routes/assets.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { commentsRouter } from './routes/comments.js';
 import { uploadsRouter } from './routes/uploads.js';
+import { projectsRouter } from './routes/projects.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
 
@@ -25,6 +26,7 @@ app.use('/api/assets', assetsRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/comments', commentsRouter);
 app.use('/api/upload', uploadsRouter);
+app.use('/api/projects', projectsRouter);
 
 // 本地存储静态服务（S3/MinIO 模式下不需要）
 if (config.storage.driver === 'local') {
