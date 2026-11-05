@@ -1,4 +1,5 @@
 import express from 'express';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { initDb } from './db.js';
@@ -26,6 +27,16 @@ if (config.storage.driver === 'local') {
   const dir = path.resolve(config.storage.localDir);
   app.use('/storage', express.static(dir, { maxAge: '7d', fallthrough: false }));
   void getStorage(); // 预热并确保目录存在
+}
+
+// 托管前端产物（web/dist 存在时单端口运行；compose 部署走 nginx 亦可并存）
+const webDist = path.resolve(process.cwd(), '../web/dist');
+if (existsSync(webDist)) {
+  app.use(express.static(webDist, { index: 'index.html' }));
+  app.get(/^\/(?!api|storage).*/, (_req, res) => {
+    res.sendFile(path.join(webDist, 'index.html'));
+  });
+  console.log(`[server] serving web from ${webDist}`);
 }
 
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));

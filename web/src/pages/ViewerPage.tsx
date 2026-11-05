@@ -14,6 +14,8 @@ export default function ViewerPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  // 小屏下左右面板抽屉化
+  const [drawer, setDrawer] = useState<'none' | 'left' | 'right'>('none');
 
   useEffect(() => {
     setData(null);
@@ -68,6 +70,13 @@ export default function ViewerPage() {
   return (
     <div className="viewer">
       <header className="topbar">
+        <button
+          className="icon-btn mobile-only"
+          onClick={() => setDrawer(drawer === 'left' ? 'none' : 'left')}
+          title="画板与图层"
+        >
+          ☰
+        </button>
         <Link to={`/files/${fileId}`} className="back">← 画板列表</Link>
         <h1>{file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
@@ -84,11 +93,21 @@ export default function ViewerPage() {
             <p className="dim small">打包为 zip 下载（上限 600 项）</p>
           </div>
         </details>
-        <span className="dim">{Math.round(zoom * 100)}%</span>
+        <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
+        <button
+          className="icon-btn mobile-only"
+          onClick={() => setDrawer(drawer === 'right' ? 'none' : 'right')}
+          title="属性与切图"
+        >
+          ◧
+        </button>
       </header>
 
       <div className="viewer-body">
-        <aside className="sidebar">
+        {drawer !== 'none' && (
+          <div className="drawer-backdrop mobile-only" onClick={() => setDrawer('none')} />
+        )}
+        <aside className={`sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
           <div className="sidebar-section">
             <h3>画板</h3>
             <div className="frame-list">
@@ -127,7 +146,7 @@ export default function ViewerPage() {
           onZoomChange={setZoom}
         />
 
-        <aside className="inspector">
+        <aside className={`inspector ${drawer === 'right' ? 'is-open' : ''}`}>
           <PropertyPanel
             frame={data.frame}
             nodeCount={data.nodes.length}
