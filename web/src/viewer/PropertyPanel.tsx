@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
+import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -53,6 +54,8 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
   const [error, setError] = useState('');
+  const [snippetLang, setSnippetLang] = useState<SnippetLang>('CSS');
+  const [snippetCopied, setSnippetCopied] = useState(false);
 
   if (!selected) {
     return (
@@ -68,7 +71,14 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
     );
   }
 
-  const p = selected.props;
+  // 旧数据（种子/Figma 早期导入）的 props 可能缺数组字段，这里统一兜底
+  const p = {
+    ...selected.props,
+    fills: selected.props.fills ?? [],
+    strokes: selected.props.strokes ?? [],
+    effects: selected.props.effects ?? [],
+    exportPresets: selected.props.exportPresets ?? [],
+  };
   const isSvg = format === 'SVG' || format === 'PDF';
 
   const doExport = async (presetFormat?: string, presetScale?: number) => {
@@ -178,6 +188,37 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
           ))}
         </div>
       )}
+
+      {/* 代码片段 */}
+      <div className="prop-section">
+        <h3>代码</h3>
+        <div className="snippet-tabs">
+          {SNIPPET_LANGS.map((l) => (
+            <button
+              key={l}
+              className={`snippet-tab ${snippetLang === l ? 'active' : ''}`}
+              onClick={() => setSnippetLang(l)}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <pre className="snippet-code">{generateSnippet(snippetLang, selected)}</pre>
+        <button
+          className="copy-btn"
+          onClick={() => {
+            navigator.clipboard?.writeText(generateSnippet(snippetLang, selected)).then(
+              () => {
+                setSnippetCopied(true);
+                setTimeout(() => setSnippetCopied(false), 1200);
+              },
+              () => undefined
+            );
+          }}
+        >
+          {snippetCopied ? '已复制 ✓' : '复制代码'}
+        </button>
+      </div>
 
       {/* 切图导出 */}
       <div className="prop-section">

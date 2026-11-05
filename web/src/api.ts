@@ -12,12 +12,60 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+export interface CommentItem {
+  id: string;
+  frame_id: string;
+  parent_id: string | null;
+  node_id: string | null;
+  x: number | null;
+  y: number | null;
+  author: string;
+  body: string;
+  resolved: boolean;
+  created_at: string;
+}
+
 export const api = {
   importFile: (url: string) =>
     request<{ id: string; name: string }>('/api/files', {
       method: 'POST',
       body: JSON.stringify({ url }),
     }),
+
+  /** 上传 .sketch / .psd 文件导入 */
+  uploadDesign: async (file: File): Promise<{ id: string; name: string }> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error ?? `上传失败 (${res.status})`);
+    return data as { id: string; name: string };
+  },
+
+  getComments: (frameId: string) => request<CommentItem[]>(`/api/comments/frames/${frameId}`),
+
+  addComment: (
+    frameId: string,
+    body: { author: string; body: string; nodeId?: string; x?: number; y?: number }
+  ) =>
+    request<CommentItem>(`/api/comments/frames/${frameId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  replyComment: (id: string, body: { author: string; body: string }) =>
+    request<CommentItem>(`/api/comments/${id}/replies`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  resolveComment: (id: string, resolved: boolean) =>
+    request<{ id: string; resolved: boolean }>(`/api/comments/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ resolved }),
+    }),
+
+  deleteComment: (id: string) => request<{ ok: boolean }>(`/api/comments/${id}`, { method: 'DELETE' }),
 
   listFiles: () => request<FileDetail[]>('/api/files'),
 

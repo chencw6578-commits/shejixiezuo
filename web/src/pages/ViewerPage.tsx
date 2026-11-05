@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, type CommentItem } from '../api';
 import type { FrameDetail, LayerNode } from '../types';
 import Canvas from '../viewer/Canvas';
 import LayerTree from '../viewer/LayerTree';
 import PropertyPanel from '../viewer/PropertyPanel';
+import CommentDrawer from '../viewer/CommentDrawer';
 
 export default function ViewerPage() {
   const { fileId = '', frameId = '' } = useParams();
@@ -16,6 +17,28 @@ export default function ViewerPage() {
   const [zoom, setZoom] = useState(1);
   // 小屏下左右面板抽屉化
   const [drawer, setDrawer] = useState<'none' | 'left' | 'right'>('none');
+  // 评论协作
+  const [commentMode, setCommentMode] = useState(false);
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [author, setAuthor] = useState(() => localStorage.getItem('designhub-author') ?? '');
+  const authorRef = useRef(author);
+  authorRef.current = author;
+
+  useEffect(() => {
+    localStorage.setItem('designhub-author', author);
+  }, [author]);
+
+  const refreshComments = useCallback(() => {
+    api.getComments(frameId).then(setComments).catch(() => undefined);
+  }, [frameId]);
+
+  useEffect(refreshComments, [refreshComments]);
+  // 每 6 秒轮询新评论（内部工具 MVP，不引入 WebSocket）
+  useEffect(() => {
+    const t = setInterval(refreshComments, 6000);
+    return () => clearInterval(t);
+  }, [refreshComments]);
 
   useEffect(() => {
     setData(null);
@@ -61,6 +84,44 @@ export default function ViewerPage() {
   const onSelect = useCallback((id: string | null) => setSelectedId(id), []);
   const onHover = useCallback((id: string | null) => setHoverId(id), []);
 
+  const onAddComment = useCallback(
+    async (draft: { x: number; y: number; nodeId?: string }, body: string) => {
+      await api.addComment(frameId, {
+        author: authorRef.current.trim() || '匿名',
+        body,
+        nodeId: draft.nodeId,
+        x: draft.x,
+        y: draft.y,
+      });
+      refreshComments();
+    },
+    [frameId, refreshComments]
+  );
+
+  const onReply = useCallback(
+    async (rootId: string, body: string) => {
+      await api.replyComment(rootId, { author: authorRef.current.trim() || '匿名', body });
+      refreshComments();
+    },
+    [refreshComments]
+  );
+
+  const onResolve = useCallback(
+    async (id: string, resolved: boolean) => {
+      await api.resolveComment(id, resolved);
+      refreshComments();
+    },
+    [refreshComments]
+  );
+
+  const onDelete = useCallback(
+    async (id: string) => {
+      await api.deleteComment(id);
+      refreshComments();
+    },
+    [refreshComments]
+  );
+
   if (error) return <div className="page-msg">错误：{error} <Link to="/">返回首页</Link></div>;
   if (!data) return <div className="page-msg">加载中…</div>;
 
@@ -81,6 +142,18 @@ export default function ViewerPage() {
         <h1>{file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
         <span className="spacer" />
+        <button
+          className={`comment-toggle ${commentMode ? 'is-active' : ''}`}
+          onClick={() => {
+            setCommentMode((v) => !v);
+            setDrawer('none');
+          }}
+          title="评论模式：点击画布或图层添加评论"
+        >
+          💬 评论{comments.filter((c) => !c.parent_id && !c.resolved).length > 0 && (
+            <span className="comment-badge">{comments.filter((c) => !c.parent_id && !c.resolved).length}</span>
+          )}
+        </button>
         <details className="export-menu">
           <summary className="primary-link">批量切图</summary>
           <div className="export-menu-pop">
@@ -144,7 +217,25 @@ export default function ViewerPage() {
           onSelect={onSelect}
           onHover={onHover}
           onZoomChange={setZoom}
+          comments={comments}
+          commentMode={commentMode}
+          onAddComment={onAddComment}
+          onOpenComment={(id) => setActiveCommentId(id)}
         />
+
+        {commentMode && (
+          <CommentDrawer
+            comments={comments}
+            activeId={activeCommentId}
+            author={author}
+            nodeNames={new Map(data.nodes.map((n: LayerNode) => [n.node_id, n.name]))}
+            onAuthorChange={setAuthor}
+            onClose={() => setCommentMode(false)}
+            onReply={onReply}
+            onResolve={onResolve}
+            onDelete={onDelete}
+          />
+        )}
 
         <aside className={`inspector ${drawer === 'right' ? 'is-open' : ''}`}>
           <PropertyPanel

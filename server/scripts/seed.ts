@@ -114,7 +114,12 @@ const L = (
   props: Record<string, unknown> = {},
   shape?: Shape
 ): DemoLayer => ({
-  nodeId, parentId, name, type, x, y, width, height, props, shape: shape ?? undefined,
+  nodeId, parentId, name, type, x, y, width, height,
+  props: {
+    opacity: 1, fills: [], strokes: [], effects: [], exportPresets: [], hasImageFill: false,
+    ...props,
+  },
+  shape: shape ?? undefined,
   ...(color
     ? { shape: shape ?? { kind: type === 'ELLIPSE' ? 'circle' : 'rect', x, y, width, height, color: rgb(color) } }
     : {}),

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameDetail, LayerNode } from '../types';
+import type { CommentItem } from '../api';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -9,7 +10,13 @@ interface Props {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   onZoomChange: (z: number) => void;
+  comments?: CommentItem[];
+  commentMode?: boolean;
+  onAddComment?: (draft: { x: number; y: number; nodeId?: string }, body: string) => Promise<void>;
+  onOpenComment?: (id: string) => void;
 }
+
+interface Draft { x: number; y: number; nodeId?: string }
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 8;
@@ -41,11 +48,16 @@ function gapBetween(a: Rect, b: Rect): { dir: 'h' | 'v'; gap: number; x1: number
 
 export default function Canvas({
   frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange,
+  comments = [], commentMode = false, onAddComment, onOpenComment,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const artboardRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
   const panRef = useRef<{ x: number; y: number } | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draftBody, setDraftBody] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const setZoom = useCallback((z: number) => {
     z = clamp(z, MIN_ZOOM, MAX_ZOOM);
@@ -123,6 +135,39 @@ export default function Canvas({
     };
   }, []);
 
+  // 退出评论模式时清掉起草中的评论
+  useEffect(() => {
+    if (!commentMode) {
+      setDraft(null);
+      setDraftBody('');
+    }
+  }, [commentMode]);
+
+  const openDraftAt = useCallback(
+    (clientX: number, clientY: number, nodeId?: string) => {
+      const ab = artboardRef.current;
+      if (!ab) return;
+      const rect = ab.getBoundingClientRect();
+      const x = clamp((clientX - rect.left) / zoomRef.current, 0, frame.width);
+      const y = clamp((clientY - rect.top) / zoomRef.current, 0, frame.height);
+      setDraft({ x, y, nodeId });
+      setDraftBody('');
+    },
+    [frame.width, frame.height]
+  );
+
+  const submitDraft = useCallback(async () => {
+    if (!draft || !draftBody.trim() || !onAddComment) return;
+    setSubmitting(true);
+    try {
+      await onAddComment({ x: draft.x, y: draft.y, nodeId: draft.nodeId }, draftBody.trim());
+      setDraft(null);
+      setDraftBody('');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [draft, draftBody, onAddComment]);
+
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.node_id, n])), [nodes]);
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const hovered = hoverId ? nodeById.get(hoverId) : undefined;
@@ -163,13 +208,16 @@ export default function Canvas({
       ref={containerRef}
       onPointerDown={onPointerDown}
       onMouseDown={(e) => {
-        // 点击空白取消选中（拖拽后不触发）
+        // 点击空白取消选中（拖拽后不触发）；评论模式下改为在点击处起草评论
         if ((e.target as HTMLElement).dataset.bg !== undefined) {
-          if (!dragMovedRef.current) onSelect(null);
+          if (!dragMovedRef.current) {
+            if (commentMode) openDraftAt(e.clientX, e.clientY);
+            else onSelect(null);
+          }
         }
       }}
     >
-      <div className="artboard" data-bg="1" style={{ width: W, height: H }}>
+      <div className="artboard" data-bg="1" style={{ width: W, height: H }} ref={artboardRef}>
         {frame.thumb_url && (
           <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
         )}
@@ -185,7 +233,14 @@ export default function Canvas({
               onMouseLeave={() => onHover(null)}
               onClick={(e) => {
                 e.stopPropagation();
-                if (!dragMovedRef.current) onSelect(n.node_id);
+                if (dragMovedRef.current) return;
+                if (commentMode) {
+                  // 锚定到图层：钉在图层右上角
+                  setDraft({ x: n.x + n.width, y: n.y, nodeId: n.node_id });
+                  setDraftBody('');
+                } else {
+                  onSelect(n.node_id);
+                }
               }}
             />
           ))}
@@ -241,6 +296,53 @@ export default function Canvas({
             }}
           >
             {Math.round(gap.gap)}
+          </div>
+        )}
+        {/* 评论钉点 */}
+        {comments
+          .filter((c) => !c.parent_id && c.x !== null && c.y !== null)
+          .map((c) => {
+            const replies = comments.filter((r) => r.parent_id === c.id).length;
+            return (
+              <button
+                key={c.id}
+                className={`pin ${c.resolved ? 'pin-resolved' : ''}`}
+                style={{ left: c.x! * zoom, top: c.y! * zoom }}
+                title={`${c.author}：${c.body}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenComment?.(c.id);
+                }}
+              >
+                {c.resolved ? '✓' : c.author.slice(0, 1).toUpperCase()}
+                {replies > 0 && <span className="pin-count">{replies}</span>}
+              </button>
+            );
+          })}
+
+        {/* 评论起草框 */}
+        {commentMode && draft && (
+          <div
+            className="comment-composer"
+            style={{ left: draft.x * zoom, top: draft.y * zoom }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <textarea
+              autoFocus
+              placeholder={draft.nodeId ? `评论「${nodeById.get(draft.nodeId)?.name ?? '图层'}」…` : '输入评论…'}
+              value={draftBody}
+              onChange={(e) => setDraftBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setDraft(null);
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submitDraft();
+              }}
+            />
+            <div className="composer-actions">
+              <button onClick={() => setDraft(null)}>取消</button>
+              <button className="primary-btn" disabled={!draftBody.trim() || submitting} onClick={() => void submitDraft()}>
+                {submitting ? '发送中…' : '发送'}
+              </button>
+            </div>
           </div>
         )}
       </div>

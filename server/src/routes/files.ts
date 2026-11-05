@@ -39,7 +39,7 @@ filesRouter.post('/', async (req, res) => {
 /** 文件列表 */
 filesRouter.get('/', async (_req, res) => {
   const { rows } = await pool.query(
-    `SELECT f.id, f.name, f.status, f.error, f.created_at,
+    `SELECT f.id, f.name, f.status, f.error, f.source, f.created_at,
             (SELECT count(*) FROM frames fr WHERE fr.file_id = f.id) AS frame_count
      FROM design_files f ORDER BY f.created_at DESC LIMIT 100`
   );

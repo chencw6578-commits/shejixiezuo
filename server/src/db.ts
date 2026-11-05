@@ -14,8 +14,25 @@ CREATE TABLE IF NOT EXISTS design_files (
   status      TEXT NOT NULL DEFAULT 'pending', -- pending | processing | ready | failed
   error       TEXT,
   raw         JSONB,
+  source      TEXT NOT NULL DEFAULT 'figma',   -- figma | sketch | psd
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 旧库升级
+ALTER TABLE design_files ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'figma';
+
+CREATE TABLE IF NOT EXISTS comments (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  frame_id    UUID NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
+  parent_id   UUID REFERENCES comments(id) ON DELETE CASCADE, -- 回复
+  node_id     TEXT,        -- 可选：锚定图层
+  x           REAL,        -- 画板内坐标（未锚定图层时为自由钉点）
+  y           REAL,
+  author      TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  resolved    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comments_frame ON comments(frame_id);
 
 CREATE TABLE IF NOT EXISTS frames (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
