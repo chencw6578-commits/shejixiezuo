@@ -71,17 +71,25 @@ export const api = {
   listFiles: (projectId?: string) =>
     request<FileDetail[]>(`/api/files${projectId ? `?projectId=${projectId}` : ''}`),
 
+  // ---- 团队 ----
+  listTeams: () =>
+    request<{ id: string; name: string; project_count: string; created_at: string }[]>('/api/teams'),
+  createTeam: (name: string) =>
+    request<{ id: string; name: string }>('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }),
+  deleteTeam: (id: string) => request<{ deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),
+
   // ---- 项目 ----
-  listProjects: () =>
+  listProjects: (teamId?: string) =>
     request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null }[]>(
-      '/api/projects'
+      `/api/projects${teamId ? `?teamId=${teamId}` : ''}`
     ),
-  createProject: (name: string) =>
+  createProject: (name: string, teamId?: string) =>
     request<{ id: string; name: string }>('/api/projects', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, teamId }),
     }),
-  getProject: (id: string) => request<{ id: string; name: string }>(`/api/projects/${id}`),
+  getProject: (id: string) =>
+    request<{ id: string; name: string; team_id: string | null; team_name: string | null }>(`/api/projects/${id}`),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   getFile: (id: string) => request<FileDetail>(`/api/files/${id}`),

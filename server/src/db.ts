@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS projects (
 ALTER TABLE design_files ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_design_files_project ON design_files(project_id);
 
+-- P4：团队结构（团队 → 项目 → 设计稿）
+CREATE TABLE IF NOT EXISTS teams (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_projects_team ON projects(team_id);
+
 CREATE TABLE IF NOT EXISTS comments (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   frame_id    UUID NOT NULL REFERENCES frames(id) ON DELETE CASCADE,

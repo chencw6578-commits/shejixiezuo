@@ -18,7 +18,7 @@ const SOURCE_TAG: Record<string, string> = {
 
 export default function ProjectPage() {
   const { projectId } = useParams();
-  const [project, setProject] = useState<{ id: string; name: string } | null>(null);
+  const [project, setProject] = useState<{ id: string; name: string; team_id: string | null; team_name: string | null } | null>(null);
   const [url, setUrl] = useState('');
   const [files, setFiles] = useState<FileDetail[]>([]);
   const [error, setError] = useState('');
@@ -71,7 +71,10 @@ export default function ProjectPage() {
   return (
     <div className="home">
       <header className="home-header">
-        <Link to="/" className="back">← 返回项目列表</Link>
+        <Link to="/" className="back">← 返回首页</Link>
+        {project?.team_name && (
+          <Link to={`/?team=${project.team_id}`} className="team-crumb">👥 {project.team_name}</Link>
+        )}
         <h1>📁 {project?.name ?? '…'}</h1>
         <p>在这个项目里导入 Figma 链接或上传 Sketch / PSD 设计稿</p>
       </header>

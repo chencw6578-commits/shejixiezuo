@@ -254,12 +254,17 @@ async function main() {
 
   // 幂等：清掉旧演示数据
   await pool.query("DELETE FROM design_files WHERE figma_key = 'DEMO'");
-  // 演示项目（幂等）
+  // 演示团队 + 演示项目（幂等）
+  const team = await pool.query<{ id: string }>('SELECT id FROM teams WHERE name = $1', ['演示团队']);
+  const teamId =
+    team.rows[0]?.id ??
+    (await pool.query<{ id: string }>('INSERT INTO teams (name) VALUES ($1) RETURNING id', ['演示团队'])).rows[0].id;
   const proj = await pool.query<{ id: string }>('SELECT id FROM projects WHERE name = $1', ['演示项目']);
   const projectId =
     proj.rows[0]?.id ??
-    (await pool.query<{ id: string }>('INSERT INTO projects (name) VALUES ($1) RETURNING id', ['演示项目']))
+    (await pool.query<{ id: string }>('INSERT INTO projects (name, team_id) VALUES ($1, $2) RETURNING id', ['演示项目', teamId]))
       .rows[0].id;
+  await pool.query('UPDATE projects SET team_id = $1 WHERE team_id IS NULL', [teamId]);
   const { rows: [file] } = await pool.query<{ id: string }>(
     `INSERT INTO design_files (figma_key, name, version, status, project_id)
      VALUES ('DEMO', '演示设计稿（本地示例）', 'demo-v1', 'ready', $1) RETURNING id`,

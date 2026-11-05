@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
@@ -9,12 +10,14 @@ import { webhooksRouter } from './routes/webhooks.js';
 import { commentsRouter } from './routes/comments.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { projectsRouter } from './routes/projects.js';
+import { teamsRouter } from './routes/teams.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
 
 setConcurrency(Number(process.env.IMPORT_CONCURRENCY ?? 2));
 
 const app = express();
+app.use(compression({ threshold: 512 }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
@@ -27,6 +30,7 @@ app.use('/api/webhooks', webhooksRouter);
 app.use('/api/comments', commentsRouter);
 app.use('/api/upload', uploadsRouter);
 app.use('/api/projects', projectsRouter);
+app.use('/api/teams', teamsRouter);
 
 // 本地存储静态服务（S3/MinIO 模式下不需要）
 if (config.storage.driver === 'local') {
