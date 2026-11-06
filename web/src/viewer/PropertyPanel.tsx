@@ -90,7 +90,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
           <div className="kv"><span>尺寸</span><b>{Math.round(frame.width)} × {Math.round(frame.height)}</b></div>
           <div className="kv"><span>图层数</span><b>{nodeCount}</b></div>
         </div>
-        <p className="prop-hint">点击画布或左侧图层层树中的图层，查看尺寸、颜色、字体与切图。</p>
+        <p className="prop-hint">点击画布或左侧图层层树中的图层，查看尺寸、颜色、字体；标记了切图的图层可导出。</p>
       </div>
     );
   }
@@ -272,7 +272,8 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
       {/* 切图导出 */}
       <div className="prop-section">
         <h3>切图导出</h3>
-        {p.exportPresets.length > 0 && (
+        {p.exportPresets.length > 0 ? (
+          <>
           <div className="preset-row">
             {p.exportPresets.map((ps, i) => (
               <button key={i} className="preset-btn" disabled={exporting} onClick={() => doExport(ps.format, ps.scale)}>
@@ -281,7 +282,6 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
             ))}
             <span className="dim">设计标记的导出预设</span>
           </div>
-        )}
         <div className="export-controls">
           <select value={format} onChange={(e) => setFormat(e.target.value)}>
             <option>PNG</option><option>SVG</option><option>JPG</option><option>PDF</option>
@@ -296,6 +296,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
         </div>
         {p.hasImageFill && (
           <p className="dim small hint">该图层含图像填充，导出 PNG 会带出填充图。</p>
+        )}
+          </>
+        ) : (
+          <p className="dim small hint">
+            该图层未在 Figma 中标记为切图（无导出预设），仅可查看尺寸与坐标。<br />
+            需要切图：在 Figma 选中该图层 → 右侧 Export 面板添加导出设置 → 回到本工具重新同步。
+          </p>
         )}
         {exportMsg && <p className="ok small">{exportMsg}</p>}
         {error && <p className="err small">{error}</p>}

@@ -33,6 +33,20 @@ assetsRouter.post('/export', async (req, res) => {
   ).rows[0];
   if (!file) return res.status(404).json({ error: '文件不存在' });
 
+  // 切图权限：仅「在 Figma 中标记了导出预设」的图层可下载切图；未标记图层只读（尺寸/坐标仍可查看）
+  const node = (
+    await pool.query<{ props: { exportPresets?: unknown[] } | null }>(
+      'SELECT props FROM nodes WHERE file_id = $1 AND node_id = $2 LIMIT 1',
+      [fileId, nodeId]
+    )
+  ).rows[0];
+  if (!node) return res.status(404).json({ error: '图层不存在' });
+  if (!(node.props?.exportPresets ?? []).length) {
+    return res.status(403).json({
+      error: '该图层未在 Figma 中标记为切图（无导出设置）。请在 Figma 中选中图层 → 右侧 Export 面板添加导出预设，然后重新同步本文件；未标记图层仅可查看尺寸与坐标。',
+    });
+  }
+
   const ext = format.toLowerCase();
 
   // 本地文件（演示 / Sketch / PSD）：服务端直接渲染，不走 Figma API
