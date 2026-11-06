@@ -55,6 +55,9 @@ export default function Canvas({
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
   const panRef = useRef<{ x: number; y: number } | null>(null);
+  // 空格按住 = 平移模式（Figma 式）：光标变抓手，拖拽不触发选中/评论
+  const [spacePan, setSpacePan] = useState(false);
+  const spaceRef = useRef(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftBody, setDraftBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -104,6 +107,31 @@ export default function Canvas({
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
   }, [setZoom]);
+
+  // 空格按住 = 平移模式（Figma 式）：光标变抓手，拖拽不触发选中/评论
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat || isTyping(e.target)) return;
+      e.preventDefault(); // 阻止页面滚动/焦点按钮触发
+      spaceRef.current = true;
+      setSpacePan(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      spaceRef.current = false;
+      setSpacePan(false);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
 
   // 空白处拖拽平移（拖动超过阈值后吞掉随后的 click，避免拖完误选图层）
   const dragMovedRef = useRef(false);
@@ -204,11 +232,12 @@ export default function Canvas({
 
   return (
     <div
-      className="canvas-container"
+      className={`canvas-container${spacePan ? ' space-pan' : ''}`}
       ref={containerRef}
       onPointerDown={onPointerDown}
       onMouseDown={(e) => {
-        // 点击空白取消选中（拖拽后不触发）；评论模式下改为在点击处起草评论
+        // 点击空白取消选中（拖拽后不触发）；空格平移模式下不触发；评论模式下改为在点击处起草评论
+        if (spaceRef.current) return;
         if ((e.target as HTMLElement).dataset.bg !== undefined) {
           if (!dragMovedRef.current) {
             if (commentMode) openDraftAt(e.clientX, e.clientY);
@@ -233,7 +262,7 @@ export default function Canvas({
               onMouseLeave={() => onHover(null)}
               onClick={(e) => {
                 e.stopPropagation();
-                if (dragMovedRef.current) return;
+                if (dragMovedRef.current || spaceRef.current) return;
                 if (commentMode) {
                   // 锚定到图层：钉在图层右上角
                   setDraft({ x: n.x + n.width, y: n.y, nodeId: n.node_id });

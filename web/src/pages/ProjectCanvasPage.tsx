@@ -34,6 +34,10 @@ export default function ProjectCanvasPage() {
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
   const panRef = useRef<{ x: number; y: number } | null>(null);
+  const dragMovedRef = useRef(false);
+  // 空格按住 = 平移模式（Figma 式）：光标变抓手，松开后才允许点击画板
+  const [spacePan, setSpacePan] = useState(false);
+  const spaceRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 导入面板
@@ -130,14 +134,42 @@ export default function ProjectCanvasPage() {
     return () => el.removeEventListener('wheel', handler);
   }, [setZoom]);
 
+  // 空格按住 = 平移模式
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat || isTyping(e.target)) return;
+      e.preventDefault();
+      spaceRef.current = true;
+      setSpacePan(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      spaceRef.current = false;
+      setSpacePan(false);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
   // 空白处拖拽平移
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const move = (e: PointerEvent) => {
       if (!panRef.current) return;
-      el.scrollLeft -= e.clientX - panRef.current.x;
-      el.scrollTop -= e.clientY - panRef.current.y;
+      const dx = e.clientX - panRef.current.x;
+      const dy = e.clientY - panRef.current.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragMovedRef.current = true;
+      el.scrollLeft -= dx;
+      el.scrollTop -= dy;
       panRef.current = { x: e.clientX, y: e.clientY };
     };
     const up = () => (panRef.current = null);
@@ -246,11 +278,12 @@ export default function ProjectCanvasPage() {
       </header>
 
       <div
-        className="canvas-container"
+        className={`canvas-container${spacePan ? ' space-pan' : ''}`}
         ref={containerRef}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           panRef.current = { x: e.clientX, y: e.clientY };
+          dragMovedRef.current = false;
         }}
         onClick={(e) => {
           // 点击空白区域：不做任何事（预留），仅吞掉拖拽后的 click
@@ -278,7 +311,11 @@ export default function ProjectCanvasPage() {
                   height: f.height * zoom,
                 }}
                 title={`${f.file_name} / ${f.name} · 点击打开画板详情`}
-                onClick={() => navigate(`/files/${f.file_id}/frames/${f.id}`)}
+                onClick={() => {
+                  // 拖拽平移或空格模式下松开鼠标，不进入画板详情
+                  if (dragMovedRef.current || spaceRef.current) return;
+                  navigate(`/files/${f.file_id}/frames/${f.id}`);
+                }}
               >
                 {f.thumb_url ? (
                   <img className="artboard-img" src={f.thumb_url} alt={f.name} draggable={false} />
