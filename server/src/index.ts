@@ -11,6 +11,7 @@ import { commentsRouter } from './routes/comments.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { projectsRouter } from './routes/projects.js';
 import { teamsRouter } from './routes/teams.js';
+import { mcpRouter } from './routes/mcp.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
 
@@ -31,6 +32,8 @@ app.use('/api/comments', commentsRouter);
 app.use('/api/upload', uploadsRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/teams', teamsRouter);
+// MCP 服务（AI 编码工具接入设计稿）
+app.use(mcpRouter);
 
 // 本地存储静态服务（S3/MinIO 模式下不需要）
 if (config.storage.driver === 'local') {
