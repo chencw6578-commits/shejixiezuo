@@ -39,6 +39,13 @@ export default function ProjectCanvasPage() {
   const [spacePan, setSpacePan] = useState(false);
   const spaceRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // 画布平移偏移（transform 实现，无需滚动空间，任意方向可拖）
+  const [pan, setPanState] = useState({ x: 0, y: 0 });
+  const panXYRef = useRef({ x: 0, y: 0 });
+  const setPanXY = useCallback((x: number, y: number) => {
+    panXYRef.current = { x, y };
+    setPanState({ x, y });
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 导入面板
   const [importOpen, setImportOpen] = useState(false);
@@ -99,10 +106,33 @@ export default function ProjectCanvasPage() {
     const el = containerRef.current;
     if (!el || !layout.worldW) return;
     const pad = 100;
-    setZoom(
-      Math.min((el.clientWidth - pad) / layout.worldW, (el.clientHeight - pad) / layout.worldH, 1)
+    const z = clamp(
+      Math.min((el.clientWidth - pad) / layout.worldW, (el.clientHeight - pad) / layout.worldH, 1),
+      MIN_ZOOM,
+      MAX_ZOOM
     );
-  }, [layout.worldW, layout.worldH, setZoom]);
+    setZoom(z);
+    setPanXY(
+      (el.clientWidth - layout.worldW * zoomRef.current) / 2,
+      (el.clientHeight - layout.worldH * zoomRef.current) / 2
+    );
+  }, [layout.worldW, layout.worldH, setZoom, setPanXY]);
+
+  /** 以容器中心为锚点缩放（缩放按钮用） */
+  const zoomCenter = useCallback(
+    (z: number) => {
+      const el = containerRef.current;
+      const next = clamp(z, MIN_ZOOM, MAX_ZOOM);
+      if (!el) return setZoom(next);
+      const cx = el.clientWidth / 2;
+      const cy = el.clientHeight / 2;
+      const old = zoomRef.current;
+      const p = panXYRef.current;
+      setPanXY(cx - (cx - p.x) * (next / old), cy - (cy - p.y) * (next / old));
+      setZoom(next);
+    },
+    [setZoom, setPanXY]
+  );
 
   // 画板加载后自适应一次
   const fittedRef = useRef('');
@@ -126,8 +156,8 @@ export default function ProjectCanvasPage() {
       const cy = e.clientY - rect.top;
       const old = zoomRef.current;
       const next = clamp(old * Math.exp(-e.deltaY * 0.0015), MIN_ZOOM, MAX_ZOOM);
-      el.scrollLeft = (el.scrollLeft + cx) * (next / old) - cx;
-      el.scrollTop = (el.scrollTop + cy) * (next / old) - cy;
+      const p = panXYRef.current;
+      setPanXY(cx - (cx - p.x) * (next / old), cy - (cy - p.y) * (next / old));
       setZoom(next);
     };
     el.addEventListener('wheel', handler, { passive: false });
@@ -168,8 +198,8 @@ export default function ProjectCanvasPage() {
       const dx = e.clientX - panRef.current.x;
       const dy = e.clientY - panRef.current.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) dragMovedRef.current = true;
-      el.scrollLeft -= dx;
-      el.scrollTop -= dy;
+      const p = panXYRef.current;
+      setPanXY(p.x + dx, p.y + dy);
       panRef.current = { x: e.clientX, y: e.clientY };
     };
     const up = () => (panRef.current = null);
@@ -298,7 +328,11 @@ export default function ProjectCanvasPage() {
         ) : (
           <div
             className="pcanvas-world"
-            style={{ width: layout.worldW * zoom, height: layout.worldH * zoom }}
+            style={{
+              width: layout.worldW * zoom,
+              height: layout.worldH * zoom,
+              transform: `translate(${pan.x}px, ${pan.y}px)`,
+            }}
           >
             {layout.placed.map(({ f, px, py }) => (
               <div
@@ -334,9 +368,9 @@ export default function ProjectCanvasPage() {
         )}
 
         <div className="zoombar">
-          <button onClick={() => setZoom(zoom / 1.25)} title="缩小">−</button>
+          <button onClick={() => zoomCenter(zoom / 1.25)} title="缩小">−</button>
           <span className="zoom-value">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(zoom * 1.25)} title="放大">+</button>
+          <button onClick={() => zoomCenter(zoom * 1.25)} title="放大">+</button>
           <button onClick={fit} title="适应画布">适应</button>
         </div>
       </div>

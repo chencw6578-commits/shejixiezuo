@@ -82,7 +82,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .team-card .file-name { margin-bottom: 6px; }
 
 /* ---------- 项目画板页（点击项目直达，所有设计稿平铺） ---------- */
-.pcanvas-world { position: relative; }
+.pcanvas-world { position: absolute; left: 0; top: 0; }
 .pcanvas-frame {
   position: absolute; cursor: pointer;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 40px rgba(0, 0, 0, 0.5);
@@ -206,7 +206,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 
 /* 画布 */
 .canvas-container {
-  flex: 1; overflow: auto; position: relative;
+  flex: 1; overflow: hidden; position: relative;
   background:
     radial-gradient(circle, #333 1px, transparent 1px) 0 0 / 24px 24px,
     #262626;
@@ -216,7 +216,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .canvas-container.space-pan { cursor: grab; }
 .canvas-container.space-pan:active { cursor: grabbing; }
 .canvas-container:active { cursor: grabbing; }
-.artboard { position: relative; margin: 60px; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 40px rgba(0,0,0,0.5); }
+.artboard { position: absolute; left: 0; top: 0; margin: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 40px rgba(0,0,0,0.5); }
 .artboard-img { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; }
 .hotzones { position: absolute; inset: 0; }
 .hotzone { position: absolute; cursor: pointer; }
@@ -357,7 +357,6 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
     position: fixed; inset: 50px 0 0 0; z-index: 55;
     background: rgba(0, 0, 0, 0.45); border: none; border-radius: 0;
   }
-  .artboard { margin: 24px; }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; }
   .home-shell { flex-direction: column; }
   .home-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 14px; border-right: none; border-bottom: 1px solid var(--border); }
