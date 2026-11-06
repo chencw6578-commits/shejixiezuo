@@ -351,14 +351,44 @@ async function main() {
   // 其余未归属的稿子也挂到演示项目下
   await pool.query('UPDATE design_files SET project_id = $1 WHERE project_id IS NULL', [projectId]);
 
-  await insertDemoFile(projectId, 'DEMO', '演示设计稿（本地示例）', '演示页面', [
+  // 文本图层内容（查看器「复制文本」用；真实 Figma 导入自带 content，演示数据按节点 id 映射补齐）
+  const TEXT_CONTENT: Record<string, string> = {
+    'demo:home:nav-title': '首页',
+    'demo:home:card0-title': '爆款推荐', 'demo:home:card0-desc': '本周销量最高的精选好物',
+    'demo:home:card1-title': '新品首发', 'demo:home:card1-desc': '每日上新 先睹为快',
+    'demo:home:card2-title': '限时特惠', 'demo:home:card2-desc': '全场低至 5 折起',
+    'demo:home:card3-title': '会员专享', 'demo:home:card3-desc': '开通会员享专属折扣',
+    'demo:login:slogan': '设计协作，从这一刻开始',
+    'demo:login:btn-label': '登 录',
+    'demo:login:input-1-ph': '请输入手机号', 'demo:login:input-2-ph': '请输入验证码',
+    'demo:login:agree': '登录即代表同意《用户协议》与《隐私政策》',
+    'demo:profile:name': '设计小助手',
+    'demo:profile:row0-t': '我的订单', 'demo:profile:row1-t': '我的收藏',
+    'demo:profile:row2-t': '浏览历史', 'demo:profile:row3-t': '设置',
+    'demo2:首页（浅色）:nav-title': '首页', 'demo2:首页（浅色）:search-ph': '搜索设计素材',
+    'demo2:首页（深色）:nav-title': '首页', 'demo2:首页（深色）:search-ph': '搜索设计素材',
+    'demo2:我的（圆角）:nav-title': '我的',
+  };
+  const withTextContent = (frames: DemoFrame[]) =>
+    frames.map((fr) => ({
+      ...fr,
+      layers: fr.layers.map((l) => {
+        const c = TEXT_CONTENT[l.nodeId];
+        const t = l.props?.text as { content?: string } | undefined;
+        return c && t && !t.content
+          ? { ...l, props: { ...l.props, text: { ...t, content: c } } }
+          : l;
+      }),
+    }));
+
+  await insertDemoFile(projectId, 'DEMO', '演示设计稿（本地示例）', '演示页面', withTextContent([
     homeFrame(), loginFrame(), profileFrame(),
-  ]);
-  await insertDemoFile(projectId, 'DEMO2', '收集页', '收集页', [
+  ]));
+  await insertDemoFile(projectId, 'DEMO2', '收集页', '收集页', withTextContent([
     collectFrame('demo2', '首页（浅色）', { bg: '#F7F8FA', card: '#FFFFFF', text: '#1D2129', sub: '#86909C', accent: '#1B6DFF', iconA: '#E8F1FF', iconB: '#FFF3E0' }),
     collectFrame('demo2', '首页（深色）', { bg: '#12141A', card: '#1E2430', text: '#E8EAED', sub: '#9AA0A6', accent: '#3B82F6', iconA: '#1F3350', iconB: '#3A2F1E' }),
     collectFrame('demo2', '我的（圆角）', { bg: '#F6F9F8', card: '#FFFFFF', text: '#1D2129', sub: '#86909C', accent: '#10B981', iconA: '#D9F2E6', iconB: '#FFF7E0' }),
-  ]);
+  ]));
 
   // 演示「原型交互」：按钮/标签栏跳转到目标画板（静态原型导出用）
   const addInteractions = async (figmaKey: string, links: Array<{ node: string; target: string }>) => {

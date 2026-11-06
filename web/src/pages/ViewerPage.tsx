@@ -61,7 +61,6 @@ export default function ViewerPage() {
 
   const [frames, setFrames] = useState<{ id: string; name: string; page_name: string | null }[]>([]);
   const [zipBusy, setZipBusy] = useState('');
-  const [zipScale, setZipScale] = useState('2');
   useEffect(() => {
     api
       .getFile(fileId)
@@ -74,10 +73,10 @@ export default function ViewerPage() {
       .catch((e) => setError(e.message));
   }, [fileId]);
 
-  const doExportZip = async (mode: 'presets' | 'all') => {
-    setZipBusy(mode);
+  const doExportZip = async () => {
+    setZipBusy('presets');
     try {
-      await api.exportZip({ fileId, frameId, mode, format: 'PNG', scale: Number(zipScale) });
+      await api.exportZip({ fileId, frameId, mode: 'presets' });
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
     } finally {
@@ -162,21 +161,13 @@ export default function ViewerPage() {
         <details className="export-menu">
           <summary className="primary-link">批量切图</summary>
           <div className="export-menu-pop">
-            <label className="export-scale">
-              倍数
-              <select value={zipScale} onChange={(e) => setZipScale(e.target.value)}>
-                <option value="1">1x</option>
-                <option value="2">2x</option>
-                <option value="3">3x</option>
-              </select>
-            </label>
-            <button disabled={!!zipBusy} onClick={() => doExportZip('presets')}>
-              {zipBusy === 'presets' ? '导出中…' : '按设计标记的导出预设'}
+            <button disabled={!!zipBusy} onClick={() => void doExportZip()}>
+              {zipBusy ? '导出中…' : '按设计标记导出切图 zip'}
             </button>
-            <button disabled={!!zipBusy} onClick={() => doExportZip('all')}>
-              {zipBusy === 'all' ? '导出中…' : `全部图层 PNG @${zipScale}x`}
-            </button>
-            <p className="dim small">预设模式按图层标记的倍数导出；打包为 zip 下载（上限 600 项）</p>
+            <p className="dim small">
+              仅导出在 Figma 中标记了导出预设（Export）的图层，各自按标记的格式与倍数导出；打包 zip 下载（上限 600 项）。
+              未标记图层仅可查看尺寸、坐标与文本属性。
+            </p>
           </div>
         </details>
         <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>

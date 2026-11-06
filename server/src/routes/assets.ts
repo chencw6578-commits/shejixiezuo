@@ -108,13 +108,15 @@ const MAX_ZIP_TASKS = 600;
 assetsRouter.post('/export-zip', async (req, res) => {
   const { fileId, frameId, mode = 'presets', format = 'PNG', scale = 2 } = req.body ?? {};
   if (!fileId || !frameId) return res.status(400).json({ error: '缺少 fileId 或 frameId' });
-  if (mode === 'all' && !FORMATS.has(format)) {
+  if (mode === 'all') {
+    return res.status(400).json({
+      error: '「全部图层」批量导出已下线：仅导出在 Figma 中标记了导出预设（Export）的图层，请使用按标记导出模式。',
+    });
+  }
+  if (mode === 'presets' && !FORMATS.has(format)) {
     return res.status(400).json({ error: `不支持的格式: ${format}` });
   }
   const s = Number(scale);
-  if (mode === 'all' && !(s >= 0.5 && s <= 4)) {
-    return res.status(400).json({ error: 'scale 取值范围 0.5-4' });
-  }
 
   const file = (
     await pool.query<{ figma_key: string; name: string; source: string }>(

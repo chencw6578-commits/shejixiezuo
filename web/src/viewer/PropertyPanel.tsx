@@ -57,6 +57,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
   const [error, setError] = useState('');
   const [snippetLang, setSnippetLang] = useState<SnippetLang>('CSS');
   const [snippetCopied, setSnippetCopied] = useState(false);
+  const [textCopied, setTextCopied] = useState(false);
 
   // 原型交互（跳转到画板）
   const [protoFrames, setProtoFrames] = useState<{ id: string; name: string }[]>([]);
@@ -137,10 +138,10 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
       <div className="prop-section">
         <h3>位置与尺寸</h3>
         <div className="kv-grid">
-          <div className="kv"><span>X</span><b>{selected.x}</b></div>
-          <div className="kv"><span>Y</span><b>{selected.y}</b></div>
-          <div className="kv"><span>W</span><b>{selected.width}</b></div>
-          <div className="kv"><span>H</span><b>{selected.height}</b></div>
+          <div className="kv"><span>X</span><CopyChip text={String(selected.x)}><b>{selected.x}</b></CopyChip></div>
+          <div className="kv"><span>Y</span><CopyChip text={String(selected.y)}><b>{selected.y}</b></CopyChip></div>
+          <div className="kv"><span>W</span><CopyChip text={String(selected.width)}><b>{selected.width}</b></CopyChip></div>
+          <div className="kv"><span>H</span><CopyChip text={String(selected.height)}><b>{selected.height}</b></CopyChip></div>
           {p.cornerRadius !== undefined && p.cornerRadius > 0 && (
             <div className="kv"><span>圆角</span><b>{p.cornerRadius}</b></div>
           )}
@@ -155,9 +156,28 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
       {p.text && (
         <div className="prop-section">
           <h3>文本</h3>
-          {p.text.content && <div className="text-content">{p.text.content}</div>}
-          {p.text.family && <div className="kv"><span>字体</span><b>{p.text.family}</b></div>}
-          {p.text.size && <div className="kv"><span>字号</span><b>{p.text.size}px / {p.text.weight ?? 400}</b></div>}
+          {p.text.content && (
+            <div className="text-content-row">
+              <div className="text-content">{p.text.content}</div>
+              <button
+                className="copy-btn"
+                onClick={() => {
+                  navigator.clipboard?.writeText(p.text?.content ?? '').then(
+                    () => {
+                      setTextCopied(true);
+                      setTimeout(() => setTextCopied(false), 1200);
+                    },
+                    () => undefined
+                  );
+                }}
+                title="复制文本内容"
+              >
+                {textCopied ? '已复制 ✓' : '复制文本'}
+              </button>
+            </div>
+          )}
+          {p.text.family && <div className="kv"><span>字体</span><CopyChip text={p.text.family}><b>{p.text.family}</b></CopyChip></div>}
+          {p.text.size && <div className="kv"><span>字号</span><CopyChip text={String(p.text.size)}><b>{p.text.size}px / {p.text.weight ?? 400}</b></CopyChip></div>}
           {p.text.lineHeight && <div className="kv"><span>行高</span><b>{p.text.lineHeight}px</b></div>}
           {p.text.letterSpacing !== undefined && <div className="kv"><span>字间距</span><b>{p.text.letterSpacing}px</b></div>}
           {p.text.alignHorizontal && <div className="kv"><span>对齐</span><b>{p.text.alignHorizontal}</b></div>}

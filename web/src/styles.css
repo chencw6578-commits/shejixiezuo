@@ -282,6 +282,10 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
   background: transparent; border: none; border-radius: 4px; padding: 4px 6px; text-align: left;
 }
 .copy-chip:hover { background: var(--bg-elevated); }
+.kv .copy-chip { width: auto; padding: 2px 6px; gap: 6px; }
+.text-content-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.text-content-row .text-content { flex: 1; margin-bottom: 0; }
+.text-content-row .copy-btn { flex: none; }
 .swatch {
   width: 16px; height: 16px; border-radius: 4px; flex: none;
   border: 1px solid rgba(255,255,255,0.25);
