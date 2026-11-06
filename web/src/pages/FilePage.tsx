@@ -35,7 +35,7 @@ export default function FilePage() {
   return (
     <div className="file-page">
       <header className="topbar">
-        <Link to="/" className="back">← 返回</Link>
+        <Link to={file.project_id ? `/projects/${file.project_id}` : '/'} className="back">← 返回画板</Link>
         <h1>{file.name}</h1>
         <span className={`status ${file.status === 'ready' ? 'status-ok' : file.status === 'failed' ? 'status-err' : 'status-wait status-pulse'}`}>
           {file.status === 'ready' ? `共 ${frames.length} 个画板` : file.status === 'failed' ? '解析失败' : '解析中…'}
@@ -69,7 +69,7 @@ export default function FilePage() {
           onClick={async () => {
             if (confirm('删除该设计稿？')) {
               await api.deleteFile(fileId);
-              location.href = '/';
+              location.href = file.project_id ? `/projects/${file.project_id}` : '/';
             }
           }}
         >

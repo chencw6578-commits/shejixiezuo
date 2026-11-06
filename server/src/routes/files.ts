@@ -68,7 +68,7 @@ filesRouter.get('/', async (req, res) => {
 filesRouter.get('/:id', async (req, res) => {
   const file = (
     await pool.query(
-      `SELECT id, figma_key, name, version, status, error, created_at FROM design_files WHERE id = $1`,
+      `SELECT id, figma_key, name, version, status, error, project_id, created_at FROM design_files WHERE id = $1`,
       [req.params.id]
     )
   ).rows[0];

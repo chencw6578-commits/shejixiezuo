@@ -17,6 +17,7 @@ export interface FileDetail {
   status: 'pending' | 'processing' | 'ready' | 'failed';
   error: string | null;
   source?: 'figma' | 'sketch' | 'psd';
+  project_id?: string | null;
   created_at: string;
   frame_count?: number;
   frames?: FrameRow[];

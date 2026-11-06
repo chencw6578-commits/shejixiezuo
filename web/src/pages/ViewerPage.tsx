@@ -9,7 +9,7 @@ import CommentDrawer from '../viewer/CommentDrawer';
 
 export default function ViewerPage() {
   const { fileId = '', frameId = '' } = useParams();
-  const [file, setFile] = useState<{ name: string } | null>(null);
+  const [file, setFile] = useState<{ name: string; project_id: string | null } | null>(null);
   const [data, setData] = useState<FrameDetail | null>(null);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export default function ViewerPage() {
     api
       .getFile(fileId)
       .then((f) => {
-        setFile({ name: f.name });
+        setFile({ name: f.name, project_id: f.project_id ?? null });
         setFrames(f.frames ?? []);
       })
       .catch((e) => setError(e.message));
@@ -138,7 +138,7 @@ export default function ViewerPage() {
         >
           ☰
         </button>
-        <Link to={`/files/${fileId}`} className="back">← 画板列表</Link>
+        <Link to={file?.project_id ? `/projects/${file.project_id}` : '/'} className="back">← 返回画板</Link>
         <h1>{file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
         <span className="spacer" />
