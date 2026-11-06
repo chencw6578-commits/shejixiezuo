@@ -55,8 +55,20 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .status-pulse { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.5; } }
 
-/* ---------- 首页（侧边栏布局） ---------- */
-.home-shell { display: flex; flex: 1; min-height: 0; width: 100%; }
+/* ---------- 首页（侧边栏布局，浅色主题：作用域覆盖变量，画布页保持深色不受影响） ---------- */
+.home-shell {
+  display: flex; flex: 1; min-height: 0; width: 100%;
+  --bg: #f5f6f8;
+  --bg-panel: #ffffff;
+  --bg-elevated: #f7f8fa;
+  --border: #e4e7ec;
+  --border-strong: #c9cdd4;
+  --text: #1d2129;
+  --text-dim: #6b7280;
+  background: var(--bg);
+  color: var(--text);
+}
+.home-shell button:hover { background: #eef1f5; }
 .home-sidebar {
   width: 216px; flex-shrink: 0; display: flex; flex-direction: column;
   background: var(--bg-panel); border-right: 1px solid var(--border); padding: 18px 12px;
@@ -511,7 +523,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
   position: absolute; top: calc(100% + 4px); left: 4px; width: 240px;
   background: var(--bg-elevated); border: 1px solid var(--border-strong);
   border-radius: 8px; padding: 6px; z-index: 60;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 32px rgba(29, 33, 41, 0.12);
 }
 .team-switch-item {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
@@ -521,7 +533,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .team-switch-item.active { background: rgba(13, 153, 255, 0.13); color: var(--accent); font-weight: 600; }
 .team-switch-item em {
   margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-dim);
-  background: rgba(255, 255, 255, 0.06); border-radius: 999px; padding: 1px 8px;
+  background: rgba(29, 33, 41, 0.06); border-radius: 999px; padding: 1px 8px;
 }
 .team-switch-create { display: flex; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
 .team-switch-create .compact-input { flex: 1; width: auto; padding: 5px 8px; font-size: 12px; }
@@ -550,7 +562,12 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .inline-form .compact-input { width: 220px; }
 .inline-form .compact-input.grow { flex: 1; }
 .project-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.project-card { width: 100%; padding: 16px; }
+.project-card {
+  width: 100%; padding: 16px; text-align: left;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.project-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgba(29, 33, 41, 0.08); }
 .project-card .file-name { font-size: 14px; margin-bottom: 6px; }
 .team-crumb {
   display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
