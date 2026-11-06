@@ -71,6 +71,13 @@ export const api = {
   listFiles: (projectId?: string) =>
     request<FileDetail[]>(`/api/files${projectId ? `?projectId=${projectId}` : ''}`),
 
+  /** 配置/清除图层「原型交互：跳转到目标画板」 */
+  setInteraction: (fileId: string, nodeId: string, targetFrameId: string | null) =>
+    request<{ ok: boolean }>(`/api/files/${fileId}/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ interaction: targetFrameId ? { targetFrameId } : null }),
+    }),
+
   // ---- 团队 ----
   listTeams: () =>
     request<{ id: string; name: string; project_count: string; created_at: string }[]>('/api/teams'),

@@ -62,7 +62,25 @@ export default function FilePage() {
           {syncing ? '同步中…' : '重新同步'}
         </button>
         {file.status === 'ready' && frames.length > 0 && (
-          <Link className="primary-link" to={`/files/${fileId}/spec`}>设计规范</Link>
+          <>
+            <a
+              className="ghost-btn"
+              href={`/api/files/${fileId}/prototype`}
+              target="_blank"
+              rel="noreferrer"
+              title="在浏览器新标签页打开可交互原型"
+            >
+              预览原型
+            </a>
+            <a
+              className="ghost-btn"
+              href={`/api/files/${fileId}/prototype.zip`}
+              title="下载可交互静态网页（index.html + assets，可直接部署）"
+            >
+              导出原型
+            </a>
+            <Link className="primary-link" to={`/files/${fileId}/spec`}>设计规范</Link>
+          </>
         )}
         <button
           className="ghost-btn"

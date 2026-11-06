@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
 import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
@@ -56,6 +56,29 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
   const [error, setError] = useState('');
   const [snippetLang, setSnippetLang] = useState<SnippetLang>('CSS');
   const [snippetCopied, setSnippetCopied] = useState(false);
+
+  // 原型交互（跳转到画板）
+  const [protoFrames, setProtoFrames] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    api
+      .getFile(fileId)
+      .then((f) => setProtoFrames((f.frames ?? []).map((x) => ({ id: x.id, name: x.name }))))
+      .catch(() => undefined);
+  }, [fileId]);
+  const interactionTarget =
+    (selected?.props as { interaction?: { targetFrameId?: string } } | undefined)?.interaction
+      ?.targetFrameId ?? '';
+  const [linkTarget, setLinkTarget] = useState(interactionTarget);
+  useEffect(() => setLinkTarget(interactionTarget), [selected?.node_id, interactionTarget]);
+  const setLink = async (v: string) => {
+    setLinkTarget(v);
+    if (!selected) return;
+    try {
+      await api.setInteraction(fileId, selected.node_id, v || null);
+    } catch {
+      setLinkTarget(interactionTarget);
+    }
+  };
 
   if (!selected) {
     return (
@@ -218,6 +241,24 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
         >
           {snippetCopied ? '已复制 ✓' : '复制代码'}
         </button>
+      </div>
+
+      {/* 原型交互 */}
+      <div className="prop-section">
+        <h3>原型交互</h3>
+        <div className="export-controls">
+          <select value={linkTarget} onChange={(e) => void setLink(e.target.value)}>
+            <option value="">不跳转</option>
+            {protoFrames
+              .filter((f) => f.id !== frame.id)
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  跳转到「{f.name}」
+                </option>
+              ))}
+          </select>
+        </div>
+        <p className="dim small hint">导出原型后，点击该图层区域会跳转到所选画板。</p>
       </div>
 
       {/* 切图导出 */}

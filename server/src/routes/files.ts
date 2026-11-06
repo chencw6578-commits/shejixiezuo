@@ -66,6 +66,7 @@ filesRouter.get('/', async (req, res) => {
 
 /** 文件详情（含画板列表） */
 filesRouter.get('/:id', async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: '文件不存在' });
   const file = (
     await pool.query(
       `SELECT id, figma_key, name, version, status, error, project_id, created_at FROM design_files WHERE id = $1`,
@@ -184,4 +185,58 @@ filesRouter.get('/:id/spec', async (req, res) => {
 filesRouter.delete('/:id', async (req, res) => {
   await pool.query('DELETE FROM design_files WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
+});
+
+// ---------- 原型交互与静态原型导出（必须注册在 /:id 之前，避免路径被吞） ----------
+
+/** 配置/清除图层「原型交互：跳转到某画板」 */
+filesRouter.patch('/:id/nodes/:nodeId', async (req, res) => {
+  const { id, nodeId } = req.params;
+  const interaction = (req.body as { interaction?: { targetFrameId?: string } | null }).interaction;
+  if (interaction === null || interaction === undefined) {
+    await pool.query(`UPDATE nodes SET props = props - 'interaction' WHERE file_id = $1 AND node_id = $2`, [
+      id,
+      nodeId,
+    ]);
+    return res.json({ ok: true });
+  }
+  const target = interaction.targetFrameId;
+  if (typeof target !== 'string' || !target) {
+    return res.status(400).json({ error: 'interaction.targetFrameId 必填（清除请传 null）' });
+  }
+  const t = await pool.query('SELECT 1 FROM frames WHERE id = $1 AND file_id = $2', [target, id]);
+  if (t.rowCount === 0) {
+    return res.status(400).json({ error: '目标画板不属于该设计稿' });
+  }
+  await pool.query(
+    `UPDATE nodes SET props = props || $1::jsonb WHERE file_id = $2 AND node_id = $3`,
+    [JSON.stringify({ interaction: { type: 'navigate', targetFrameId: target } }), id, nodeId]
+  );
+  res.json({ ok: true });
+});
+
+/** 原型预览：单文件 HTML（同源引用 /storage 画板渲染图） */
+filesRouter.get('/:id/prototype', async (req, res) => {
+  const { buildPrototypeHtml } = await import('../prototype.js');
+  try {
+    const html = await buildPrototypeHtml(req.params.id);
+    if (!html) return res.status(404).json({ error: '该设计稿还没有画板' });
+    res.type('html').send(html);
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : '原型生成失败' });
+  }
+});
+
+/** 原型导出：可分发的 zip（index.html + assets 画板图 + README） */
+filesRouter.get('/:id/prototype.zip', async (req, res) => {
+  const { buildPrototypeZip } = await import('../prototype.js');
+  try {
+    const zip = await buildPrototypeZip(req.params.id);
+    if (!zip) return res.status(404).json({ error: '该设计稿还没有画板' });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zip.name)}`);
+    res.send(zip.buf);
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : '原型导出失败' });
+  }
 });

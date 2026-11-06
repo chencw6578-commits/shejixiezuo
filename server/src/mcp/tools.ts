@@ -85,7 +85,7 @@ function cssColor(c: unknown): string | null {
     return a;
   }
   if (typeof o.r === 'number' && o.r <= 1) {
-    const to = (v: number) => Math.round(v * 255);
+    const to = (v: unknown) => Math.round(Number(v ?? 0) * 255);
     return `rgba(${to(o.r)}, ${to(o.g)}, ${to(o.b)}, ${typeof o.a === 'number' ? o.a : 1})`;
   }
   return null;

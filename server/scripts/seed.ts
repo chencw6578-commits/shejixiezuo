@@ -359,6 +359,41 @@ async function main() {
     collectFrame('demo2', '首页（深色）', { bg: '#12141A', card: '#1E2430', text: '#E8EAED', sub: '#9AA0A6', accent: '#3B82F6', iconA: '#1F3350', iconB: '#3A2F1E' }),
     collectFrame('demo2', '我的（圆角）', { bg: '#F6F9F8', card: '#FFFFFF', text: '#1D2129', sub: '#86909C', accent: '#10B981', iconA: '#D9F2E6', iconB: '#FFF7E0' }),
   ]);
+
+  // 演示「原型交互」：按钮/标签栏跳转到目标画板（静态原型导出用）
+  const addInteractions = async (figmaKey: string, links: Array<{ node: string; target: string }>) => {
+    const { rows: [f] } = await pool.query<{ id: string }>(
+      'SELECT id FROM design_files WHERE figma_key = $1',
+      [figmaKey]
+    );
+    if (!f) return;
+    const { rows: frames } = await pool.query<{ id: string; node_id: string }>(
+      'SELECT id, node_id FROM frames WHERE file_id = $1',
+      [f.id]
+    );
+    for (const l of links) {
+      const target = frames.find((fr) => fr.node_id === l.target);
+      if (!target) continue;
+      await pool.query(
+        `UPDATE nodes SET props = props || $1::jsonb WHERE file_id = $2 AND node_id = $3`,
+        [JSON.stringify({ interaction: { type: 'navigate', targetFrameId: target.id } }), f.id, l.node]
+      );
+    }
+  };
+  await addInteractions('DEMO', [
+    { node: 'demo:login:btn', target: 'demo:profile' },
+    { node: 'demo:home:tab-fab', target: 'demo:login' },
+    { node: 'demo:home:tab', target: 'demo:profile' },
+    { node: 'demo:profile:header', target: 'demo:home' },
+  ]);
+  await addInteractions('DEMO2', [
+    { node: 'demo2:首页（浅色）:tab', target: 'demo2:我的（圆角）' },
+    { node: 'demo2:首页（浅色）:fab', target: 'demo2:首页（深色）' },
+    { node: 'demo2:首页（深色）:tab', target: 'demo2:我的（圆角）' },
+    { node: 'demo2:我的（圆角）:fab', target: 'demo2:首页（浅色）' },
+    { node: 'demo2:我的（圆角）:tab', target: 'demo2:首页（浅色）' },
+  ]);
+
   await pool.end();
 }
 
