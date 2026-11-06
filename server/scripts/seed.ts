@@ -247,35 +247,63 @@ function profileFrame(): DemoFrame {
   return { nodeId: F, name: '我的 / Profile', width: 375, height: 812, layers };
 }
 
-async function main() {
-  await initDb();
-  const frames = [homeFrame(), loginFrame(), profileFrame()];
-  const storageDir = path.resolve('storage');
+// ---------- 收集页（第二批测试设计稿：同一布局的三种风格变体） ----------
 
-  // 幂等：清掉旧演示数据
-  await pool.query("DELETE FROM design_files WHERE figma_key = 'DEMO'");
-  // 演示团队 + 演示项目（幂等）
-  const team = await pool.query<{ id: string }>('SELECT id FROM teams WHERE name = $1', ['演示团队']);
-  const teamId =
-    team.rows[0]?.id ??
-    (await pool.query<{ id: string }>('INSERT INTO teams (name) VALUES ($1) RETURNING id', ['演示团队'])).rows[0].id;
-  const proj = await pool.query<{ id: string }>('SELECT id FROM projects WHERE name = $1', ['演示项目']);
-  const projectId =
-    proj.rows[0]?.id ??
-    (await pool.query<{ id: string }>('INSERT INTO projects (name, team_id) VALUES ($1, $2) RETURNING id', ['演示项目', teamId]))
-      .rows[0].id;
-  await pool.query('UPDATE projects SET team_id = $1 WHERE team_id IS NULL', [teamId]);
+interface CollectPal { bg: string; card: string; text: string; sub: string; accent: string; iconA: string; iconB: string }
+
+function collectFrame(prefix: string, name: string, pal: CollectPal): DemoFrame {
+  const F = `${prefix}:${name}`;
+  const layers: DemoLayer[] = [
+    L(`${F}:bg`, F, '页面背景', 'RECTANGLE', 0, 0, 375, 812, pal.bg, { fills: [solid(pal.bg)] }),
+    L(`${F}:nav`, F, '顶部导航', 'RECTANGLE', 0, 0, 375, 88, pal.accent, { fills: [solid(pal.accent)] }),
+    L(`${F}:nav-title`, F, '导航标题', 'TEXT', 130, 50, 115, 24, '#FFFFFF', {
+      fills: [solid('#FFFFFF')],
+      text: { family: 'PingFang SC', weight: 600, size: 17, lineHeight: 24, alignHorizontal: 'CENTER', color: solid('#FFFFFF').color },
+    }),
+    L(`${F}:search`, F, '搜索框', 'RECTANGLE', 16, 104, 343, 44, pal.card, { fills: [solid(pal.card)], cornerRadius: 22 }),
+    L(`${F}:search-ph`, F, '搜索占位', 'TEXT', 36, 116, 120, 20, pal.sub, {
+      fills: [solid(pal.sub)],
+      text: { family: 'PingFang SC', weight: 400, size: 14, lineHeight: 20, alignHorizontal: 'LEFT', color: solid(pal.sub).color },
+    }),
+  ];
+  for (let i = 0; i < 6; i++) {
+    const x = 16 + (i % 2) * 177;
+    const y = 164 + Math.floor(i / 2) * 156;
+    layers.push(L(`${F}:card${i}`, F, `收集卡片 ${i + 1}`, 'RECTANGLE', x, y, 165, 140, pal.card, {
+      fills: [solid(pal.card)], cornerRadius: 12,
+      effects: [{ type: 'DROP_SHADOW', offsetX: 0, offsetY: 2, radius: 8, spread: 0, color: { hex: '#1B2A4A', alpha: 0.08, rgba: 'rgba(27, 42, 74, 0.08)' }, css: '0px 2px 8px 0px rgba(27, 42, 74, 0.08)' }],
+    }));
+    layers.push(L(`${F}:card${i}-icon`, F, `卡片图标 ${i + 1}`, 'ELLIPSE', x + 16, y + 16, 36, 36, i % 2 ? pal.iconA : pal.iconB));
+    layers.push(L(`${F}:card${i}-t`, F, `卡片标题 ${i + 1}`, 'TEXT', x + 16, y + 62, 120, 20, pal.text, {
+      fills: [solid(pal.text)],
+      text: { family: 'PingFang SC', weight: 500, size: 14, lineHeight: 20, alignHorizontal: 'LEFT', color: solid(pal.text).color },
+    }));
+    layers.push(L(`${F}:card${i}-d`, F, `卡片描述 ${i + 1}`, 'TEXT', x + 16, y + 88, 130, 18, pal.sub, {
+      fills: [solid(pal.sub)],
+      text: { family: 'PingFang SC', weight: 400, size: 12, lineHeight: 18, alignHorizontal: 'LEFT', color: solid(pal.sub).color },
+    }));
+  }
+  layers.push(L(`${F}:tab`, F, '底部标签栏', 'RECTANGLE', 0, 740, 375, 72, pal.card, { fills: [solid(pal.card)] }));
+  layers.push(L(`${F}:fab`, F, '收藏按钮', 'ELLIPSE', 155, 712, 64, 64, pal.accent, {
+    fills: [solid(pal.accent)],
+    exportPresets: [
+      { format: 'PNG', suffix: '@2x', scale: 2 },
+      { format: 'PNG', suffix: '@3x', scale: 3 },
+      { format: 'SVG', suffix: '', scale: 1 },
+    ],
+  }));
+  return { nodeId: F, name, width: 375, height: 812, layers };
+}
+
+async function insertDemoFile(projectId: string, figmaKey: string, name: string, pageName: string, frames: DemoFrame[]) {
   const { rows: [file] } = await pool.query<{ id: string }>(
     `INSERT INTO design_files (figma_key, name, version, status, project_id)
-     VALUES ('DEMO', '演示设计稿（本地示例）', 'demo-v1', 'ready', $1) RETURNING id`,
-    [projectId]
+     VALUES ($1, $2, 'demo-v1', 'ready', $3) RETURNING id`,
+    [figmaKey, name, projectId]
   );
-  // 其余未归属的稿子也挂到演示项目下
-  await pool.query('UPDATE design_files SET project_id = $1 WHERE project_id IS NULL', [projectId]);
-
+  const storageDir = path.resolve('storage');
   let sort = 0;
   for (const f of frames) {
-    // 缩略图 @2x
     const scale = 2;
     const shapes = f.layers
       .map((l) => l.shape)
@@ -289,8 +317,8 @@ async function main() {
 
     const { rows: [fr] } = await pool.query<{ id: string }>(
       `INSERT INTO frames (file_id, node_id, name, page_name, width, height, thumb_url, sort_order)
-       VALUES ($1, $2, $3, '演示页面', $4, $5, $6, $7) RETURNING id`,
-      [file.id, f.nodeId, f.name, f.width, f.height, `/storage/${key}`, sort++]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [file.id, f.nodeId, f.name, pageName, f.width, f.height, `/storage/${key}`, sort++]
     );
     for (const l of f.layers) {
       await pool.query(
@@ -302,6 +330,35 @@ async function main() {
     console.log(`seeded frame: ${f.name} (${f.layers.length} layers)`);
   }
   console.log(`done. file id = ${file.id}`);
+}
+
+async function main() {
+  await initDb();
+
+  // 幂等：清掉旧演示数据
+  await pool.query("DELETE FROM design_files WHERE figma_key IN ('DEMO', 'DEMO2')");
+  // 演示团队 + 演示项目（幂等）
+  const team = await pool.query<{ id: string }>('SELECT id FROM teams WHERE name = $1', ['演示团队']);
+  const teamId =
+    team.rows[0]?.id ??
+    (await pool.query<{ id: string }>('INSERT INTO teams (name) VALUES ($1) RETURNING id', ['演示团队'])).rows[0].id;
+  const proj = await pool.query<{ id: string }>('SELECT id FROM projects WHERE name = $1', ['演示项目']);
+  const projectId =
+    proj.rows[0]?.id ??
+    (await pool.query<{ id: string }>('INSERT INTO projects (name, team_id) VALUES ($1, $2) RETURNING id', ['演示项目', teamId]))
+      .rows[0].id;
+  await pool.query('UPDATE projects SET team_id = $1 WHERE team_id IS NULL', [teamId]);
+  // 其余未归属的稿子也挂到演示项目下
+  await pool.query('UPDATE design_files SET project_id = $1 WHERE project_id IS NULL', [projectId]);
+
+  await insertDemoFile(projectId, 'DEMO', '演示设计稿（本地示例）', '演示页面', [
+    homeFrame(), loginFrame(), profileFrame(),
+  ]);
+  await insertDemoFile(projectId, 'DEMO2', '收集页', '收集页', [
+    collectFrame('demo2', '首页（浅色）', { bg: '#F7F8FA', card: '#FFFFFF', text: '#1D2129', sub: '#86909C', accent: '#1B6DFF', iconA: '#E8F1FF', iconB: '#FFF3E0' }),
+    collectFrame('demo2', '首页（深色）', { bg: '#12141A', card: '#1E2430', text: '#E8EAED', sub: '#9AA0A6', accent: '#3B82F6', iconA: '#1F3350', iconB: '#3A2F1E' }),
+    collectFrame('demo2', '我的（圆角）', { bg: '#F6F9F8', card: '#FFFFFF', text: '#1D2129', sub: '#86909C', accent: '#10B981', iconA: '#D9F2E6', iconB: '#FFF7E0' }),
+  ]);
   await pool.end();
 }
 
