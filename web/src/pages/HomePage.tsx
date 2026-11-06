@@ -22,6 +22,7 @@ interface Project {
   file_count: string;
   last_file_at: string | null;
   created_at: string;
+  cover: string | null;
 }
 
 type View = 'projects' | 'members';
@@ -225,6 +226,13 @@ export default function HomePage() {
                 {projects.map((p) => (
                   <li key={p.id}>
                     <button className="file-card project-card" onClick={() => navigate(`/projects/${p.id}`)}>
+                      <span className="project-cover">
+                        {p.cover ? (
+                          <img src={p.cover} alt={p.name} loading="lazy" />
+                        ) : (
+                          <span className="project-cover-empty">🗒</span>
+                        )}
+                      </span>
                       <span className="file-name">📁 {p.name}</span>
                       <span className="file-meta">
                         {p.file_count} 份设计稿 · 最后更新{' '}

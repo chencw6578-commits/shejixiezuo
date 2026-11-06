@@ -569,6 +569,22 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 }
 .project-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgba(29, 33, 41, 0.08); }
 .project-card .file-name { font-size: 14px; margin-bottom: 6px; }
+/* 项目卡片封面：显示设计稿缩略图 */
+.project-cover {
+  display: block; height: 130px; margin: -16px -16px 12px;
+  border-radius: 10px 10px 0 0; overflow: hidden;
+  background:
+    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%),
+    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%);
+  background-color: #f7f8fa;
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+.project-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.project-cover-empty { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 26px; opacity: 0.45; }
+/* 批量切图倍数选择 */
+.export-scale { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 13px; color: var(--text-dim); }
+.export-scale select { flex: 1; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-panel); color: var(--text); font-size: 13px; }
 .team-crumb {
   display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
   font-size: 12px; color: var(--text-dim); background: var(--bg-panel);

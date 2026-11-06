@@ -20,14 +20,19 @@ projectsRouter.post('/', async (req, res) => {
   res.json(rows[0]);
 });
 
-/** 项目列表（?teamId= 按团队过滤；不传返回全部项目） */
+/** 项目列表（?teamId= 按团队过滤；不传返回全部项目）。cover 取最新设计稿的第一张画板缩略图 */
 projectsRouter.get('/', async (req, res) => {
   const { teamId } = req.query;
   const hasTeam = typeof teamId === 'string' && teamId;
   const { rows } = await pool.query(
     `SELECT p.id, p.name, p.created_at,
             count(f.id) AS file_count,
-            max(f.created_at) AS last_file_at
+            max(f.created_at) AS last_file_at,
+            (SELECT fr.thumb_url FROM frames fr
+             JOIN design_files df2 ON df2.id = fr.file_id
+             WHERE df2.project_id = p.id AND df2.status = 'ready' AND fr.thumb_url IS NOT NULL
+             ORDER BY df2.created_at DESC, fr.sort_order ASC, fr.id ASC
+             LIMIT 1) AS cover
      FROM projects p
      LEFT JOIN design_files f ON f.project_id = p.id
      ${hasTeam ? 'WHERE p.team_id = $1' : ''}

@@ -93,7 +93,7 @@ export const api = {
 
   // ---- 项目 ----
   listProjects: (teamId?: string) =>
-    request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null }[]>(
+    request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null; cover: string | null }[]>(
       `/api/projects${teamId ? `?teamId=${teamId}` : ''}`
     ),
   createProject: (name: string, teamId?: string) =>
