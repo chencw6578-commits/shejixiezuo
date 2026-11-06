@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS teams (
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_projects_team ON projects(team_id);
 
+-- 团队成员（MVP：仅姓名）
+CREATE TABLE IF NOT EXISTS team_members (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id);
+
 CREATE TABLE IF NOT EXISTS frames (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   file_id     UUID NOT NULL REFERENCES design_files(id) ON DELETE CASCADE,

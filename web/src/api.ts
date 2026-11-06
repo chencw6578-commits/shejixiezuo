@@ -78,6 +78,19 @@ export const api = {
     request<{ id: string; name: string }>('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteTeam: (id: string) => request<{ deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),
 
+  // ---- 团队成员 ----
+  listMembers: (teamId: string) =>
+    request<{ id: string; team_id: string; name: string; created_at: string }[]>(
+      `/api/teams/${teamId}/members`
+    ),
+  addMember: (teamId: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/teams/${teamId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  removeMember: (teamId: string, memberId: string) =>
+    request<{ deleted: boolean }>(`/api/teams/${teamId}/members/${memberId}`, { method: 'DELETE' }),
+
   // ---- 项目 ----
   listProjects: (teamId?: string) =>
     request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null }[]>(

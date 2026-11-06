@@ -9,6 +9,13 @@ interface Team {
   created_at?: string;
 }
 
+interface Member {
+  id: string;
+  team_id: string;
+  name: string;
+  created_at: string;
+}
+
 interface Project {
   id: string;
   name: string;
@@ -17,16 +24,19 @@ interface Project {
   created_at: string;
 }
 
-type View = 'projects' | 'teams';
+type View = 'projects' | 'members';
 
 export default function HomePage() {
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<View>('projects');
   const [teams, setTeams] = useState<Team[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') ?? ''); // '' = 全部
   const [teamName, setTeamName] = useState('');
+  const [memberName, setMemberName] = useState('');
   const [projectName, setProjectName] = useState('');
+  const [switchOpen, setSwitchOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
@@ -45,19 +55,60 @@ export default function HomePage() {
   useEffect(loadTeams, [loadTeams]);
   useEffect(loadProjects, [loadProjects]);
 
+  // 当前团队的成员列表
+  useEffect(() => {
+    if (!activeTeam) {
+      setMembers([]);
+      return;
+    }
+    api
+      .listMembers(activeTeam)
+      .then((rows) => setMembers(Array.isArray(rows) ? rows : []))
+      .catch(() => setMembers([]));
+  }, [activeTeam]);
+
   const createTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teamName.trim() || busy) return;
     setBusy(true);
     setError('');
     try {
-      await api.createTeam(teamName.trim());
+      const t = await api.createTeam(teamName.trim());
       setTeamName('');
+      setSwitchOpen(false);
       loadTeams();
+      setActiveTeam(t.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const addMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!memberName.trim() || busy || !activeTeam) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.addMember(activeTeam, memberName.trim());
+      setMemberName('');
+      const rows = await api.listMembers(activeTeam);
+      setMembers(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeMember = async (id: string) => {
+    if (!activeTeam) return;
+    try {
+      await api.removeMember(activeTeam, id);
+      setMembers((ms) => ms.filter((m) => m.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -77,25 +128,57 @@ export default function HomePage() {
     }
   };
 
-  // 团队卡片点击 → 切到项目视图并按该团队过滤
-  const openTeam = (id: string) => {
-    setActiveTeam(id);
-    setView('projects');
-  };
-
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
 
   return (
     <div className="home-shell">
-      {/* 左侧边栏 */}
+      {/* 左侧边栏：左上角团队切换下拉框 + 导航 */}
       <aside className="home-sidebar">
-        <div className="home-brand">
-          <span className="logo">◈</span>
-          <div>
-            <strong>设计协作</strong>
-            <p>标注 · 切图 · 规范</p>
+        <details
+          className="team-switch"
+          open={switchOpen}
+          onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary title="切换团队">
+            <span className="logo">◈</span>
+            <span className="team-switch-name">{activeTeamName ?? '全部团队'}</span>
+            <span className="caret">▾</span>
+          </summary>
+          <div className="team-switch-pop">
+            <button
+              className={`team-switch-item ${activeTeam === '' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTeam('');
+                setSwitchOpen(false);
+              }}
+            >
+              👥 全部团队
+            </button>
+            {teams.map((t) => (
+              <button
+                key={t.id}
+                className={`team-switch-item ${activeTeam === t.id ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTeam(t.id);
+                  setSwitchOpen(false);
+                }}
+              >
+                {t.name}
+                <em>{t.project_count}</em>
+              </button>
+            ))}
+            <form className="team-switch-create" onSubmit={createTeam}>
+              <input
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="新团队名称"
+                className="compact-input"
+              />
+              <button type="submit" disabled={busy || !teamName.trim()}>＋ 创建</button>
+            </form>
           </div>
-        </div>
+        </details>
+
         <nav className="side-nav">
           <button
             className={`side-nav-item ${view === 'projects' ? 'active' : ''}`}
@@ -104,10 +187,10 @@ export default function HomePage() {
             📁 项目
           </button>
           <button
-            className={`side-nav-item ${view === 'teams' ? 'active' : ''}`}
-            onClick={() => setView('teams')}
+            className={`side-nav-item ${view === 'members' ? 'active' : ''}`}
+            onClick={() => setView('members')}
           >
-            👥 团队
+            👤 团队成员
           </button>
         </nav>
         <div className="side-foot">
@@ -127,30 +210,11 @@ export default function HomePage() {
                 <p>选择项目进入，查看设计稿、标注与规范</p>
               </header>
 
-              <div className="team-row">
-                <button
-                  className={`team-chip ${activeTeam === '' ? 'active' : ''}`}
-                  onClick={() => setActiveTeam('')}
-                >
-                  全部
-                </button>
-                {teams.map((t) => (
-                  <button
-                    key={t.id}
-                    className={`team-chip ${activeTeam === t.id ? 'active' : ''}`}
-                    onClick={() => setActiveTeam(t.id)}
-                  >
-                    👥 {t.name}
-                    <em>{t.project_count}</em>
-                  </button>
-                ))}
-              </div>
-
               <form className="inline-form" onSubmit={createProject}>
                 <input
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  placeholder={activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称（可先选择团队）'}
+                  placeholder={activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称（可先在左上角选择团队）'}
                   className="compact-input grow"
                 />
                 <button type="submit" disabled={busy || !projectName.trim()}>＋ 新建项目</button>
@@ -173,38 +237,40 @@ export default function HomePage() {
                 ))}
               </ul>
             </>
-          ) : (
+          ) : activeTeamName ? (
             <>
               <header className="view-header">
-                <h1>团队</h1>
-                <p>按团队组织项目，点击团队卡片查看其下的项目</p>
+                <h1>团队成员 · {activeTeamName}</h1>
+                <p>维护该团队的成员名单，成员可参与项目评论协作</p>
               </header>
 
-              <form className="inline-form" onSubmit={createTeam}>
+              <form className="inline-form" onSubmit={addMember}>
                 <input
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="输入团队名称"
+                  value={memberName}
+                  onChange={(e) => setMemberName(e.target.value)}
+                  placeholder="输入成员姓名"
                   className="compact-input grow"
                 />
-                <button type="submit" disabled={busy || !teamName.trim()}>＋ 新建团队</button>
+                <button type="submit" disabled={busy || !memberName.trim()}>＋ 添加成员</button>
               </form>
 
-              <ul className="team-grid">
-                {teams.length === 0 && <p className="empty">暂无团队</p>}
-                {teams.map((t) => (
-                  <li key={t.id}>
-                    <button className="file-card project-card team-card" onClick={() => openTeam(t.id)}>
-                      <span className="file-name">👥 {t.name}</span>
-                      <span className="file-meta">
-                        {t.project_count} 个项目
-                        {t.created_at ? ` · 创建于 ${new Date(t.created_at).toLocaleDateString('zh-CN')}` : ''}
-                      </span>
-                    </button>
+              <ul className="member-list">
+                {members.length === 0 && <p className="empty">还没有成员，先添加一个</p>}
+                {members.map((m) => (
+                  <li key={m.id} className="member-row">
+                    <span className="member-avatar">{m.name.slice(0, 1).toUpperCase()}</span>
+                    <span className="member-name">{m.name}</span>
+                    <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
+                    <button className="member-remove" onClick={() => removeMember(m.id)}>移除</button>
                   </li>
                 ))}
               </ul>
             </>
+          ) : (
+            <div className="members-empty">
+              <p>请先在左上角下拉框选择一个团队</p>
+              <p className="dim">选择团队后即可维护该团队的成员名单</p>
+            </div>
           )}
 
           {error && <div className="home-error">{error}</div>}
