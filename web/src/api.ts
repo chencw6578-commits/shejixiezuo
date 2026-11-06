@@ -1,9 +1,63 @@
 import type { ExportResult, FileDetail, FrameDetail, ProjectFrameRow, SpecData } from './types';
 
+export interface Member {
+  id: string;
+  team_id: string;
+  name: string;
+  email: string | null;
+  role: 'admin' | 'collaborator';
+  created_at: string;
+}
+
+export interface Identity {
+  email: string;
+  role: 'admin' | 'collaborator';
+}
+
+// ---------- 身份（协作者只读 / 管理员可编辑可删除） ----------
+const IDENTITY_KEY = 'dh.identity';
+let activeTeamId = '';
+
+/** 页面挂载时设置当前上下文团队，后续请求自动携带该团队的成员身份头 */
+export function setActiveTeam(teamId: string | null | undefined) {
+  activeTeamId = teamId ?? '';
+}
+
+function readIdentities(): Record<string, Identity> {
+  try {
+    return JSON.parse(localStorage.getItem(IDENTITY_KEY) ?? '{}') as Record<string, Identity>;
+  } catch {
+    return {};
+  }
+}
+
+/** 当前团队身份；null = 所有者（最高权限） */
+export function getActiveIdentity(): Identity | null {
+  return readIdentities()[activeTeamId] ?? null;
+}
+
+/** 指定团队身份（不依赖 activeTeam 上下文） */
+export function getIdentity(teamId: string): Identity | null {
+  return readIdentities()[teamId] ?? null;
+}
+
+export function setIdentity(teamId: string, identity: Identity | null) {
+  const map = readIdentities();
+  if (identity) map[teamId] = identity;
+  else delete map[teamId];
+  localStorage.setItem(IDENTITY_KEY, JSON.stringify(map));
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const email = getActiveIdentity()?.email;
   const res = await fetch(url, {
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
     ...init,
+    headers: {
+      ...(init?.body && !(typeof FormData !== 'undefined' && init.body instanceof FormData)
+        ? { 'Content-Type': 'application/json' }
+        : {}),
+      ...(email ? { 'X-Member-Email': email } : {}),
+    },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -110,15 +164,18 @@ export const api = {
     request<{ id: string; name: string }>('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteTeam: (id: string) => request<{ deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),
 
-  // ---- 团队成员 ----
-  listMembers: (teamId: string) =>
-    request<{ id: string; team_id: string; name: string; created_at: string }[]>(
-      `/api/teams/${teamId}/members`
-    ),
-  addMember: (teamId: string, name: string) =>
-    request<{ id: string; name: string }>(`/api/teams/${teamId}/members`, {
+  // ---- 团队成员（邮箱邀请 / 角色） ----
+  listMembers: (teamId: string) => request<Member[]>(`/api/teams/${teamId}/members`),
+  /** 邮箱邀请成员：role 'admin'=管理员（可编辑可删除）/'collaborator'=协作者（只读） */
+  addMember: (teamId: string, email: string, role: 'admin' | 'collaborator') =>
+    request<Member>(`/api/teams/${teamId}/members`, {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ email, role }),
+    }),
+  updateMemberRole: (teamId: string, memberId: string, role: 'admin' | 'collaborator') =>
+    request<Member>(`/api/teams/${teamId}/members/${memberId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
     }),
   removeMember: (teamId: string, memberId: string) =>
     request<{ deleted: boolean }>(`/api/teams/${teamId}/members/${memberId}`, { method: 'DELETE' }),

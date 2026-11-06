@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { editGuard } from './authz.js';
 
 export const projectsRouter = Router();
 
@@ -9,6 +10,8 @@ projectsRouter.post('/', async (req, res) => {
   const teamId = typeof req.body?.teamId === 'string' && req.body.teamId ? req.body.teamId : null;
   if (!name) return res.status(400).json({ error: '请输入项目名称' });
   if (name.length > 60) return res.status(400).json({ error: '项目名称过长（最多 60 字）' });
+  const denied = await editGuard(teamId, req);
+  if (denied) return res.status(403).json({ error: denied });
   if (teamId) {
     const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [teamId]);
     if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
@@ -72,6 +75,10 @@ projectsRouter.get('/:id', async (req, res) => {
 
 /** 删除项目（其中设计稿一并删除，画板/图层级联） */
 projectsRouter.delete('/:id', async (req, res) => {
-  const { rowCount } = await pool.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
-  res.json({ deleted: rowCount === 1 });
+  const t = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [req.params.id]);
+  if (!t.rows[0]) return res.status(404).json({ error: '项目不存在' });
+  const denied = await editGuard(t.rows[0].team_id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  await pool.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+  res.json({ deleted: true });
 });

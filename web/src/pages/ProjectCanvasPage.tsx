@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, getIdentity, setActiveTeam } from '../api';
 import type { FileDetail, ProjectFrameRow } from '../types';
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
@@ -28,6 +28,8 @@ export default function ProjectCanvasPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const [project, setProject] = useState<{ id: string; name: string; team_id: string | null; team_name: string | null } | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
+  const readOnlyRef = useRef(false);
   const [frames, setFrames] = useState<ProjectFrameRow[]>([]);
   const [files, setFiles] = useState<FileDetail[]>([]);
   const [error, setError] = useState('');
@@ -60,7 +62,13 @@ export default function ProjectCanvasPage() {
 
   const load = useCallback(() => {
     if (!projectId) return;
-    api.getProject(projectId).then(setProject).catch((e) => setError(e.message));
+    api.getProject(projectId).then((p) => {
+      setProject(p);
+      setActiveTeam(p.team_id ?? null);
+      const ro = getIdentity(p.team_id ?? '')?.role === 'collaborator';
+      readOnlyRef.current = ro;
+      setReadOnly(ro);
+    }).catch((e) => setError(e.message));
     // 隧道偶发截断 JSON，解析失败会兜底为 {}，这里强制归一为数组避免 .map 崩溃
     api.listFiles(projectId).then((rows) => setFiles(Array.isArray(rows) ? rows : [])).catch(() => undefined);
     api
@@ -90,6 +98,10 @@ export default function ProjectCanvasPage() {
       // 1) 图片粘贴（Figma 里 Copy as PNG / 系统截图 / 聊天工具复制的图片）
       const item = Array.from(dt.items ?? []).find((i) => i.type.startsWith('image/'));
       if (item) {
+        if (readOnlyRef.current) {
+          showToast('err', '协作者身份为只读，粘贴导入需要管理员权限');
+          return;
+        }
         const blob = item.getAsFile();
         if (!blob) return;
         e.preventDefault();
@@ -354,9 +366,11 @@ export default function ProjectCanvasPage() {
         )}
         <span className="crumb">{frames.length} 个画板</span>
         {parsing > 0 && <span className="status status-wait status-pulse">解析中 {parsing}</span>}
+        {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
-        <details className="export-menu" open={importOpen} onToggle={(e) => setImportOpen((e.target as HTMLDetailsElement).open)}>
-          <summary className="primary-link">＋ 导入设计稿</summary>
+        {!readOnly && (
+          <details className="export-menu" open={importOpen} onToggle={(e) => setImportOpen((e.target as HTMLDetailsElement).open)}>
+            <summary className="primary-link">＋ 导入设计稿</summary>
           <div className="export-menu-pop import-panel">
             <form className="import-box" onSubmit={submit}>
               <input
@@ -398,7 +412,8 @@ export default function ProjectCanvasPage() {
               </ul>
             </div>
           </div>
-        </details>
+          </details>
+        )}
         <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
       </header>
 

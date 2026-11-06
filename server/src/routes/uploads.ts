@@ -5,6 +5,7 @@ import { enqueue } from '../queue.js';
 import { importSketch } from '../sketch/import.js';
 import { importPsd } from '../psd/import.js';
 import { getStorage } from '../storage/index.js';
+import { editGuard } from './authz.js';
 
 export const uploadsRouter = Router();
 
@@ -40,8 +41,10 @@ uploadsRouter.post('/', upload.single('file'), async (req, res) => {
 
   const projectId = typeof req.body?.projectId === 'string' && req.body.projectId ? req.body.projectId : null;
   if (projectId) {
-    const p = await pool.query('SELECT 1 FROM projects WHERE id = $1', [projectId]);
+    const p = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [projectId]);
     if (!p.rows[0]) return res.status(404).json({ error: '项目不存在' });
+    const denied = await editGuard(p.rows[0].team_id, req);
+    if (denied) return res.status(403).json({ error: denied });
   }
 
   const name = file.originalname.replace(/\.(sketch|psd)$/i, '');
@@ -78,8 +81,10 @@ uploadsRouter.post('/image', upload.single('file'), async (req, res) => {
     }
     const projectId = typeof req.body?.projectId === 'string' && req.body.projectId ? req.body.projectId : null;
     if (projectId) {
-      const p = await pool.query('SELECT 1 FROM projects WHERE id = $1', [projectId]);
+      const p = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [projectId]);
       if (!p.rows[0]) return res.status(404).json({ error: '项目不存在' });
+      const denied = await editGuard(p.rows[0].team_id, req);
+      if (denied) return res.status(403).json({ error: denied });
     }
     const width = Math.max(1, Math.round(Number(req.body?.width) || 800));
     const height = Math.max(1, Math.round(Number(req.body?.height) || 600));

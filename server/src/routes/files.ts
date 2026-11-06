@@ -3,16 +3,21 @@ import { pool } from '../db.js';
 import { parseFileKey, getFileMeta } from '../figma/client.js';
 import { enqueueImport } from '../jobs/importFile.js';
 import { isFigmaConfigured } from '../config.js';
+import { editGuard, fileTeamId } from './authz.js';
 
 export const filesRouter = Router();
 
 /** 导入 Figma 文件（可指定所属项目） */
 filesRouter.post('/', async (req, res) => {
   const { url, projectId } = req.body ?? {};
+  let teamId: string | null = null;
   if (projectId) {
-    const p = await pool.query('SELECT 1 FROM projects WHERE id = $1', [projectId]);
+    const p = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [projectId]);
     if (!p.rows[0]) return res.status(404).json({ error: '项目不存在' });
+    teamId = p.rows[0].team_id;
   }
+  const denied = await editGuard(teamId, req);
+  if (denied) return res.status(403).json({ error: denied });
   if (!isFigmaConfigured()) {
     return res.status(503).json({ error: '服务端未配置 FIGMA_TOKEN，请先在 .env 中设置' });
   }
@@ -69,7 +74,8 @@ filesRouter.get('/:id', async (req, res) => {
   if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: '文件不存在' });
   const file = (
     await pool.query(
-      `SELECT id, figma_key, name, version, status, error, project_id, created_at FROM design_files WHERE id = $1`,
+      `SELECT f.id, f.figma_key, f.name, f.version, f.status, f.error, f.project_id, p.team_id, f.created_at
+       FROM design_files f LEFT JOIN projects p ON p.id = f.project_id WHERE f.id = $1`,
       [req.params.id]
     )
   ).rows[0];
@@ -183,6 +189,8 @@ filesRouter.get('/:id/spec', async (req, res) => {
 });
 
 filesRouter.delete('/:id', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
   await pool.query('DELETE FROM design_files WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
@@ -192,6 +200,8 @@ filesRouter.delete('/:id', async (req, res) => {
 /** 配置/清除图层「原型交互：跳转到某画板」 */
 filesRouter.patch('/:id/nodes/:nodeId', async (req, res) => {
   const { id, nodeId } = req.params;
+  const denied = await editGuard(await fileTeamId(id), req);
+  if (denied) return res.status(403).json({ error: denied });
   const interaction = (req.body as { interaction?: { targetFrameId?: string } | null }).interaction;
   if (interaction === null || interaction === undefined) {
     await pool.query(`UPDATE nodes SET props = props - 'interaction' WHERE file_id = $1 AND node_id = $2`, [

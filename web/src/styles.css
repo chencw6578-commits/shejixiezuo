@@ -609,3 +609,28 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 /* ---------- 原型交互（属性面板） ---------- */
 .prop-section select { width: 100%; background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
 .prop-section .hint { margin-top: 6px; font-size: 11px; }
+
+/* ---------- 成员邀请 / 角色 / 只读标识 ---------- */
+.identity-bar {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  font-size: 13px; color: var(--text-dim); max-width: 560px;
+}
+.identity-bar strong { color: var(--text); }
+.identity-bar .ghost-btn { margin-left: auto; }
+.role-badge { border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+.role-badge.admin { background: rgba(13, 153, 255, 0.12); color: var(--accent); }
+.role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
+.member-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.member-info .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-role {
+  background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px; font-size: 12px; cursor: pointer;
+}
+.member-role:disabled { opacity: 0.5; cursor: not-allowed; }
+.member-row .ghost-btn { padding: 4px 10px; font-size: 12px; }
+.readonly-tag {
+  display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 10px;
+  font-size: 12px; background: rgba(122, 125, 138, 0.14); color: var(--text-dim);
+  border: 1px solid var(--border);
+}

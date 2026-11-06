@@ -8,6 +8,7 @@ interface Props {
   nodeCount: number;
   selected: LayerNode | null;
   fileId: string;
+  readOnly?: boolean;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -48,7 +49,7 @@ function ColorRow({ color, label }: { color: ParsedColor; label?: string }) {
   );
 }
 
-export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Props) {
+export default function PropertyPanel({ frame, nodeCount, selected, fileId, readOnly = false }: Props) {
   const [format, setFormat] = useState('PNG');
   const [scale, setScale] = useState('2');
   const [exporting, setExporting] = useState(false);
@@ -247,7 +248,12 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
       <div className="prop-section">
         <h3>原型交互</h3>
         <div className="export-controls">
-          <select value={linkTarget} onChange={(e) => void setLink(e.target.value)}>
+          <select
+            value={linkTarget}
+            onChange={(e) => void setLink(e.target.value)}
+            disabled={readOnly}
+            title={readOnly ? '协作者身份为只读，不能修改原型交互' : undefined}
+          >
             <option value="">不跳转</option>
             {protoFrames
               .filter((f) => f.id !== frame.id)
@@ -258,7 +264,9 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId }: Pr
               ))}
           </select>
         </div>
-        <p className="dim small hint">导出原型后，点击该图层区域会跳转到所选画板。</p>
+        <p className="dim small hint">
+          {readOnly ? '协作者身份为只读，交互配置需管理员。' : '导出原型后，点击该图层区域会跳转到所选画板。'}
+        </p>
       </div>
 
       {/* 切图导出 */}

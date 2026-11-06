@@ -18,6 +18,7 @@ export interface FileDetail {
   error: string | null;
   source?: 'figma' | 'sketch' | 'psd';
   project_id?: string | null;
+  team_id?: string | null;
   created_at: string;
   frame_count?: number;
   frames?: FrameRow[];

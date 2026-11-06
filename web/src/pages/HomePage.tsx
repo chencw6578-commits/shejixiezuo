@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, getIdentity, setIdentity } from '../api';
+import type { Identity, Member } from '../api';
 
 interface Team {
   id: string;
   name: string;
   project_count: string;
   created_at?: string;
-}
-
-interface Member {
-  id: string;
-  team_id: string;
-  name: string;
-  created_at: string;
 }
 
 interface Project {
@@ -35,7 +29,9 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') ?? ''); // '' = 全部
   const [teamName, setTeamName] = useState('');
-  const [memberName, setMemberName] = useState('');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
+  const [identity, setIdentityState] = useState<Identity | null>(null);
   const [projectName, setProjectName] = useState('');
   const [switchOpen, setSwitchOpen] = useState(false);
   const [error, setError] = useState('');
@@ -56,12 +52,14 @@ export default function HomePage() {
   useEffect(loadTeams, [loadTeams]);
   useEffect(loadProjects, [loadProjects]);
 
-  // 当前团队的成员列表
+  // 当前团队的成员列表 + 身份（协作者只读 / 管理员可编辑）
   useEffect(() => {
     if (!activeTeam) {
       setMembers([]);
+      setIdentityState(null);
       return;
     }
+    setIdentityState(getIdentity(activeTeam));
     api
       .listMembers(activeTeam)
       .then((rows) => setMembers(Array.isArray(rows) ? rows : []))
@@ -88,12 +86,12 @@ export default function HomePage() {
 
   const addMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!memberName.trim() || busy || !activeTeam) return;
+    if (!memberEmail.trim() || busy || !activeTeam) return;
     setBusy(true);
     setError('');
     try {
-      await api.addMember(activeTeam, memberName.trim());
-      setMemberName('');
+      await api.addMember(activeTeam, memberEmail.trim(), memberRole);
+      setMemberEmail('');
       const rows = await api.listMembers(activeTeam);
       setMembers(Array.isArray(rows) ? rows : []);
     } catch (err) {
@@ -101,6 +99,34 @@ export default function HomePage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const changeRole = async (id: string, role: 'admin' | 'collaborator') => {
+    if (!activeTeam) return;
+    try {
+      const updated = await api.updateMemberRole(activeTeam, id, role);
+      setMembers((ms) => ms.map((m) => (m.id === id ? updated : m)));
+      // 若当前体验身份就是该成员，同步角色
+      const idNow = getIdentity(activeTeam);
+      if (idNow && updated.email && updated.email === idNow.email) {
+        setIdentity(activeTeam, { email: updated.email, role });
+        setIdentityState({ email: updated.email, role });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const enterAs = (m: Member) => {
+    if (!activeTeam || !m.email) return;
+    setIdentity(activeTeam, { email: m.email, role: m.role });
+    setIdentityState({ email: m.email, role: m.role });
+  };
+
+  const exitIdentity = () => {
+    if (!activeTeam) return;
+    setIdentity(activeTeam, null);
+    setIdentityState(null);
   };
 
   const removeMember = async (id: string) => {
@@ -249,27 +275,67 @@ export default function HomePage() {
             <>
               <header className="view-header">
                 <h1>团队成员 · {activeTeamName}</h1>
-                <p>维护该团队的成员名单，成员可参与项目评论协作</p>
+                <p>通过邮箱邀请成员。管理员可编辑与删除设计稿，协作者为只读（仅查看与评论）</p>
               </header>
+
+              <div className="identity-bar">
+                当前身份：
+                {identity ? (
+                  <>
+                    <strong>{identity.email}</strong>
+                    <span className={`role-badge ${identity.role}`}>
+                      {identity.role === 'admin' ? '管理员' : '协作 · 只读'}
+                    </span>
+                    <button className="ghost-btn" onClick={exitIdentity}>退出身份</button>
+                  </>
+                ) : (
+                  <strong>所有者（最高权限）</strong>
+                )}
+              </div>
 
               <form className="inline-form" onSubmit={addMember}>
                 <input
-                  value={memberName}
-                  onChange={(e) => setMemberName(e.target.value)}
-                  placeholder="输入成员姓名"
+                  value={memberEmail}
+                  onChange={(e) => setMemberEmail(e.target.value)}
+                  placeholder="输入成员邮箱，如 design@company.com"
                   className="compact-input grow"
+                  type="email"
                 />
-                <button type="submit" disabled={busy || !memberName.trim()}>＋ 添加成员</button>
+                <select value={memberRole} onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')} className="compact-input">
+                  <option value="collaborator">协作 · 只读</option>
+                  <option value="admin">管理员</option>
+                </select>
+                <button type="submit" disabled={busy || !memberEmail.trim()}>✉ 邀请成员</button>
               </form>
 
               <ul className="member-list">
-                {members.length === 0 && <p className="empty">还没有成员，先添加一个</p>}
+                {members.length === 0 && <p className="empty">还没有成员，输入邮箱邀请第一个吧</p>}
                 {members.map((m) => (
                   <li key={m.id} className="member-row">
-                    <span className="member-avatar">{m.name.slice(0, 1).toUpperCase()}</span>
-                    <span className="member-name">{m.name}</span>
-                    <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
-                    <button className="member-remove" onClick={() => removeMember(m.id)}>移除</button>
+                    <span className="member-avatar">{(m.email ?? m.name).slice(0, 1).toUpperCase()}</span>
+                    <div className="member-info">
+                      <span className="member-name">{m.email ?? m.name}</span>
+                      <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
+                    </div>
+                    <select
+                      className="member-role"
+                      value={m.role}
+                      onChange={(e) => void changeRole(m.id, e.target.value as 'admin' | 'collaborator')}
+                      disabled={!m.email}
+                      title={m.email ? '修改角色' : '历史成员（无邮箱），角色不可切换'}
+                    >
+                      <option value="admin">管理员</option>
+                      <option value="collaborator">协作 · 只读</option>
+                    </select>
+                    <button
+                      className="ghost-btn"
+                      disabled={!m.email}
+                      onClick={() => enterAs(m)}
+                      title={m.email ? '以该成员身份体验权限差异' : '历史成员（无邮箱）不可切换'}
+                    >
+                      以此身份体验
+                    </button>
+                    <button className="member-remove" onClick={() => void removeMember(m.id)}>移除</button>
                   </li>
                 ))}
               </ul>

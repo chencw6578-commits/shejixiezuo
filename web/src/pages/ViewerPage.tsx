@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, type CommentItem } from '../api';
+import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
 import type { FrameDetail, LayerNode } from '../types';
 import Canvas from '../viewer/Canvas';
 import LayerTree from '../viewer/LayerTree';
@@ -9,7 +9,8 @@ import CommentDrawer from '../viewer/CommentDrawer';
 
 export default function ViewerPage() {
   const { fileId = '', frameId = '' } = useParams();
-  const [file, setFile] = useState<{ name: string; project_id: string | null } | null>(null);
+  const [file, setFile] = useState<{ name: string; project_id: string | null; team_id: string | null } | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
   const [data, setData] = useState<FrameDetail | null>(null);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -65,7 +66,9 @@ export default function ViewerPage() {
     api
       .getFile(fileId)
       .then((f) => {
-        setFile({ name: f.name, project_id: f.project_id ?? null });
+        setFile({ name: f.name, project_id: f.project_id ?? null, team_id: f.team_id ?? null });
+        setActiveTeam(f.team_id ?? null);
+        setReadOnly(getIdentity(f.team_id ?? '')?.role === 'collaborator');
         setFrames(f.frames ?? []);
       })
       .catch((e) => setError(e.message));
@@ -142,6 +145,7 @@ export default function ViewerPage() {
         <Link to={file?.project_id ? `/projects/${file.project_id}` : '/'} className="back">← 返回画板</Link>
         <h1>{file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
+        {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
         <button
           className={`comment-toggle ${commentMode ? 'is-active' : ''}`}
@@ -252,6 +256,7 @@ export default function ViewerPage() {
             nodeCount={data.nodes.length}
             selected={selected}
             fileId={fileId}
+            readOnly={readOnly}
           />
         </aside>
       </div>
