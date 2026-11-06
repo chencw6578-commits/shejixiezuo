@@ -55,12 +55,31 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .status-pulse { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.5; } }
 
-/* ---------- 首页 ---------- */
-.home { max-width: 760px; margin: 0 auto; padding: 64px 24px; width: 100%; }
-.home-header { text-align: center; margin-bottom: 32px; }
-.home-header .logo { font-size: 40px; color: var(--accent); }
-.home-header h1 { font-size: 26px; margin: 8px 0; }
-.home-header p { color: var(--text-dim); }
+/* ---------- 首页（侧边栏布局） ---------- */
+.home-shell { display: flex; flex: 1; min-height: 0; width: 100%; }
+.home-sidebar {
+  width: 216px; flex-shrink: 0; display: flex; flex-direction: column;
+  background: var(--bg-panel); border-right: 1px solid var(--border); padding: 18px 12px;
+}
+.home-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; }
+.home-brand .logo { font-size: 26px; color: var(--accent); }
+.home-brand strong { font-size: 15px; display: block; }
+.home-brand p { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.side-nav { display: flex; flex-direction: column; gap: 4px; }
+.side-nav-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 9px 12px; background: transparent; border-color: transparent; color: var(--text-dim);
+}
+.side-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
+.side-nav-item.active { background: rgba(13, 153, 255, 0.13); color: var(--accent); font-weight: 600; }
+.side-foot { margin-top: auto; padding: 10px 12px; font-size: 11px; line-height: 1.9; color: var(--text-dim); }
+.home-main { flex: 1; overflow-y: auto; }
+.home-main-inner { max-width: 1040px; margin: 0 auto; padding: 40px 36px 60px; }
+.view-header { margin-bottom: 22px; }
+.view-header h1 { font-size: 22px; }
+.view-header p { color: var(--text-dim); margin-top: 6px; }
+.team-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
+.team-card .file-name { margin-bottom: 6px; }
 
 .import-box { display: flex; gap: 8px; }
 .import-box input { flex: 1; padding: 12px 14px; font-size: 14px; }
@@ -304,7 +323,14 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
   }
   .artboard { margin: 24px; }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; }
-  .home { padding: 32px 16px; }
+  .home-shell { flex-direction: column; }
+  .home-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 14px; border-right: none; border-bottom: 1px solid var(--border); }
+  .home-brand { padding: 0 10px 0 0; }
+  .home-brand p { display: none; }
+  .side-nav { flex-direction: row; gap: 6px; }
+  .side-nav-item { width: auto; padding: 7px 12px; }
+  .side-foot { display: none; }
+  .home-main-inner { padding: 24px 16px 40px; }
 
   /* 触屏上热区点击已足够，禁掉画布的 grab 光标和拖拽选中干扰 */
   .canvas-container { cursor: default; }
