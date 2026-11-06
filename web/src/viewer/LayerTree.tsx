@@ -28,8 +28,8 @@ function buildTree(nodes: LayerNode[], rootParentId: string): LayerNode[] {
   }
   const attach = (list: LayerNode[]): LayerNode[] =>
     list.map((n) => {
-      const children = byParent.get(n.node_id);
-      return children ? { ...n, children: attach(children) } : n;
+      const children = byParent.get(n.node_id)?.filter((c) => c !== n);
+      return children && children.length > 0 ? { ...n, children: attach(children) } : n;
     });
   return attach(byParent.get(rootParentId) ?? []);
 }

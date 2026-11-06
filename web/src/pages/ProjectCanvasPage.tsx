@@ -71,6 +71,81 @@ export default function ProjectCanvasPage() {
 
   useEffect(load, [load]);
 
+  // ---------- 剪贴板导入：图片直接成画板；Figma 图层剪贴板解析 figmeta 一键转 API 导入 ----------
+  const [pasteToast, setPasteToast] = useState<{ kind: 'ok' | 'err' | 'figma'; text: string; url?: string } | null>(null);
+  const pasteTimer = useRef<number | null>(null);
+  const showToast = useCallback((kind: 'ok' | 'err' | 'figma', text: string, url?: string) => {
+    setPasteToast({ kind, text, url });
+    if (pasteTimer.current) window.clearTimeout(pasteTimer.current);
+    if (kind !== 'figma') pasteTimer.current = window.setTimeout(() => setPasteToast(null), 4000);
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const onPaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+      const dt = e.clipboardData;
+      if (!dt) return;
+      // 1) 图片粘贴（Figma 里 Copy as PNG / 系统截图 / 聊天工具复制的图片）
+      const item = Array.from(dt.items ?? []).find((i) => i.type.startsWith('image/'));
+      if (item) {
+        const blob = item.getAsFile();
+        if (!blob) return;
+        e.preventDefault();
+        showToast('ok', '正在导入剪贴板图片…');
+        try {
+          const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+            img.onerror = () => reject(new Error('图片读取失败'));
+            img.src = URL.createObjectURL(blob);
+          });
+          const r = await api.uploadImage(blob, projectId, dims.w, dims.h);
+          showToast('ok', `已导入「${r.name}」，画板已出现在画布`);
+          load();
+        } catch (err) {
+          showToast('err', err instanceof Error ? err.message : '导入失败');
+        }
+        return;
+      }
+      // 2) Figma 图层剪贴板（在 Figma 中 Ctrl/Cmd+C 复制页面/图层）
+      const html = dt.getData('text/html');
+      if (html && html.includes('(figmeta)')) {
+        e.preventDefault();
+        try {
+          const meta = await api.parseFigmaClipboard(html);
+          showToast(
+            'figma',
+            `检测到 Figma 剪贴板「${meta.fileName || meta.fileKey}」。图层数据是 Figma 私有格式，无法直接解析——一键用 API 导入完整图层？`,
+            meta.url
+          );
+        } catch (err) {
+          showToast('err', err instanceof Error ? err.message : '剪贴板解析失败');
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [projectId, load, showToast]);
+
+  const importFromClipboard = useCallback(
+    async (u: string) => {
+      setPasteToast(null);
+      setBusy(true);
+      try {
+        const r = await api.importFile(u, projectId ?? undefined);
+        showToast('ok', `已导入「${r.name}」`);
+        load();
+      } catch (err) {
+        showToast('err', err instanceof Error ? err.message : '导入失败');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [projectId, load, showToast]
+  );
+
   // 有解析中的稿子时 3 秒轮询，新画板自动出现在画布上
   useEffect(() => {
     const parsing = files.some((f) => f.status === 'pending' || f.status === 'processing');
@@ -394,6 +469,18 @@ export default function ProjectCanvasPage() {
           <button onClick={fit} title="适应画布">适应</button>
         </div>
       </div>
+
+      {pasteToast && (
+        <div className={`paste-toast ${pasteToast.kind}`}>
+          <span>{pasteToast.text}</span>
+          {pasteToast.kind === 'figma' && pasteToast.url && (
+            <>
+              <button onClick={() => void importFromClipboard(pasteToast.url!)}>一键导入</button>
+              <button className="ghost" onClick={() => setPasteToast(null)}>忽略</button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

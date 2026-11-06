@@ -43,6 +43,31 @@ export const api = {
     return data as { id: string; name: string };
   },
 
+  /** 粘贴图片导入：一张图 = 一个画板 */
+  uploadImage: async (
+    file: File,
+    projectId?: string,
+    width = 0,
+    height = 0
+  ): Promise<{ id: string; name: string }> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (projectId) fd.append('projectId', projectId);
+    fd.append('width', String(width));
+    fd.append('height', String(height));
+    const res = await fetch('/api/upload/image', { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error ?? `导入失败 (${res.status})`);
+    return data as { id: string; name: string };
+  },
+
+  /** 解析 Figma 图层剪贴板中的 figmeta（fileKey/fileName），引导走 API 导入 */
+  parseFigmaClipboard: (html: string) =>
+    request<{ fileKey: string; fileName: string; url: string }>('/api/upload/figma-clipboard', {
+      method: 'POST',
+      body: JSON.stringify({ html }),
+    }),
+
   getComments: (frameId: string) => request<CommentItem[]>(`/api/comments/frames/${frameId}`),
 
   addComment: (

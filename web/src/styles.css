@@ -591,3 +591,21 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
   border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px;
 }
 .team-crumb:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- 剪贴板导入 toast ---------- */
+.paste-toast {
+  position: fixed; right: 20px; bottom: 20px; z-index: 60; max-width: 460px;
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-radius: 10px; background: #2a2e37; color: #e8eaed;
+  border: 1px solid #3a3f4a; font-size: 13px; line-height: 1.5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.paste-toast.err { background: #3a2426; border-color: #7a3b40; color: #ffb4ab; }
+.paste-toast button { background: #1b6dff; border: none; color: #fff; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.paste-toast button:hover { background: #3b82f6; }
+.paste-toast button.ghost { background: transparent; border: 1px solid #4a4f5a; color: #b8bec9; }
+.paste-toast button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* ---------- 原型交互（属性面板） ---------- */
+.prop-section select { width: 100%; background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+.prop-section .hint { margin-top: 6px; font-size: 11px; }
