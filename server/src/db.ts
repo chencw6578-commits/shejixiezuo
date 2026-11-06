@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS frames (
 );
 CREATE INDEX IF NOT EXISTS idx_frames_file ON frames(file_id);
 
+-- 页面（画板编组）：一个设计稿可有多个页面，画板归属其中一页
+CREATE TABLE IF NOT EXISTS pages (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_id    UUID NOT NULL REFERENCES design_files(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS pages_file_name_uniq ON pages(file_id, name);
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS page_id UUID REFERENCES pages(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_frames_page ON frames(page_id);
+
 CREATE TABLE IF NOT EXISTS nodes (
   id           BIGSERIAL PRIMARY KEY,  -- 自增，ORDER BY id 即插入顺序，保证 z-order
   file_id      UUID NOT NULL REFERENCES design_files(id) ON DELETE CASCADE,

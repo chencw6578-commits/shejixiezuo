@@ -157,6 +157,25 @@ export const api = {
       body: JSON.stringify({ interaction: targetFrameId ? { targetFrameId } : null }),
     }),
 
+  // ---- 页面（画板编组） ----
+  createPage: (fileId: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/files/${fileId}/pages`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  renamePage: (fileId: string, pageId: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/files/${fileId}/pages/${pageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  deletePage: (fileId: string, pageId: string) =>
+    request<{ ok: boolean }>(`/api/files/${fileId}/pages/${pageId}`, { method: 'DELETE' }),
+  moveFrameToPage: (fileId: string, frameId: string, pageId: string | null) =>
+    request<{ ok: boolean }>(`/api/files/${fileId}/frames/${frameId}/page`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pageId }),
+    }),
+
   // ---- 团队 ----
   listTeams: () =>
     request<{ id: string; name: string; project_count: string; created_at: string }[]>('/api/teams'),

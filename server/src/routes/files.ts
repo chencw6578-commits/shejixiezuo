@@ -80,14 +80,114 @@ filesRouter.get('/:id', async (req, res) => {
     )
   ).rows[0];
   if (!file) return res.status(404).json({ error: '文件不存在' });
+  await ensurePages(req.params.id);
   const frames = (
     await pool.query(
-      `SELECT id, node_id, name, page_name, width, height, thumb_url, sort_order
+      `SELECT id, node_id, name, page_name, page_id, width, height, thumb_url, sort_order
        FROM frames WHERE file_id = $1 ORDER BY sort_order, name`,
       [req.params.id]
     )
   ).rows;
-  res.json({ ...file, frames });
+  const pages = (
+    await pool.query(
+      'SELECT id, name, sort_order FROM pages WHERE file_id = $1 ORDER BY sort_order, created_at',
+      [req.params.id]
+    )
+  ).rows;
+  res.json({ ...file, frames, pages });
+});
+
+// ---------- 页面（画板编组） ----------
+
+/** 页面回填：历史上按 page_name 存储的画板，首次访问时物化成 pages 记录并挂接 */
+const ensurePages = async (fileId: string) => {
+  await pool.query(
+    `INSERT INTO pages (file_id, name, sort_order)
+     SELECT DISTINCT $1::uuid, page_name, 0 FROM frames
+     WHERE file_id = $1::uuid AND page_name IS NOT NULL AND page_name <> ''
+     ON CONFLICT (file_id, name) DO NOTHING`,
+    [fileId]
+  );
+  await pool.query(
+    `UPDATE frames fr SET page_id = pg.id
+     FROM pages pg
+     WHERE pg.file_id = fr.file_id AND pg.name = fr.page_name AND fr.page_id IS NULL
+       AND fr.file_id = $1::uuid`,
+    [fileId]
+  );
+};
+
+/** 新建页面 */
+filesRouter.post('/:id/pages', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const name = ((req.body as { name?: string }).name ?? '').trim();
+  if (!name) return res.status(400).json({ error: '页面名称不能为空' });
+  if (name.length > 50) return res.status(400).json({ error: '页面名称过长（≤50 字符）' });
+  const { rows: [existing] } = await pool.query(
+    'SELECT id, name FROM pages WHERE file_id = $1 AND name = $2',
+    [req.params.id, name]
+  );
+  if (existing) return res.json(existing);
+  const { rows: [pg] } = await pool.query(
+    'INSERT INTO pages (file_id, name) VALUES ($1, $2) RETURNING id, name',
+    [req.params.id, name]
+  );
+  res.status(201).json(pg);
+});
+
+/** 重命名页面（同步 frames.page_name 保持兼容） */
+filesRouter.patch('/:id/pages/:pageId', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const name = ((req.body as { name?: string }).name ?? '').trim();
+  if (!name) return res.status(400).json({ error: '页面名称不能为空' });
+  if (name.length > 50) return res.status(400).json({ error: '页面名称过长（≤50 字符）' });
+  const { rows: [pg] } = await pool.query(
+    'UPDATE pages SET name = $1 WHERE id = $2 AND file_id = $3 RETURNING id, name',
+    [name, req.params.pageId, req.params.id]
+  );
+  if (!pg) return res.status(404).json({ error: '页面不存在' });
+  await pool.query('UPDATE frames SET page_name = $1 WHERE page_id = $2', [name, pg.id]);
+  res.json(pg);
+});
+
+/** 删除页面（画板回落为未分组） */
+filesRouter.delete('/:id/pages/:pageId', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const { rows: [pg] } = await pool.query(
+    'DELETE FROM pages WHERE id = $1 AND file_id = $2 RETURNING id',
+    [req.params.pageId, req.params.id]
+  );
+  if (!pg) return res.status(404).json({ error: '页面不存在' });
+  await pool.query("UPDATE frames SET page_id = NULL, page_name = NULL WHERE page_id = $1", [pg.id]);
+  res.json({ ok: true });
+});
+
+/** 移动画板到页面（pageId 传 null 表示移出为未分组） */
+filesRouter.patch('/:id/frames/:frameId/page', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const pageId = (req.body as { pageId?: string | null }).pageId ?? null;
+  const frame = (
+    await pool.query<{ id: string }>(
+      'SELECT id FROM frames WHERE id = $1 AND file_id = $2',
+      [req.params.frameId, req.params.id]
+    )
+  ).rows[0];
+  if (!frame) return res.status(404).json({ error: '画板不存在' });
+  if (pageId) {
+    const { rows: [pg] } = await pool.query<{ id: string; name: string }>(
+      'SELECT id, name FROM pages WHERE id = $1 AND file_id = $2',
+      [pageId, req.params.id]
+    );
+    if (!pg) return res.status(404).json({ error: '目标页面不存在' });
+    await pool.query('UPDATE frames SET page_id = $1, page_name = $2 WHERE id = $3', [pg.id, pg.name, frame.id]);
+  } else {
+    await pool.query('UPDATE frames SET page_id = NULL, page_name = NULL WHERE id = $1', [frame.id]);
+  }
+  res.json({ ok: true });
 });
 
 /** 画板详情（含全部图层，平铺，客户端组树） */

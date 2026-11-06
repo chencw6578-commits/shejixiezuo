@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
-import type { FrameDetail, LayerNode } from '../types';
+import type { FrameDetail, FrameRow, LayerNode, PageRow } from '../types';
 import Canvas from '../viewer/Canvas';
 import LayerTree from '../viewer/LayerTree';
 import PropertyPanel from '../viewer/PropertyPanel';
@@ -59,7 +59,11 @@ export default function ViewerPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const [frames, setFrames] = useState<{ id: string; name: string; page_name: string | null }[]>([]);
+  const [frames, setFrames] = useState<FrameRow[]>([]);
+  const [pages, setPages] = useState<PageRow[]>([]);
+  const [openPages, setOpenPages] = useState<Set<string>>(new Set());
+  const [dragFrameId, setDragFrameId] = useState<string | null>(null);
+  const [dropPageId, setDropPageId] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState('');
   useEffect(() => {
     api
@@ -69,9 +73,75 @@ export default function ViewerPage() {
         setActiveTeam(f.team_id ?? null);
         setReadOnly(getIdentity(f.team_id ?? '')?.role === 'collaborator');
         setFrames(f.frames ?? []);
+        setPages(f.pages ?? []);
+        // 默认展开当前画板所在页面（未分组用 '__none' 占位）
+        const cur = (f.frames ?? []).find((x) => x.id === frameId);
+        setOpenPages(new Set([cur?.page_id ?? '__none']));
       })
       .catch((e) => setError(e.message));
-  }, [fileId]);
+  }, [fileId, frameId]);
+
+  const refreshPages = useCallback(
+    () =>
+      api
+        .getFile(fileId)
+        .then((f) => {
+          setFrames(f.frames ?? []);
+          setPages(f.pages ?? []);
+        })
+        .catch(() => undefined),
+    [fileId]
+  );
+
+  const addPage = async () => {
+    const name = window.prompt('新页面名称');
+    if (!name?.trim()) return;
+    try {
+      const pg = await api.createPage(fileId, name.trim());
+      await refreshPages();
+      setOpenPages((s) => new Set(s).add(pg.id));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const renamePage = async (pg: PageRow) => {
+    const name = window.prompt('重命名页面', pg.name);
+    if (!name?.trim() || name.trim() === pg.name) return;
+    try {
+      await api.renamePage(fileId, pg.id, name.trim());
+      await refreshPages();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const removePage = async (pg: PageRow) => {
+    if (!window.confirm(`删除页面「${pg.name}」？其中的画板将变为未分组。`)) return;
+    try {
+      await api.deletePage(fileId, pg.id);
+      await refreshPages();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const moveFrame = async (fid: string, pageId: string | null) => {
+    try {
+      await api.moveFrameToPage(fileId, fid, pageId);
+      await refreshPages();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const togglePage = (key: string) =>
+    setOpenPages((s) => {
+      const n = new Set(s);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
 
   const doExportZip = async () => {
     setZipBusy('presets');
@@ -186,18 +256,121 @@ export default function ViewerPage() {
         )}
         <aside className={`sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
           <div className="sidebar-section">
-            <h3>画板</h3>
-            <div className="frame-list">
-              {frames.map((f) => (
-                <Link
-                  key={f.id}
-                  className={`frame-item ${f.id === frameId ? 'is-current' : ''}`}
-                  to={`/files/${fileId}/frames/${f.id}`}
-                  title={f.name}
-                >
-                  {f.name}
-                </Link>
-              ))}
+            <h3>
+              页面
+              <span className="sidebar-hspacer" />
+              {!readOnly && (
+                <button className="page-add-btn" title="新建页面" onClick={() => void addPage()}>
+                  ＋
+                </button>
+              )}
+            </h3>
+            <div className="page-list">
+              {pages.map((pg) => {
+                const list = frames.filter((f) => f.page_id === pg.id);
+                const open = openPages.has(pg.id);
+                const droppable = !readOnly && !!dragFrameId;
+                return (
+                  <div key={pg.id} className="page-group">
+                    <div
+                      className={`page-row ${dropPageId === pg.id ? 'is-droptarget' : ''}`}
+                      onClick={() => togglePage(pg.id)}
+                      onDragOver={(e) => {
+                        if (droppable) {
+                          e.preventDefault();
+                          setDropPageId(pg.id);
+                        }
+                      }}
+                      onDragLeave={() => setDropPageId((v) => (v === pg.id ? null : v))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDropPageId(null);
+                        if (droppable && dragFrameId) void moveFrame(dragFrameId, pg.id);
+                        setDragFrameId(null);
+                      }}
+                    >
+                      <span className="page-caret">{open ? '▾' : '▸'}</span>
+                      <span className="page-name" title={pg.name}>{pg.name}</span>
+                      <span className="page-count">{list.length}</span>
+                      {!readOnly && (
+                        <span className="page-actions" onClick={(e) => e.stopPropagation()}>
+                          <button title="重命名页面" onClick={() => void renamePage(pg)}>✏</button>
+                          <button title="删除页面" onClick={() => void removePage(pg)}>🗑</button>
+                        </span>
+                      )}
+                    </div>
+                    {open && (
+                      <div className="page-frames">
+                        {list.map((f) => (
+                          <Link
+                            key={f.id}
+                            className={`frame-item ${f.id === frameId ? 'is-current' : ''}`}
+                            to={`/files/${fileId}/frames/${f.id}`}
+                            title={f.name}
+                            draggable={!readOnly}
+                            onDragStart={() => setDragFrameId(f.id)}
+                            onDragEnd={() => setDragFrameId(null)}
+                          >
+                            {f.name}
+                          </Link>
+                        ))}
+                        {list.length === 0 && (
+                          <p className="dim small page-empty-hint">拖画板到这里归入页面</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {(() => {
+                const list = frames.filter((f) => !f.page_id);
+                if (list.length === 0) return null;
+                const key = '__none';
+                const open = openPages.has(key);
+                const droppable = !readOnly && !!dragFrameId;
+                return (
+                  <div className="page-group page-group-unassigned">
+                    <div
+                      className={`page-row ${dropPageId === key ? 'is-droptarget' : ''}`}
+                      onClick={() => togglePage(key)}
+                      onDragOver={(e) => {
+                        if (droppable) {
+                          e.preventDefault();
+                          setDropPageId(key);
+                        }
+                      }}
+                      onDragLeave={() => setDropPageId((v) => (v === key ? null : v))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDropPageId(null);
+                        if (droppable && dragFrameId) void moveFrame(dragFrameId, null);
+                        setDragFrameId(null);
+                      }}
+                    >
+                      <span className="page-caret">{open ? '▾' : '▸'}</span>
+                      <span className="page-name">未分组</span>
+                      <span className="page-count">{list.length}</span>
+                    </div>
+                    {open && (
+                      <div className="page-frames">
+                        {list.map((f) => (
+                          <Link
+                            key={f.id}
+                            className={`frame-item ${f.id === frameId ? 'is-current' : ''}`}
+                            to={`/files/${fileId}/frames/${f.id}`}
+                            title={f.name}
+                            draggable={!readOnly}
+                            onDragStart={() => setDragFrameId(f.id)}
+                            onDragEnd={() => setDragFrameId(null)}
+                          >
+                            {f.name}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <div className="sidebar-section sidebar-grow">

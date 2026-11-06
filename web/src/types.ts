@@ -1,8 +1,14 @@
+export interface PageRow {
+  id: string;
+  name: string;
+}
+
 export interface FrameRow {
   id: string;
   node_id: string;
   name: string;
   page_name: string | null;
+  page_id?: string | null;
   width: number;
   height: number;
   thumb_url: string | null;
@@ -22,6 +28,7 @@ export interface FileDetail {
   created_at: string;
   frame_count?: number;
   frames?: FrameRow[];
+  pages?: PageRow[];
 }
 
 export interface ParsedColor {
