@@ -160,6 +160,26 @@ export default function Canvas({
     };
   }, []);
 
+  // 键盘 + / - 缩放画布（输入框聚焦时不触发）
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e.target)) return;
+      if (e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd') {
+        e.preventDefault();
+        zoomCenter(zoomRef.current * 1.25);
+      } else if (e.key === '-' || e.code === 'Minus' || e.code === 'NumpadSubtract') {
+        e.preventDefault();
+        zoomCenter(zoomRef.current / 1.25);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomCenter]);
+
   // 空白处拖拽平移（拖动超过阈值后吞掉随后的 click，避免拖完误选图层）
   const dragMovedRef = useRef(false);
   const onPointerDown = (e: React.PointerEvent) => {
