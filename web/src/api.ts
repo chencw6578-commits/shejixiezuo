@@ -1,4 +1,4 @@
-import type { ExportResult, FileDetail, FrameDetail, SpecData } from './types';
+import type { ExportResult, FileDetail, FrameDetail, ProjectFrameRow, SpecData } from './types';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -90,6 +90,9 @@ export const api = {
     }),
   getProject: (id: string) =>
     request<{ id: string; name: string; team_id: string | null; team_name: string | null }>(`/api/projects/${id}`),
+  /** 项目画板总览：所有设计稿的全部画板（项目画板页用） */
+  listProjectFrames: (projectId: string) =>
+    request<ProjectFrameRow[]>(`/api/projects/${projectId}/frames`),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   getFile: (id: string) => request<FileDetail>(`/api/files/${id}`),

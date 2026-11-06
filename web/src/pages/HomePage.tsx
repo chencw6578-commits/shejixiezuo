@@ -32,11 +32,14 @@ export default function HomePage() {
   const navigate = useNavigate();
 
   const loadTeams = useCallback(() => {
-    api.listTeams().then(setTeams).catch((e) => setError(e.message));
+    api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
   }, []);
 
   const loadProjects = useCallback(() => {
-    api.listProjects(activeTeam || undefined).then(setProjects).catch((e) => setError(e.message));
+    api
+      .listProjects(activeTeam || undefined)
+      .then((rows) => setProjects(Array.isArray(rows) ? rows : []))
+      .catch((e) => setError(e.message));
   }, [activeTeam]);
 
   useEffect(loadTeams, [loadTeams]);

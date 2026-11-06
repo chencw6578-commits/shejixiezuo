@@ -112,6 +112,18 @@ export interface ExportResult {
   size: number;
 }
 
+export interface ProjectFrameRow {
+  id: string;
+  file_id: string;
+  name: string;
+  page_name: string | null;
+  width: number;
+  height: number;
+  thumb_url: string | null;
+  file_name: string;
+  source: string;
+}
+
 export interface SpecData {
   colors: { hex: string; rgba: string; alpha: number; count: number }[];
   gradients: { css: string; count: number }[];

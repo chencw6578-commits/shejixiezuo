@@ -39,6 +39,20 @@ projectsRouter.get('/', async (req, res) => {
   res.json(rows);
 });
 
+/** 项目画板总览：项目下所有设计稿（ready）的全部画板，按文件分组时间序排列 */
+projectsRouter.get('/:id/frames', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT fr.id, fr.file_id, fr.name, fr.page_name, fr.width, fr.height, fr.thumb_url,
+            df.name AS file_name, df.source
+     FROM frames fr
+     JOIN design_files df ON df.id = fr.file_id
+     WHERE df.project_id = $1 AND df.status = 'ready'
+     ORDER BY df.created_at, fr.sort_order, fr.id`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
 /** 项目详情（含所属团队） */
 projectsRouter.get('/:id', async (req, res) => {
   const { rows } = await pool.query(
