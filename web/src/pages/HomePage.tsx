@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity } from '../api';
 import type { Identity, Member } from '../api';
+import { ChevronDown, Folder, Mail, Plus, Users } from '../components/icons';
 
 interface Team {
   id: string;
@@ -27,7 +28,7 @@ export default function HomePage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') ?? ''); // '' = 全部
+  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') ?? ''); // '' = 尚未选定（加载后落到首个团队）
   const [teamName, setTeamName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
@@ -50,6 +51,11 @@ export default function HomePage() {
   }, [activeTeam]);
 
   useEffect(loadTeams, [loadTeams]);
+  // 只有当前团队：未指定团队或团队失效时，落到首个团队
+  useEffect(() => {
+    if (!teams.length) return;
+    if (!teams.some((t) => t.id === activeTeam)) setActiveTeam(teams[0].id);
+  }, [teams, activeTeam]);
   useEffect(loadProjects, [loadProjects]);
 
   // 当前团队的成员列表 + 身份（协作者只读 / 管理员可编辑）
@@ -161,22 +167,46 @@ export default function HomePage() {
     <div className="home-shell">
       {/* 顶部状态栏：左侧上下文面包屑，右侧身份头像 */}
       <header className="home-topbar">
-        <div className="topbar-crumb">
-          <b>首页</b>
-          <span className="crumb-sep">/</span>
-          {activeTeamName ?? '全部团队'}
-          {view === 'members' && (
-            <>
-              <span className="crumb-sep">/</span>
-              团队成员
-            </>
-          )}
-        </div>
+        <details
+          className="team-switch topbar-team-switch"
+          open={switchOpen}
+          onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary title="切换团队">
+            <span className="team-switch-name">{activeTeamName ?? '当前团队'}</span>
+            <span className="caret"><ChevronDown /></span>
+          </summary>
+          <div className="team-switch-pop">
+            {teams.map((t) => (
+              <button
+                key={t.id}
+                className={`team-switch-item ${activeTeam === t.id ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTeam(t.id);
+                  setView('projects');
+                  setSwitchOpen(false);
+                }}
+              >
+                {t.name}
+                <em>{t.project_count}</em>
+              </button>
+            ))}
+            <form className="team-switch-create" onSubmit={createTeam}>
+              <input
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="新团队名称"
+                className="compact-input"
+              />
+              <button type="submit" disabled={busy || !teamName.trim()}><Plus /> 创建</button>
+            </form>
+          </div>
+        </details>
         <details className="avatar-menu">
           <summary title="当前身份">
             <span className="avatar-dot">{identity ? identity.email.slice(0, 1).toUpperCase() : '主'}</span>
             <span className="avatar-name">{identity ? identity.email : '所有者'}</span>
-            <span className="caret">▾</span>
+            <span className="caret"><ChevronDown /></span>
           </summary>
           <div className="avatar-pop">
             <div className="avatar-pop-head">
@@ -206,70 +236,20 @@ export default function HomePage() {
       <div className="home-body">
       {/* 左侧边栏：左上角团队切换下拉框 + 导航 */}
       <aside className="home-sidebar">
-        <details
-          className="team-switch"
-          open={switchOpen}
-          onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
-        >
-          <summary title="切换团队">
-            <span className="logo">◈</span>
-            <span className="team-switch-name">{activeTeamName ?? '全部团队'}</span>
-            <span className="caret">▾</span>
-          </summary>
-          <div className="team-switch-pop">
-            <button
-              className={`team-switch-item ${activeTeam === '' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTeam('');
-                setSwitchOpen(false);
-              }}
-            >
-              👥 全部团队
-            </button>
-            {teams.map((t) => (
-              <button
-                key={t.id}
-                className={`team-switch-item ${activeTeam === t.id ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTeam(t.id);
-                  setSwitchOpen(false);
-                }}
-              >
-                {t.name}
-                <em>{t.project_count}</em>
-              </button>
-            ))}
-            <form className="team-switch-create" onSubmit={createTeam}>
-              <input
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                placeholder="新团队名称"
-                className="compact-input"
-              />
-              <button type="submit" disabled={busy || !teamName.trim()}>＋ 创建</button>
-            </form>
-          </div>
-        </details>
-
         <nav className="side-nav">
           <button
             className={`side-nav-item ${view === 'projects' ? 'active' : ''}`}
             onClick={() => setView('projects')}
           >
-            📁 项目
+            <Folder /> 项目
           </button>
           <button
             className={`side-nav-item ${view === 'members' ? 'active' : ''}`}
             onClick={() => setView('members')}
           >
-            👤 团队成员
+            <Users /> 团队成员
           </button>
         </nav>
-        <div className="side-foot">
-          设计稿导入 · 画板预览<br />
-          评论协作 · 代码片段<br />
-          切图下载 · 设计规范
-        </div>
       </aside>
 
       {/* 右侧内容区 */}
@@ -289,7 +269,7 @@ export default function HomePage() {
                   placeholder={activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称（可先在左上角选择团队）'}
                   className="compact-input grow"
                 />
-                <button type="submit" disabled={busy || !projectName.trim()}>＋ 新建项目</button>
+                <button type="submit" disabled={busy || !projectName.trim()}><Plus /> 新建项目</button>
               </form>
 
               <ul className="project-grid">
@@ -301,10 +281,10 @@ export default function HomePage() {
                         {p.cover ? (
                           <img src={p.cover} alt={p.name} loading="lazy" />
                         ) : (
-                          <span className="project-cover-empty">🗒</span>
+                          <span className="project-cover-empty"><Folder /></span>
                         )}
                       </span>
-                      <span className="file-name">📁 {p.name}</span>
+                      <span className="file-name"><Folder /> {p.name}</span>
                       <span className="file-meta">
                         {p.file_count} 份设计稿 · 最后更新{' '}
                         {p.last_file_at
@@ -350,7 +330,7 @@ export default function HomePage() {
                   <option value="collaborator">协作 · 只读</option>
                   <option value="admin">管理员</option>
                 </select>
-                <button type="submit" disabled={busy || !memberEmail.trim()}>✉ 邀请成员</button>
+                <button type="submit" disabled={busy || !memberEmail.trim()}><Mail /> 邀请成员</button>
               </form>
 
               <ul className="member-list">

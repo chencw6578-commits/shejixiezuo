@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameDetail, LayerNode } from '../types';
 import type { CommentItem } from '../api';
-import type { DevicePreset } from './devices';
+import type { Unit } from '../unit';
+import { canvasBgStyle, useCanvasBg } from '../canvasBg';
+import CanvasBgPicker from '../components/CanvasBgPicker';
+import { Maximize, Minus, Plus } from '../components/icons';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -11,8 +14,8 @@ interface Props {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   onZoomChange: (z: number) => void;
-  /** 设备预览：按所选设备尺寸规范显示（null=跟随设计） */
-  device?: DevicePreset | null;
+  /** 尺寸单位：只影响数值后缀，不改变尺寸/坐标 */
+  unit?: Unit;
   comments?: CommentItem[];
   commentMode?: boolean;
   onAddComment?: (draft: { x: number; y: number; nodeId?: string }, body: string) => Promise<void>;
@@ -27,6 +30,70 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 interface Rect {
   x: number; y: number; w: number; h: number;
+}
+
+/**
+ * 节点矢量渲染：把 parse.ts / 演示种子共用的 props 映射为渲染样式。
+ * 文本图层的 fills 表示字形颜色而不是背景色，因此这里与 parse.ts 保持同一约定。
+ */
+function layerBoxStyle(n: LayerNode, zoom: number): React.CSSProperties {
+  const p = n.props ?? ({} as LayerNode['props']);
+  const fills = (p.fills ?? []).filter((f) => f.visible);
+  const fill = fills.find((f) => f.type === 'solid' || f.type === 'gradient');
+  const stroke = (p.strokes ?? []).find((s) => s.visible && s.color);
+  const box: React.CSSProperties = {
+    position: 'absolute',
+    left: n.x * zoom,
+    top: n.y * zoom,
+    width: Math.max(0, n.width) * zoom,
+    height: Math.max(0, n.height) * zoom,
+    boxSizing: 'border-box',
+    opacity: p.opacity ?? 1,
+  };
+  const radius = p.cornerRadius ?? 0;
+  if (radius > 0) box.borderRadius = radius * zoom;
+  else if (n.type === 'ELLIPSE') box.borderRadius = '50%';
+  if (n.type !== 'TEXT' && fill) {
+    if (fill.type === 'solid' && fill.color) box.background = fill.color.rgba;
+    else if (fill.type === 'gradient' && fill.css) box.background = fill.css;
+  }
+  if (stroke?.color) {
+    box.border = `${Math.max((p.strokeWeight ?? 1) * zoom, 0.5)}px solid ${stroke.color.rgba}`;
+  }
+  const shadows = (p.effects ?? [])
+    .filter((e) => e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW')
+    .map(
+      (e) =>
+        `${e.type === 'INNER_SHADOW' ? 'inset ' : ''}${(e.offsetX ?? 0) * zoom}px ${(e.offsetY ?? 0) * zoom}px ${(e.radius ?? 0) * zoom}px ${(e.spread ?? 0) * zoom}px ${e.color?.rgba ?? 'rgba(0,0,0,0.25)'}`
+    );
+  if (shadows.length) box.boxShadow = shadows.join(', ');
+  return box;
+}
+
+function layerTextStyle(n: LayerNode, zoom: number): React.CSSProperties | null {
+  const t = n.props?.text;
+  if (!t?.content) return null;
+  const align = (t.alignHorizontal ?? 'LEFT').toUpperCase();
+  return {
+    fontFamily: t.family
+      ? `"${t.family}", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`
+      : undefined,
+    fontSize: (t.size ?? 12) * zoom,
+    fontWeight: t.weight ?? 400,
+    lineHeight: t.lineHeight ? `${t.lineHeight * zoom}px` : undefined,
+    letterSpacing: t.letterSpacing ? `${t.letterSpacing * zoom}px` : undefined,
+    color:
+      t.color?.rgba ??
+      n.props?.fills?.find((f) => f.visible && f.color)?.color?.rgba ??
+      '#1D2129',
+    textAlign: align === 'CENTER' ? 'center' : align === 'RIGHT' ? 'right' : 'left',
+    justifyContent: align === 'CENTER' ? 'center' : align === 'RIGHT' ? 'flex-end' : 'flex-start',
+    display: 'flex',
+    alignItems: t.alignVertical === 'TOP' ? 'flex-start' : t.alignVertical === 'BOTTOM' ? 'flex-end' : 'center',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    overflow: 'visible',
+  };
 }
 
 /** 计算两个矩形的标注间距（仅在另一轴有重叠时），返回线段与数值。 */
@@ -50,7 +117,7 @@ function gapBetween(a: Rect, b: Rect): { dir: 'h' | 'v'; gap: number; x1: number
 }
 
 export default function Canvas({
-  frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange, device = null,
+  frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange, unit = 'px',
   comments = [], commentMode = false, onAddComment, onOpenComment,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,6 +138,9 @@ export default function Canvas({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftBody, setDraftBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // 画布底色（localStorage，按用户，与项目画布页共用偏好）
+  const [canvasBg, pickCanvasBg] = useCanvasBg();
+  const bg = canvasBgStyle(canvasBg);
 
   const setZoom = useCallback((z: number) => {
     z = clamp(z, MIN_ZOOM, MAX_ZOOM);
@@ -112,26 +182,11 @@ export default function Canvas({
     [setZoom, setPanXY]
   );
 
-  // 设备预览状态：设备屏（可视区）应用时的缩放，后续手动缩放按比例跟随
-  const deviceZoomRef = useRef(1);
-
-  /** 按设备规范显示：画板宽度缩放到设备逻辑宽度（1 逻辑单位 = 1 屏幕像素），屏框与画板左上角对齐 */
-  const applyDevice = useCallback(() => {
-    if (!device) return;
-    const el = containerRef.current;
-    const z = clamp(device.width / frame.width, MIN_ZOOM, MAX_ZOOM);
-    deviceZoomRef.current = z;
-    setZoom(z);
-    const vw = el?.clientWidth ?? window.innerWidth;
-    const vh = el?.clientHeight ?? window.innerHeight;
-    setPanXY((vw - device.width) / 2, (vh - device.height) / 2);
-  }, [device, frame.width, setZoom, setPanXY]);
-
-  // 首次加载自适应；选中设备时改为按设备规范显示
+  // 首次加载自适应
   useEffect(() => {
-    const t = setTimeout(() => (device ? applyDevice() : fit()), 50);
+    const t = setTimeout(() => fit(), 50);
     return () => clearTimeout(t);
-  }, [frame.id, fit, applyDevice, device]);
+  }, [frame.id, fit]);
 
   // ctrl/meta + 滚轮缩放（以光标为锚点）
   useEffect(() => {
@@ -278,8 +333,37 @@ export default function Canvas({
 
   const W = frame.width * zoom;
   const H = frame.height * zoom;
+  // 有节点数据 → 节点矢量渲染；否则回退到位图 + 热区（两条路径共用同一套热区命中逻辑）
+  const hasNodes = nodes.length > 0;
   const lw = 1 / zoom; // 视觉恒定 1px
   const fs = 11 / zoom;
+
+  // 选中「元素」时：它到父容器四边的距离；父级无边界（顶层节点）时以画板为基准
+  const padLines = useMemo(() => {
+    if (!selected || !hasNodes) return [];
+    const p = selected.parent_id ? nodeById.get(selected.parent_id) : undefined;
+    const pr = p
+      ? { x: p.x, y: p.y, w: p.width, h: p.height }
+      : { x: 0, y: 0, w: frame.width, h: frame.height };
+    if (pr.w <= 0 || pr.h <= 0) return [];
+    const sides = {
+      left: selected.x - pr.x,
+      right: pr.x + pr.w - (selected.x + selected.width),
+      top: selected.y - pr.y,
+      bottom: pr.y + pr.h - (selected.y + selected.height),
+    };
+    // 出现负值/0 说明父级与元素关系不成立，不画错误数值
+    if (Object.values(sides).some((v) => v < 1)) return [];
+    const cy = selected.y + selected.height / 2;
+    const cx = selected.x + selected.width / 2;
+    return [
+      { x1: pr.x, y1: cy, x2: selected.x, y2: cy, value: sides.left },
+      { x1: selected.x + selected.width, y1: cy, x2: pr.x + pr.w, y2: cy, value: sides.right },
+      { x1: cx, y1: pr.y, x2: cx, y2: selected.y, value: sides.top },
+      { x1: cx, y1: selected.y + selected.height, x2: cx, y2: pr.y + pr.h, value: sides.bottom },
+    ];
+  }, [selected, hasNodes, nodeById, frame.width, frame.height]);
+
 
   const badgeStyle = (r: Rect): React.CSSProperties => {
     const below = r.y + r.h + 20 / zoom <= frame.height;
@@ -297,13 +381,17 @@ export default function Canvas({
 
   return (
     <div
-      className={`canvas-container${spacePan ? ' space-pan' : ''}`}
+      className={`canvas-container${spacePan ? ' space-pan' : ''} ${bg.className}`}
       ref={containerRef}
+      style={bg.style}
       onPointerDown={onPointerDown}
       onMouseDown={(e) => {
         // 点击空白取消选中（拖拽后不触发）；空格平移模式下不触发；评论模式下改为在点击处起草评论
         if (spaceRef.current) return;
-        if ((e.target as HTMLElement).dataset.bg !== undefined) {
+        const target = e.target as HTMLElement;
+        // 画板外的画布空白（容器本身）与画板/图片空白都算“点空白”
+        const onBlank = target.dataset.bg !== undefined || target === e.currentTarget;
+        if (onBlank) {
           if (!dragMovedRef.current) {
             if (commentMode) openDraftAt(e.clientX, e.clientY);
             else onSelect(null);
@@ -317,32 +405,26 @@ export default function Canvas({
         style={{ width: W, height: H, transform: `translate(${pan.x}px, ${pan.y}px)` }}
         ref={artboardRef}
       >
-        {frame.thumb_url && (
-          <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
+        {hasNodes ? (
+          /* 有节点数据：直接按节点渲染矢量视图，像素位置/颜色与属性面板同源 */
+          <div className="artboard-vector" data-render="nodes" aria-hidden="true">
+            {nodes.map((n) => (
+              <div
+                key={n.node_id}
+                data-node-id={n.node_id}
+                data-layer-type={n.type}
+                style={{ ...layerBoxStyle(n, zoom), ...(layerTextStyle(n, zoom) ?? {}) }}
+              >
+                {n.props?.text?.content ?? null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* 无节点数据（纯截图/位图导入）：保留位图底图 + 热区 */
+          frame.thumb_url && (
+            <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
+          )
         )}
-
-        {/* 设备预览屏框：与画板左上角对齐，宽度=画板显示宽（即设备逻辑宽），高度=设备屏高 × 缩放比例 */}
-        {device &&
-          (() => {
-            const ratio = zoom / (deviceZoomRef.current || 1);
-            const sh = device.height * ratio;
-            return (
-              <>
-                <div
-                  className="device-screen"
-                  style={{
-                    width: W,
-                    height: sh,
-                    borderWidth: lw,
-                    borderRadius: device.width * 0.06 * ratio,
-                  }}
-                />
-                <div className="device-screen-label" style={{ top: sh + 10 / zoom, fontSize: fs }}>
-                  {device.name} · {device.width}×{device.height} {device.unit} · @{device.dpr}x 屏
-                </div>
-              </>
-            );
-          })()}
 
         {/* 热区层：按数组顺序渲染，后渲染者在上层，天然符合 Figma z-order */}
         <div className="hotzones" style={{ width: W, height: H }}>
@@ -350,6 +432,8 @@ export default function Canvas({
             <div
               key={n.node_id}
               className="hotzone"
+              data-node-id={n.node_id}
+              data-layer-type={n.type}
               style={{ left: n.x * zoom, top: n.y * zoom, width: n.width * zoom, height: n.height * zoom }}
               onMouseEnter={() => onHover(n.node_id)}
               onMouseLeave={() => onHover(null)}
@@ -374,33 +458,40 @@ export default function Canvas({
             <rect
               x={hovered.x * zoom} y={hovered.y * zoom}
               width={hovered.width * zoom} height={hovered.height * zoom}
-              fill="none" stroke="#f24822" strokeWidth={lw}
+              fill="none" stroke="rgba(108, 76, 241, 0.45)" strokeWidth={lw}
             />
           )}
           {selected && (
             <rect
               x={selected.x * zoom} y={selected.y * zoom}
               width={selected.width * zoom} height={selected.height * zoom}
-              fill="none" stroke="#0d99ff" strokeWidth={lw}
+              fill="none" stroke="#6c4cf1" strokeWidth={lw}
             />
           )}
           {gap && (
             <line
               x1={gap.x1 * zoom} y1={gap.y1 * zoom}
               x2={gap.x2 * zoom} y2={gap.y2 * zoom}
-              stroke="#f531b3" strokeWidth={lw} strokeDasharray={`${4 * lw} ${3 * lw}`}
+              stroke="#6c4cf1" strokeWidth={lw} strokeDasharray={`${4 * lw} ${3 * lw}`}
             />
           )}
+          {padLines.map((l, i) => (
+            <line
+              key={`pad-${i}`}
+              x1={l.x1 * zoom} y1={l.y1 * zoom} x2={l.x2 * zoom} y2={l.y2 * zoom}
+              stroke="#6c4cf1" strokeWidth={lw}
+            />
+          ))}
         </svg>
 
         {hovered && hovered !== selected && (
           <div className="badge badge-hover" style={badgeStyle(fmt(hovered))}>
-            {Math.round(hovered.width)} × {Math.round(hovered.height)}
+            {Math.round(hovered.width)} × {Math.round(hovered.height)} {unit}
           </div>
         )}
         {selected && (
           <div className="badge badge-selected" style={badgeStyle(fmt(selected))}>
-            {Math.round(selected.width)} × {Math.round(selected.height)}
+            {Math.round(selected.width)} × {Math.round(selected.height)} {unit}
           </div>
         )}
         {gap && (
@@ -417,9 +508,28 @@ export default function Canvas({
               whiteSpace: 'nowrap',
             }}
           >
-            {Math.round(gap.gap)}
+            {Math.round(gap.gap)} {unit}
           </div>
         )}
+        {/* 选中元素到父容器四边的距离（白底小标签，缩放时数值随之换算） */}
+        {padLines.map((l, i) => (
+          <div
+            key={`padb-${i}`}
+            className="badge badge-pad"
+            style={{
+              position: 'absolute',
+              left: ((l.x1 + l.x2) / 2) * zoom,
+              top: ((l.y1 + l.y2) / 2) * zoom,
+              transform: 'translate(-50%, -50%)',
+              fontSize: fs,
+              padding: `${1 / zoom}px ${4 / zoom}px`,
+              borderRadius: 2 / zoom,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {Math.round(l.value)} {unit}
+          </div>
+        ))}
         {/* 评论钉点 */}
         {comments
           .filter((c) => !c.parent_id && c.x !== null && c.y !== null)
@@ -471,10 +581,11 @@ export default function Canvas({
 
       {/* 缩放控件 */}
       <div className="zoombar">
-        <button onClick={() => zoomCenter(zoom / 1.25)} title="缩小">−</button>
+        <button onClick={() => zoomCenter(zoom / 1.25)} title="缩小" aria-label="缩小"><Minus /></button>
         <span className="zoom-value">{Math.round(zoom * 100)}%</span>
-        <button onClick={() => zoomCenter(zoom * 1.25)} title="放大">+</button>
-        <button onClick={fit} title="适应画布">适应</button>
+        <button onClick={() => zoomCenter(zoom * 1.25)} title="放大" aria-label="放大"><Plus /></button>
+        <button onClick={fit} title="适应画布"><Maximize /><span>适应</span></button>
+        <CanvasBgPicker token={canvasBg} onPick={pickCanvasBg} />
       </div>
     </div>
   );

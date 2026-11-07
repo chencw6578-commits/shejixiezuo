@@ -1,4 +1,4 @@
-import type { ExportResult, FileDetail, FrameDetail, ProjectFrameRow, SpecData } from './types';
+import type { ExportResult, FileDetail, FrameDetail, ProjectFrameRow, ProjectPageRow, SpecData } from './types';
 
 export interface Member {
   id: string;
@@ -157,6 +157,13 @@ export const api = {
       body: JSON.stringify({ interaction: targetFrameId ? { targetFrameId } : null }),
     }),
 
+  /** 写回文本图层的内容（props.text.content） */
+  setNodeText: (fileId: string, nodeId: string, text: string) =>
+    request<{ ok: true }>(`/api/files/${fileId}/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ text }),
+    }),
+
   // ---- 页面（画板编组） ----
   createPage: (fileId: string, name: string) =>
     request<{ id: string; name: string }>(`/api/files/${fileId}/pages`, {
@@ -168,12 +175,33 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     }),
-  deletePage: (fileId: string, pageId: string) =>
-    request<{ ok: boolean }>(`/api/files/${fileId}/pages/${pageId}`, { method: 'DELETE' }),
+  deletePage: (fileId: string, pageId: string, mode: 'dissolve' | 'content' = 'dissolve') =>
+    request<{ ok: boolean; deletedFrames?: number }>(
+      `/api/files/${fileId}/pages/${pageId}${mode === 'content' ? '?mode=content' : ''}`,
+      { method: 'DELETE' }
+    ),
   moveFrameToPage: (fileId: string, frameId: string, pageId: string | null) =>
     request<{ ok: boolean }>(`/api/files/${fileId}/frames/${frameId}/page`, {
       method: 'PATCH',
       body: JSON.stringify({ pageId }),
+    }),
+  /** 批量移入编组（追加到末尾；pageId 传 null 移出为未分组） */
+  moveFramesToPage: (fileId: string, frameIds: string[], pageId: string | null) =>
+    request<{ ok: boolean; moved: number }>(`/api/files/${fileId}/frames/page`, {
+      method: 'PATCH',
+      body: JSON.stringify({ frameIds, pageId }),
+    }),
+  /** 保存画布自由坐标 */
+  setFramePositions: (fileId: string, positions: { id: string; x: number; y: number }[]) =>
+    request<{ ok: boolean; saved: number }>(`/api/files/${fileId}/frames/position`, {
+      method: 'PATCH',
+      body: JSON.stringify({ positions }),
+    }),
+  /** 编组内排序：frameIds 为目标编组的完整顺序（同时完成跨组移动） */
+  reorderFrames: (fileId: string, pageId: string | null, frameIds: string[]) =>
+    request<{ ok: boolean; ordered: number }>(`/api/files/${fileId}/frames/order`, {
+      method: 'PATCH',
+      body: JSON.stringify({ frameIds, pageId }),
     }),
 
   renameFile: (fileId: string, name: string) =>
@@ -187,6 +215,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     }),
+
+  /** 删除画板（级联删除其图层与评论） */
+  deleteFrame: (fileId: string, frameId: string) =>
+    request<{ ok: true }>(`/api/files/${fileId}/frames/${frameId}`, { method: 'DELETE' }),
 
   // ---- 团队 ----
   listTeams: () =>
@@ -223,9 +255,9 @@ export const api = {
     }),
   getProject: (id: string) =>
     request<{ id: string; name: string; team_id: string | null; team_name: string | null }>(`/api/projects/${id}`),
-  /** 项目画板总览：所有设计稿的全部画板（项目画板页用） */
+  /** 项目画板总览：所有设计稿的全部画板 + 编组（项目画板页用） */
   listProjectFrames: (projectId: string) =>
-    request<ProjectFrameRow[]>(`/api/projects/${projectId}/frames`),
+    request<{ frames: ProjectFrameRow[]; pages: ProjectPageRow[] }>(`/api/projects/${projectId}/frames`),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   getFile: (id: string) => request<FileDetail>(`/api/files/${id}`),

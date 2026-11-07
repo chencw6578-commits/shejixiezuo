@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam } from '../api';
 import type { FileDetail, FrameRow } from '../types';
+import { useDialogs } from '../components/Dialogs';
 
 export default function FilePage() {
   const { fileId = '' } = useParams();
+  const dialogs = useDialogs();
   const [file, setFile] = useState<FileDetail | null>(null);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -94,10 +96,15 @@ export default function FilePage() {
           <button
             className="ghost-btn"
             onClick={async () => {
-              if (confirm('删除该设计稿？')) {
-                await api.deleteFile(fileId);
-                location.href = file.project_id ? `/projects/${file.project_id}` : '/';
-              }
+              const ok = await dialogs.confirm({
+                title: '删除设计稿',
+                message: `确认删除「${file.name}」？其中的画板、图层与评论将一并删除，且不可恢复。`,
+                confirmText: '删除',
+                danger: true,
+              });
+              if (!ok) return;
+              await api.deleteFile(fileId);
+              location.href = file.project_id ? `/projects/${file.project_id}` : '/';
             }}
           >
             删除
@@ -131,6 +138,7 @@ export default function FilePage() {
           </Link>
         ))}
       </div>
+      {dialogs.element}
     </div>
   );
 }

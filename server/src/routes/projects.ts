@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { editGuard } from './authz.js';
+import { ensurePages } from './files.js';
 
 export const projectsRouter = Router();
 
@@ -47,18 +48,34 @@ projectsRouter.get('/', async (req, res) => {
   res.json(rows);
 });
 
-/** 项目画板总览：项目下所有设计稿（ready）的全部画板，按文件分组时间序排列 */
+/** 项目画板总览：项目下所有设计稿（ready）的全部画板 + 编组（页面） */
 projectsRouter.get('/:id/frames', async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT fr.id, fr.file_id, fr.name, fr.page_name, fr.width, fr.height, fr.thumb_url,
-            df.name AS file_name, df.source
-     FROM frames fr
-     JOIN design_files df ON df.id = fr.file_id
-     WHERE df.project_id = $1 AND df.status = 'ready'
-     ORDER BY df.created_at, fr.sort_order, fr.id`,
+  const fileRows = await pool.query<{ id: string }>(
+    `SELECT id FROM design_files WHERE project_id = $1 AND status = 'ready'`,
     [req.params.id]
   );
-  res.json(rows);
+  for (const f of fileRows.rows) await ensurePages(f.id);
+  const frames = (
+    await pool.query(
+      `SELECT fr.id, fr.file_id, fr.name, fr.page_name, fr.page_id, fr.page_sort, fr.sort_order,
+              fr.width, fr.height, fr.thumb_url, fr.canvas_x, fr.canvas_y, df.name AS file_name, df.source
+       FROM frames fr
+       JOIN design_files df ON df.id = fr.file_id
+       WHERE df.project_id = $1 AND df.status = 'ready'
+       ORDER BY df.created_at, df.id, COALESCE(fr.page_sort, -1), fr.sort_order, fr.id`,
+      [req.params.id]
+    )
+  ).rows;
+  const pages = (
+    await pool.query(
+      `SELECT pg.id, pg.file_id, pg.name, pg.sort_order, df.name AS file_name
+       FROM pages pg JOIN design_files df ON df.id = pg.file_id
+       WHERE df.project_id = $1 AND df.status = 'ready'
+       ORDER BY df.created_at, df.id, pg.sort_order, pg.created_at`,
+      [req.params.id]
+    )
+  ).rows;
+  res.json({ frames, pages });
 });
 
 /** 项目详情（含所属团队） */
