@@ -344,7 +344,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: inline-flex; align-items: center; justify-content: center;
 }
 .sidebar-add-group:hover { opacity: 1; background: rgba(17, 24, 39, 0.1); }
-.page-frames { padding: 2px 0 4px 6px; }
+.page-frames { padding: 2px 0 4px 0; }
+/* 二级画板行文字左边缘与一级编组名文字严格对齐：8(行内边距) + 20(箭头热区) + 6(gap) = 34px */
+.page-frames .frame-item,
+.page-frames .pcanvas-frame-item { padding-left: 34px; }
 .page-empty-hint { padding: 4px 10px; margin: 0; }
 .page-group-unassigned .page-name { color: var(--text-dim); }
 .page-add-btn {
