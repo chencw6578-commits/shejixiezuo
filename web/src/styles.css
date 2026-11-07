@@ -57,7 +57,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 
 /* ---------- 首页（侧边栏布局，浅色主题：作用域覆盖变量，画布页保持深色不受影响） ---------- */
 .home-shell {
-  display: flex; flex: 1; min-height: 0; width: 100%;
+  display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%;
   --bg: #f5f6f8;
   --bg-panel: #ffffff;
   --bg-elevated: #f7f8fa;
@@ -69,6 +69,49 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
   color: var(--text);
 }
 .home-shell button:hover { background: #eef1f5; }
+
+/* 顶部状态栏（首页）：左侧上下文面包屑 + 右侧身份头像 */
+.home-topbar {
+  display: flex; align-items: center; gap: 12px; flex: none;
+  height: 48px; padding: 0 16px;
+  background: var(--bg-panel); border-bottom: 1px solid var(--border);
+}
+.topbar-crumb { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-dim); min-width: 0; }
+.topbar-crumb b { color: var(--text); font-size: 14px; }
+.crumb-sep { color: var(--border-strong); }
+.home-body { display: flex; flex: 1; min-height: 0; }
+
+.avatar-menu { position: relative; margin-left: auto; }
+.avatar-menu summary {
+  list-style: none; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; padding: 4px 6px 4px 4px; border-radius: 999px;
+}
+.avatar-menu summary::-webkit-details-marker { display: none; }
+.avatar-menu summary:hover { background: var(--bg-elevated); }
+.avatar-dot {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: linear-gradient(135deg, #0d99ff, #6f5bf5);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600;
+}
+.avatar-dot.big { width: 38px; height: 38px; font-size: 16px; }
+.avatar-name {
+  font-size: 13px; max-width: 180px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.avatar-menu .caret { color: var(--text-dim); font-size: 10px; }
+.avatar-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); width: 260px; z-index: 40;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(16, 24, 40, 0.14); padding: 14px;
+}
+.avatar-pop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.avatar-pop-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.avatar-pop-info b { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+@media (max-width: 640px) {
+  .avatar-name, .avatar-menu .caret { display: none; }
+  .topbar-crumb { font-size: 12px; }
+}
 .home-sidebar {
   width: 216px; flex-shrink: 0; display: flex; flex-direction: column;
   background: var(--bg-panel); border-right: 1px solid var(--border); padding: 18px 12px;

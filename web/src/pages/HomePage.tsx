@@ -159,6 +159,51 @@ export default function HomePage() {
 
   return (
     <div className="home-shell">
+      {/* 顶部状态栏：左侧上下文面包屑，右侧身份头像 */}
+      <header className="home-topbar">
+        <div className="topbar-crumb">
+          <b>首页</b>
+          <span className="crumb-sep">/</span>
+          {activeTeamName ?? '全部团队'}
+          {view === 'members' && (
+            <>
+              <span className="crumb-sep">/</span>
+              团队成员
+            </>
+          )}
+        </div>
+        <details className="avatar-menu">
+          <summary title="当前身份">
+            <span className="avatar-dot">{identity ? identity.email.slice(0, 1).toUpperCase() : '主'}</span>
+            <span className="avatar-name">{identity ? identity.email : '所有者'}</span>
+            <span className="caret">▾</span>
+          </summary>
+          <div className="avatar-pop">
+            <div className="avatar-pop-head">
+              <span className="avatar-dot big">{identity ? identity.email.slice(0, 1).toUpperCase() : '主'}</span>
+              <div className="avatar-pop-info">
+                <b>{identity ? identity.email : '所有者'}</b>
+                <div>
+                  {identity ? (
+                    <span className={`role-badge ${identity.role}`}>
+                      {identity.role === 'admin' ? '管理员' : '协作 · 只读'}
+                    </span>
+                  ) : (
+                    <span className="dim small">最高权限</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {identity && activeTeam ? (
+              <button className="ghost-btn" onClick={exitIdentity}>退出身份（回到所有者）</button>
+            ) : (
+              <p className="dim small">可在「团队成员」页选择成员身份体验权限差异</p>
+            )}
+          </div>
+        </details>
+      </header>
+
+      <div className="home-body">
       {/* 左侧边栏：左上角团队切换下拉框 + 导航 */}
       <aside className="home-sidebar">
         <details
@@ -350,6 +395,7 @@ export default function HomePage() {
           {error && <div className="home-error">{error}</div>}
         </div>
       </main>
+      </div>
     </div>
   );
 }
