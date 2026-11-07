@@ -4,11 +4,14 @@ import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
 import { EXPORT_SCALES, PLATFORM_LABEL, type PlatformId } from './devices';
 import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
+import type { Unit } from '../unit';
 
 interface Props {
   frame: FrameDetail['frame'];
   nodeCount: number;
   selected: LayerNode | null;
+  /** 尺寸单位：只影响数值后缀，不改变数值 */
+  unit?: Unit;
   /** 坐标：absolute = 相对画板左上角；relative = 相对父级图层（顶层图层与 absolute 相同） */
   coords?: {
     absolute: { x: number; y: number };
@@ -17,6 +20,8 @@ interface Props {
   } | null;
   fileId: string;
   readOnly?: boolean;
+  /** 文本内容写回后通知外层重新拉取画板数据（让画布同步更新） */
+  onNodeUpdated?: () => void;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -57,7 +62,7 @@ function ColorRow({ color, label }: { color: ParsedColor; label?: string }) {
   );
 }
 
-export default function PropertyPanel({ frame, nodeCount, selected, coords, fileId, readOnly = false }: Props) {
+export default function PropertyPanel({ frame, nodeCount, selected, coords, fileId, readOnly = false, unit = 'px', onNodeUpdated }: Props) {
   const [format, setFormat] = useState('PNG');
   const [scale, setScale] = useState('2');
   const [exporting, setExporting] = useState(false);
@@ -66,6 +71,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
   const [snippetLang, setSnippetLang] = useState<SnippetLang>('CSS');
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [textCopied, setTextCopied] = useState(false);
+  // 文本图层：内容回填 + 可编辑（失焦 / 回车写回数据库）
+  const isText = selected?.type === 'TEXT';
+  const [textDraft, setTextDraft] = useState(selected?.props?.text?.content ?? '');
+  useEffect(() => {
+    setTextDraft(selected?.props?.text?.content ?? '');
+    setTextCopied(false);
+  }, [selected?.node_id]);
 
   // 原型交互（跳转到画板）
   const [protoFrames, setProtoFrames] = useState<{ id: string; name: string }[]>([]);
@@ -94,13 +106,26 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
     }
   };
 
+  // 保存文本内容：失焦 / Enter 触发，成功后通知外层刷新画布
+  const saveText = async () => {
+    if (!selected || !isText || readOnly) return;
+    const prev = selected.props?.text?.content ?? '';
+    if (textDraft === prev) return;
+    try {
+      await api.setNodeText(fileId, selected.node_id, textDraft);
+      onNodeUpdated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '文本保存失败');
+    }
+  };
+
   if (!selected) {
     return (
       <div className="prop-panel">
         <div className="prop-section">
           <h3>画板</h3>
           <div className="kv"><span>名称</span><b>{frame.name}</b></div>
-          <div className="kv"><span>尺寸</span><b>{Math.round(frame.width)} × {Math.round(frame.height)}</b></div>
+          <div className="kv"><span>尺寸</span><b>{Math.round(frame.width)} × {Math.round(frame.height)} {unit}</b></div>
           <div className="kv"><span>图层数</span><b>{nodeCount}</b></div>
         </div>
         <p className="prop-hint">
@@ -169,29 +194,29 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           <div className="kv">
             <span>X（相对父级）</span>
             <CopyChip text={String(coords?.relative.x ?? selected.x)}>
-              <b>{coords?.relative.x ?? selected.x}</b>
+              <b>{coords?.relative.x ?? selected.x} {unit}</b>
             </CopyChip>
           </div>
           <div className="kv">
             <span>Y（相对父级）</span>
             <CopyChip text={String(coords?.relative.y ?? selected.y)}>
-              <b>{coords?.relative.y ?? selected.y}</b>
+              <b>{coords?.relative.y ?? selected.y} {unit}</b>
             </CopyChip>
           </div>
           <div className="kv">
             <span>X（绝对）</span>
             <CopyChip text={String(coords?.absolute.x ?? selected.x)}>
-              <b>{coords?.absolute.x ?? selected.x}</b>
+              <b>{coords?.absolute.x ?? selected.x} {unit}</b>
             </CopyChip>
           </div>
           <div className="kv">
             <span>Y（绝对）</span>
             <CopyChip text={String(coords?.absolute.y ?? selected.y)}>
-              <b>{coords?.absolute.y ?? selected.y}</b>
+              <b>{coords?.absolute.y ?? selected.y} {unit}</b>
             </CopyChip>
           </div>
-          <div className="kv"><span>W</span><CopyChip text={String(selected.width)}><b>{selected.width}</b></CopyChip></div>
-          <div className="kv"><span>H</span><CopyChip text={String(selected.height)}><b>{selected.height}</b></CopyChip></div>
+          <div className="kv"><span>W</span><CopyChip text={String(selected.width)}><b>{selected.width} {unit}</b></CopyChip></div>
+          <div className="kv"><span>H</span><CopyChip text={String(selected.height)}><b>{selected.height} {unit}</b></CopyChip></div>
           {p.cornerRadius !== undefined && p.cornerRadius > 0 && (
             <div className="kv"><span>圆角</span><b>{p.cornerRadius}</b></div>
           )}
@@ -207,36 +232,53 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         </p>
       </div>
 
-      {/* 文本 */}
-      {p.text && (
+      {/* 文本：仅 TEXT 图层显示，内容回填且可编辑（失焦 / Enter 写回并刷新画布） */}
+      {isText && (
         <div className="prop-section">
           <h3>文本</h3>
-          {p.text.content && (
-            <div className="text-content-row">
-              <div className="text-content">{p.text.content}</div>
-              <button
-                className="copy-btn"
-                onClick={() => {
-                  navigator.clipboard?.writeText(p.text?.content ?? '').then(
-                    () => {
-                      setTextCopied(true);
-                      setTimeout(() => setTextCopied(false), 1200);
-                    },
-                    () => undefined
-                  );
-                }}
-                title="复制文本内容"
-              >
-                {textCopied ? '已复制 ✓' : '复制文本'}
-              </button>
-            </div>
-          )}
-          {p.text.family && <div className="kv"><span>字体</span><CopyChip text={p.text.family}><b>{p.text.family}</b></CopyChip></div>}
-          {p.text.size && <div className="kv"><span>字号</span><CopyChip text={String(p.text.size)}><b>{p.text.size}px / {p.text.weight ?? 400}</b></CopyChip></div>}
-          {p.text.lineHeight && <div className="kv"><span>行高</span><b>{p.text.lineHeight}px</b></div>}
-          {p.text.letterSpacing !== undefined && <div className="kv"><span>字间距</span><b>{p.text.letterSpacing}px</b></div>}
-          {p.text.alignHorizontal && <div className="kv"><span>对齐</span><b>{p.text.alignHorizontal}</b></div>}
-          {p.text.color && <ColorRow color={p.text.color} />}
+          <div className="text-content-row">
+            <textarea
+              className="text-edit"
+              value={textDraft}
+              readOnly={readOnly}
+              placeholder="空文本图层"
+              rows={Math.min(6, Math.max(2, textDraft.split('\n').length))}
+              onChange={(e) => {
+                setTextDraft(e.target.value);
+                setTextCopied(false);
+              }}
+              onBlur={() => void saveText()}
+              onKeyDown={(e) => {
+                // Enter 保存，Shift+Enter 换行（保留多行文本）
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void saveText();
+                }
+              }}
+            />
+            <button
+              className="copy-btn"
+              disabled={!textDraft.trim()}
+              onClick={() => {
+                navigator.clipboard?.writeText(textDraft).then(
+                  () => {
+                    setTextCopied(true);
+                    setTimeout(() => setTextCopied(false), 1200);
+                  },
+                  () => undefined
+                );
+              }}
+              title={textDraft.trim() ? '复制文本内容' : '文本为空，无可复制内容'}
+            >
+              {textCopied ? '已复制 ✓' : '复制文本'}
+            </button>
+          </div>
+          {p.text?.family && <div className="kv"><span>字体</span><CopyChip text={p.text.family}><b>{p.text.family}</b></CopyChip></div>}
+          {p.text?.size && <div className="kv"><span>字号</span><CopyChip text={String(p.text.size)}><b>{p.text.size}px / {p.text.weight ?? 400}</b></CopyChip></div>}
+          {p.text?.lineHeight && <div className="kv"><span>行高</span><b>{p.text.lineHeight}px</b></div>}
+          {p.text?.letterSpacing !== undefined && <div className="kv"><span>字间距</span><b>{p.text.letterSpacing}px</b></div>}
+          {p.text?.alignHorizontal && <div className="kv"><span>对齐</span><b>{p.text.alignHorizontal}</b></div>}
+          {p.text?.color && <ColorRow color={p.text.color} />}
         </div>
       )}
 

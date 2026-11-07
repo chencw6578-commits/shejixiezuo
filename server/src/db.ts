@@ -80,6 +80,9 @@ CREATE INDEX IF NOT EXISTS idx_frames_page ON frames(page_id);
 -- 编组内排序（不影响画布的全局 sort_order）
 ALTER TABLE frames ADD COLUMN IF NOT EXISTS page_sort INT NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_frames_page_sort ON frames(page_id, page_sort);
+-- 画布自由坐标（null = 尚未排布，首次进入时自动铺一次）
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS canvas_x REAL;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS canvas_y REAL;
 
 CREATE TABLE IF NOT EXISTS nodes (
   id           BIGSERIAL PRIMARY KEY,  -- 自增，ORDER BY id 即插入顺序，保证 z-order

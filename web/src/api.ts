@@ -157,6 +157,13 @@ export const api = {
       body: JSON.stringify({ interaction: targetFrameId ? { targetFrameId } : null }),
     }),
 
+  /** 写回文本图层的内容（props.text.content） */
+  setNodeText: (fileId: string, nodeId: string, text: string) =>
+    request<{ ok: true }>(`/api/files/${fileId}/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ text }),
+    }),
+
   // ---- 页面（画板编组） ----
   createPage: (fileId: string, name: string) =>
     request<{ id: string; name: string }>(`/api/files/${fileId}/pages`, {
@@ -184,6 +191,12 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ frameIds, pageId }),
     }),
+  /** 保存画布自由坐标 */
+  setFramePositions: (fileId: string, positions: { id: string; x: number; y: number }[]) =>
+    request<{ ok: boolean; saved: number }>(`/api/files/${fileId}/frames/position`, {
+      method: 'PATCH',
+      body: JSON.stringify({ positions }),
+    }),
   /** 编组内排序：frameIds 为目标编组的完整顺序（同时完成跨组移动） */
   reorderFrames: (fileId: string, pageId: string | null, frameIds: string[]) =>
     request<{ ok: boolean; ordered: number }>(`/api/files/${fileId}/frames/order`, {
@@ -202,6 +215,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     }),
+
+  /** 删除画板（级联删除其图层与评论） */
+  deleteFrame: (fileId: string, frameId: string) =>
+    request<{ ok: true }>(`/api/files/${fileId}/frames/${frameId}`, { method: 'DELETE' }),
 
   // ---- 团队 ----
   listTeams: () =>

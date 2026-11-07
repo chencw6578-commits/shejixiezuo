@@ -299,6 +299,40 @@ filesRouter.patch('/:id/frames/page', async (req, res) => {
 });
 
 /**
+ * 批量保存画布自由坐标：拖动落位后写回 frames.canvas_x/canvas_y。
+ * body: { positions: [{ id, x, y }] }
+ */
+filesRouter.patch('/:id/frames/position', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const raw = (req.body as { positions?: { id?: string; x?: number; y?: number }[] })?.positions;
+  const positions = Array.isArray(raw)
+    ? raw.filter(
+        (p) =>
+          typeof p?.id === 'string' &&
+          typeof p.x === 'number' &&
+          Number.isFinite(p.x) &&
+          typeof p.y === 'number' &&
+          Number.isFinite(p.y)
+      )
+    : [];
+  if (!positions.length) return res.status(400).json({ error: '缺少画板坐标' });
+  const ids = positions.map((p) => p.id as string);
+  const { rows } = await pool.query<{ id: string }>(
+    'SELECT id FROM frames WHERE file_id = $1::uuid AND id = ANY($2::uuid[])',
+    [req.params.id, ids]
+  );
+  if (rows.length !== ids.length) return res.status(404).json({ error: '部分画板不属于该设计稿' });
+  await pool.query(
+    `UPDATE frames f SET canvas_x = v.x, canvas_y = v.y
+     FROM unnest($1::uuid[], $2::real[], $3::real[]) AS v(id, x, y)
+     WHERE f.id = v.id AND f.file_id = $4::uuid`,
+    [ids, positions.map((p) => p.x), positions.map((p) => p.y), req.params.id]
+  );
+  res.json({ ok: true, saved: ids.length });
+});
+
+/**
  * 编组内排序：frameIds 为目标编组的完整顺序（会自动把画板移入目标编组）。
  * pageId 传 null 表示未分组。
  */
@@ -456,6 +490,18 @@ filesRouter.patch('/:id/frames/:frameId', async (req, res) => {
   res.json(rows[0]);
 });
 
+/** 删除画板（nodes / comments 由外键级联删除） */
+filesRouter.delete('/:id/frames/:frameId', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const { rowCount } = await pool.query(
+    'DELETE FROM frames WHERE id = $1::uuid AND file_id = $2::uuid',
+    [req.params.frameId, req.params.id]
+  );
+  if (!rowCount) return res.status(404).json({ error: '画板不存在' });
+  res.json({ ok: true });
+});
+
 // ---------- 原型交互与静态原型导出（必须注册在 /:id 之前，避免路径被吞） ----------
 
 /** 配置/清除图层「原型交互：跳转到某画板」 */
@@ -463,6 +509,17 @@ filesRouter.patch('/:id/nodes/:nodeId', async (req, res) => {
   const { id, nodeId } = req.params;
   const denied = await editGuard(await fileTeamId(id), req);
   if (denied) return res.status(403).json({ error: denied });
+  // 文本图层内容：写回 props.text.content（画布按此渲染）
+  const textContent = (req.body as { text?: unknown }).text;
+  if (typeof textContent === 'string') {
+    const r = await pool.query(
+      `UPDATE nodes SET props = jsonb_set(props, '{text,content}', to_jsonb($1::text), true)
+       WHERE file_id = $2 AND node_id = $3`,
+      [textContent, id, nodeId]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: '图层不存在' });
+    return res.json({ ok: true });
+  }
   const interaction = (req.body as { interaction?: { targetFrameId?: string } | null }).interaction;
   if (interaction === null || interaction === undefined) {
     await pool.query(`UPDATE nodes SET props = props - 'interaction' WHERE file_id = $1 AND node_id = $2`, [

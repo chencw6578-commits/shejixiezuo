@@ -1,12 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
 import type { FileDetail, FrameDetail, LayerNode, ProjectFrameRow, ProjectPageRow } from '../types';
 import Canvas from '../viewer/Canvas';
-import { DeviceOptionGroups, findDevice, type DevicePreset } from '../viewer/devices';
 import PropertyPanel from '../viewer/PropertyPanel';
 import CommentDrawer from '../viewer/CommentDrawer';
 import { useDialogs } from '../components/Dialogs';
+import RowMenu from '../components/RowMenu';
+import { readUnit, saveUnit, type Unit } from '../unit';
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Folder,
+  Menu,
+  MessageSquare,
+  PanelRight,
+  Plus,
+} from '../components/icons';
 
 /** 侧栏树：设计稿 → 编组 → 画板（跨设计稿时都带 file_id） */
 interface TreePage extends ProjectPageRow {
@@ -96,20 +108,11 @@ export default function ViewerPage() {
   const [zipBusy, setZipBusy] = useState('');
   const dialogs = useDialogs();
   const navigate = useNavigate();
-  // 设备预览（iOS / Android / Web 尺寸规范），记住上次选择
-  const [device, setDevice] = useState<DevicePreset | null>(() => {
-    try {
-      const id = (JSON.parse(localStorage.getItem('designhub-device') ?? 'null') as { id?: string } | null)?.id;
-      return id ? findDevice(id) : null;
-    } catch {
-      return null;
-    }
-  });
-  const pickDevice = (id: string) => {
-    const d = id ? findDevice(id) : null;
-    setDevice(d);
-    if (d) localStorage.setItem('designhub-device', JSON.stringify({ id: d.id }));
-    else localStorage.removeItem('designhub-device');
+  // 单位切换：只影响数值后缀/标注，绝不改变画板尺寸与已存数据
+  const [unit, setUnitState] = useState<Unit>(() => readUnit());
+  const pickUnit = (u: Unit) => {
+    setUnitState(u);
+    saveUnit(u);
   };
   /** 拉取当前项目下所有设计稿的画板与编组，组装成 设计稿 → 编组 → 画板 三层树 */
   const applyTree = async (f: FileDetail) => {
@@ -190,6 +193,21 @@ export default function ViewerPage() {
   const pageFrames = (fid: string, pageId: string | null) =>
     sortFrames(framesOfFile(fid).filter((f) => (f.page_id ?? null) === pageId));
   const ungroupedOf = (fid: string) => pageFrames(fid, null);
+  /** 侧栏拉平：所有设计稿的编组同层展示（归属保留，悬浮提示可查） */
+  const flatGroups = useMemo(
+    () => files.flatMap((fl) => pagesOfFile(fl.id).map((pg) => ({ pg, fileId: fl.id, fileName: fl.name }))),
+    [files, pages]
+  );
+  /** 唯一全局未分组：所有设计稿里没归组的画板 */
+  const globalUngrouped = useMemo(() => {
+    const list = frames.filter((f) => !f.page_id);
+    return [...list].sort(
+      (a, b) =>
+        a.file_name.localeCompare(b.file_name) ||
+        (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+        a.name.localeCompare(b.name)
+    );
+  }, [frames]);
   const filePageKey = (fid: string, pageId: string | null) => pageId ?? `__none:${fid}`;
   const draggingIds = () =>
     dragFrameId ? (selectedFrames.has(dragFrameId) ? [...selectedFrames] : [dragFrameId]) : [];
@@ -262,16 +280,16 @@ export default function ViewerPage() {
     }
   };
 
-  const removePage = async (pg: TreePage) => {
+  const removePage = async (pg: TreePage, forced?: 'dissolve' | 'content') => {
     const list = pageFrames(pg.file_id, pg.id);
-    const mode = await dialogs.choose({
+    const mode = forced ?? (await dialogs.choose({
       title: `删除编组「${pg.name}」`,
       message: `该编组内有 ${list.length} 个画板，请选择处理方式：`,
       options: [
         { label: '解散编组，保留内容（画板移入未分组）', value: 'dissolve' },
         { label: '删除编组并删除其中内容', value: 'content', danger: true },
       ],
-    });
+    }));
     if (!mode) return;
     if (mode === 'content') {
       const ok = await dialogs.confirm({
@@ -297,6 +315,47 @@ export default function ViewerPage() {
     }
   };
 
+  /** 重命名画板（侧栏 ⋯ 菜单） */
+  const renameFrame = async (f: ProjectFrameRow) => {
+    const name = await dialogs.prompt({
+      title: '修改画板名称',
+      label: '画板名称',
+      initialValue: f.name,
+      maxLength: 100,
+      validate: (v) =>
+        frames.some((x) => x.id !== f.id && x.file_id === f.file_id && x.name === v)
+          ? `该设计稿内已存在同名画板「${v}」`
+          : null,
+    });
+    if (!name || name === f.name) return;
+    try {
+      await api.renameFrame(f.file_id, f.id, name);
+      await refreshPages();
+      if (f.id === frameId) setData(await api.getFrame(f.file_id, f.id));
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  /** 删除画板（侧栏 ⋯ 菜单，不可恢复） */
+  const removeFrame = async (f: ProjectFrameRow) => {
+    const ok = await dialogs.confirm({
+      title: `删除画板「${f.name}」`,
+      message: '该画板及其图层、评论将被删除，且不可恢复。',
+      confirmText: '确认删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deleteFrame(f.file_id, f.id);
+      setSelectedFrames((s) => new Set([...s].filter((id) => id !== f.id)));
+      if (f.id === frameId) navigate(`/files/${f.file_id}`);
+      await refreshPages();
+    } catch (e) {
+      fail(e);
+    }
+  };
+
   const moveSelection = async (fid: string, pageId: string | null) => {
     const ids = [...selectedFrames].filter((id) => frames.find((f) => f.id === id)?.file_id === fid);
     if (!ids.length) return;
@@ -310,6 +369,19 @@ export default function ViewerPage() {
     }
   };
 
+  /** 乐观更新编组归属：松手后立即本地改状态（列表/成员数立刻生效），后台落库 */
+  const applyMembershipLocal = (fileId: string, pageId: string | null, orderedIds: string[]) => {
+    const pageName = pageId ? pages.find((p) => p.id === pageId)?.name ?? null : null;
+    setFrames((prev) =>
+      prev.map((f) => {
+        if (f.file_id !== fileId) return f;
+        const idx = orderedIds.indexOf(f.id);
+        if (idx < 0) return f;
+        return { ...f, page_id: pageId, page_name: pageName, page_sort: idx };
+      })
+    );
+  };
+
   /** 拖到编组行/设计稿未分组行：追加到该组末尾（只处理同设计稿的画板） */
   const dropOnPage = async (fid: string, pageId: string | null) => {
     const ids = draggingIdsFor(fid);
@@ -318,14 +390,46 @@ export default function ViewerPage() {
       return;
     }
     const rest = pageFrames(fid, pageId).filter((f) => !ids.includes(f.id)).map((f) => f.id);
-    try {
-      await api.reorderFrames(fid, pageId, [...rest, ...ids]);
-      setOpenPages((s) => new Set(s).add(filePageKey(fid, pageId)));
-      await refreshPages();
-    } catch (e) {
-      fail(e);
-    }
+    const order = [...rest, ...ids];
+    setOpenPages((s) => new Set(s).add(filePageKey(fid, pageId)));
+    applyMembershipLocal(fid, pageId, order);
     clearDrag();
+    api.reorderFrames(fid, pageId, order).catch((e) => {
+      fail(e);
+      void refreshPages();
+    });
+  };
+
+  /** 拖到全局未分组：跨设计稿的画板一起移出编组 */
+  const dropOutToUngrouped = async () => {
+    const ids = draggingIds();
+    if (!ids.length) {
+      clearDrag();
+      return;
+    }
+    const byFile = new Map<string, string[]>();
+    for (const id of ids) {
+      const f = frames.find((x) => x.id === id);
+      if (!f) continue;
+      const arr = byFile.get(f.file_id) ?? [];
+      arr.push(id);
+      byFile.set(f.file_id, arr);
+    }
+    const jobs: { fid: string; order: string[] }[] = [];
+    for (const [fid, list] of byFile) {
+      const rest = pageFrames(fid, null).filter((f) => !list.includes(f.id)).map((f) => f.id);
+      const order = [...rest, ...list];
+      applyMembershipLocal(fid, null, order);
+      jobs.push({ fid, order });
+    }
+    setOpenPages((s) => new Set(s).add('__none:global'));
+    clearDrag();
+    for (const job of jobs) {
+      api.reorderFrames(job.fid, null, job.order).catch((e) => {
+        fail(e);
+        void refreshPages();
+      });
+    }
   };
 
   /** 拖到画板行：在该画板前/后插入，跨组时一并移入目标组 */
@@ -341,14 +445,13 @@ export default function ViewerPage() {
     const idx = rest.findIndex((f) => f.id === target.id);
     const at = idx < 0 ? rest.length : idx + (position === 'after' ? 1 : 0);
     const order = [...rest.slice(0, at).map((f) => f.id), ...ids, ...rest.slice(at).map((f) => f.id)];
-    try {
-      await api.reorderFrames(fid, pageId, order);
-      setOpenPages((s) => new Set(s).add(filePageKey(fid, pageId)));
-      await refreshPages();
-    } catch (e) {
-      fail(e);
-    }
+    setOpenPages((s) => new Set(s).add(filePageKey(fid, pageId)));
+    applyMembershipLocal(fid, pageId, order);
     clearDrag();
+    api.reorderFrames(fid, pageId, order).catch((e) => {
+      fail(e);
+      void refreshPages();
+    });
   };
 
   // ---------- 侧栏多选：Ctrl/⌘ 切换、Shift 连选、普通点击单选 ----------
@@ -357,13 +460,11 @@ export default function ViewerPage() {
   const hasToggleModifier = (e: { ctrlKey: boolean; metaKey: boolean }) =>
     isMac ? e.metaKey : e.ctrlKey || e.metaKey;
 
-  /** 左侧整棵树的视觉顺序（设计稿 → 编组 → 未分组），Shift 连选按此顺序，可跨设计稿 */
+  /** 左侧列表的视觉顺序（所有编组按设计稿顺序，最后是全局未分组），Shift 连选按此顺序 */
   const visibleFrameIds = () => {
     const ids: string[] = [];
-    for (const fl of files) {
-      for (const pg of pagesOfFile(fl.id)) pageFrames(fl.id, pg.id).forEach((f) => ids.push(f.id));
-      ungroupedOf(fl.id).forEach((f) => ids.push(f.id));
-    }
+    for (const fl of files) for (const pg of pagesOfFile(fl.id)) pageFrames(fl.id, pg.id).forEach((f) => ids.push(f.id));
+    globalUngrouped.forEach((f) => ids.push(f.id));
     return ids;
   };
 
@@ -503,30 +604,29 @@ export default function ViewerPage() {
   const renderFrameList = (list: ProjectFrameRow[], showEmptyHint: boolean) => (
     <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
       {list.map((f) => (
-        <Link
+        <div
           key={f.id}
           role={readOnly ? undefined : 'option'}
           aria-selected={readOnly ? undefined : selectedFrames.has(f.id)}
           className={`frame-item ${f.id === frameId ? 'is-current' : ''} ${
             selectedFrames.has(f.id) ? 'is-selected' : ''
           } ${dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''}`}
-          to={`/files/${f.file_id}/frames/${f.id}`}
           title={`${f.name}（双击打开，Ctrl/⌘ 点击多选，Shift 连选，右键编组）`}
           draggable={!readOnly}
           onClick={(e) => {
-            if (readOnly) return; // 只读：保持原来的单击直接打开
+            if (readOnly) {
+              navigate(`/files/${f.file_id}/frames/${f.id}`);
+              return;
+            }
             if (e.shiftKey) {
-              e.preventDefault();
               selectRangeTo(f.id);
               return;
             }
             if (hasToggleModifier(e)) {
-              e.preventDefault();
               toggleSelect(f.id);
               return;
             }
             // 普通单击只选中，不跳转；打开由双击触发
-            e.preventDefault();
             plainSelect(f.id);
           }}
           onContextMenu={(e) => openCtxMenu(f, e)}
@@ -573,7 +673,18 @@ export default function ViewerPage() {
           }}
         >
           <span className="frame-item-name">{f.name}</span>
-        </Link>
+          {!readOnly && (
+            <span className="frame-item-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+              <RowMenu
+                label={`画板 ${f.name}`}
+                items={[
+                  { label: '重命名画板', onClick: () => void renameFrame(f) },
+                  { label: '删除画板', danger: true, onClick: () => void removeFrame(f) },
+                ]}
+              />
+            </span>
+          )}
+        </div>
       ))}
       {showEmptyHint && list.length === 0 && (
         <p className="dim small page-empty-hint">拖画板到这里即可移入未分组</p>
@@ -581,21 +692,34 @@ export default function ViewerPage() {
     </div>
   );
 
+  // 返回上一页：历史栈为首个记录时回项目页，避免退回空白页
+  const goBack = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx !== 'number' || idx <= 0) {
+      navigate(file?.project_id ? `/projects/${file.project_id}` : '/', { replace: true });
+      return;
+    }
+    navigate(-1);
+  };
+
   return (
     <div className="viewer">
       <header className="topbar">
+        <button className="icon-btn" onClick={goBack} title="返回上一页" aria-label="返回上一页">
+          <ArrowLeft />
+        </button>
+        <h1><Folder /> {file?.name ?? '…'}</h1>
+        <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
+        {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
+        <span className="spacer" />
         <button
           className="icon-btn mobile-only"
           onClick={() => setDrawer(drawer === 'left' ? 'none' : 'left')}
           title="页面列表"
+          aria-label="页面列表"
         >
-          ☰
+          <Menu />
         </button>
-        <Link to={file?.project_id ? `/projects/${file.project_id}` : '/'} className="back">← 返回画板</Link>
-        <h1>{file?.name ?? '…'}</h1>
-        <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
-        {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
-        <span className="spacer" />
         <button
           className={`comment-toggle ${commentMode ? 'is-active' : ''}`}
           onClick={() => {
@@ -604,12 +728,12 @@ export default function ViewerPage() {
           }}
           title="评论模式：点击画布或图层添加评论"
         >
-          💬 评论{comments.filter((c) => !c.parent_id && !c.resolved).length > 0 && (
+          <MessageSquare /> 评论{comments.filter((c) => !c.parent_id && !c.resolved).length > 0 && (
             <span className="comment-badge">{comments.filter((c) => !c.parent_id && !c.resolved).length}</span>
           )}
         </button>
         <details className="export-menu">
-          <summary className="primary-link">批量切图</summary>
+          <summary className="primary-link"><Download /> 批量切图</summary>
           <div className="export-menu-pop">
             <button disabled={!!zipBusy} onClick={() => void doExportZip()}>
               {zipBusy ? '导出中…' : '按设计标记导出切图 zip'}
@@ -621,13 +745,14 @@ export default function ViewerPage() {
           </div>
         </details>
         <select
-          className="device-select"
-          value={device?.id ?? ''}
-          onChange={(e) => pickDevice(e.target.value)}
-          title="设备预览：设计稿按所选设备的尺寸规范显示（屏框内为第一屏可视区）"
+          className="device-select unit-select"
+          value={unit}
+          onChange={(e) => pickUnit(e.target.value as Unit)}
+          title="切换尺寸单位：只改数值后缀，不改变画板尺寸或已存数据"
         >
-          <option value="">设备预览：跟随设计</option>
-          {DeviceOptionGroups()}
+          <option value="px">单位：px（Web）</option>
+          <option value="pt">单位：pt（iOS）</option>
+          <option value="dp">单位：dp（Android）</option>
         </select>
         <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
         <button
@@ -635,7 +760,7 @@ export default function ViewerPage() {
           onClick={() => setDrawer(drawer === 'right' ? 'none' : 'right')}
           title="属性与切图"
         >
-          ◧
+          <PanelRight />
         </button>
       </header>
 
@@ -646,100 +771,145 @@ export default function ViewerPage() {
         <aside className={`sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
           <div className="sidebar-section sidebar-grow">
             <h3>
-              设计稿
+              画板
               <span className="sidebar-hspacer" />
               <span className="dim small">{frames.length} 个画板</span>
+              {!readOnly && (
+                <button
+                  className="pcanvas-edit-btn sidebar-add-group"
+                  title="新建空编组（建好后把画板拖进去）"
+                  onClick={() => void addPage(fileId)}
+                >
+                  <Plus />
+                </button>
+              )}
             </h3>
             <div className="page-list">
-              {files.map((fl) => {
-                const fileOpen = openFiles.has(fl.id);
-                const filePages = pagesOfFile(fl.id);
-                const ungrouped = ungroupedOf(fl.id);
-                const nameKey = `__none:${fl.id}`;
-                const droppable = !readOnly && !!dragFrameId && draggingIdsFor(fl.id).length > 0;
+              {flatGroups.map(({ pg, fileId: fid, fileName }) => {
+                const list = pageFrames(fid, pg.id);
+                const open = openPages.has(pg.id);
+                const droppable = !readOnly && !!dragFrameId && draggingIdsFor(fid).length > 0;
                 return (
-                  <div key={fl.id} className={`file-group ${fl.id === fileId ? 'is-current-file' : ''}`}>
+                  <div key={pg.id} className="page-group">
                     <div
-                      className="file-row"
-                      title={fl.name}
-                      onClick={() => toggleFile(fl.id)}
+                      className={`page-row ${dropPageId === pg.id ? 'is-droptarget' : ''}`}
+                      title={`${pg.name}（${list.length} 个画板）· 设计稿：${fileName}`}
+                      onDragOver={(e) => {
+                        if (droppable) {
+                          e.preventDefault();
+                          setDropPageId(pg.id);
+                          setDropFrameHint(null);
+                          if (!open) setOpenPages((s) => new Set(s).add(pg.id));
+                        }
+                      }}
+                      onDragLeave={() => setDropPageId((v) => (v === pg.id ? null : v))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (droppable) void dropOnPage(fid, pg.id);
+                      }}
                     >
-                      <span className="page-caret">{fileOpen ? '▾' : '▸'}</span>
-                      <span className="file-name">{fl.name}</span>
-                      <span className="page-count">{framesOfFile(fl.id).length}</span>
+                      <button
+                        type="button"
+                        className="page-caret"
+                        aria-label={open ? `折叠 ${pg.name}` : `展开 ${pg.name}`}
+                        aria-expanded={open}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePage(pg.id);
+                        }}
+                      >
+                        {open ? <ChevronDown /> : <ChevronRight />}
+                      </button>
+                      <span
+                        className="page-name"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={open}
+                        onClick={() => {
+                          if (!readOnly && list.length) setSelectedFrames(new Set(list.map((f) => f.id)));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            togglePage(pg.id);
+                          }
+                        }}
+                      >
+                        {pg.name}
+                      </span>
+                      <span className="page-count">{list.length}</span>
                       {!readOnly && (
                         <span className="page-actions" onClick={(e) => e.stopPropagation()}>
-                          <button title={`在「${fl.name}」新建空编组`} onClick={() => void addPage(fl.id)}>
-                            ＋
-                          </button>
+                          <RowMenu
+                            label={`编组 ${pg.name}`}
+                            items={[
+                              { label: '重命名编组', onClick: () => void renamePage(pg) },
+                              { label: '解散编组（保留画板）', onClick: () => void removePage(pg, 'dissolve') },
+                              { label: '删除编组及内容', danger: true, onClick: () => void removePage(pg, 'content') },
+                            ]}
+                          />
                         </span>
                       )}
                     </div>
-                    {fileOpen && (
-                      <div className="file-children">
-                        {filePages.map((pg) => {
-                          const list = pageFrames(fl.id, pg.id);
-                          const open = openPages.has(pg.id);
-                          return (
-                            <div key={pg.id} className="page-group">
-                              <div
-                                className={`page-row ${dropPageId === pg.id ? 'is-droptarget' : ''}`}
-                                onClick={() => togglePage(pg.id)}
-                                onDragOver={(e) => {
-                                  if (droppable) {
-                                    e.preventDefault();
-                                    setDropPageId(pg.id);
-                                    setDropFrameHint(null);
-                                  }
-                                }}
-                                onDragLeave={() => setDropPageId((v) => (v === pg.id ? null : v))}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  if (droppable) void dropOnPage(fl.id, pg.id);
-                                }}
-                              >
-                                <span className="page-caret">{open ? '▾' : '▸'}</span>
-                                <span className="page-name" title={pg.name}>{pg.name}</span>
-                                <span className="page-count">{list.length}</span>
-                                {!readOnly && (
-                                  <span className="page-actions" onClick={(e) => e.stopPropagation()}>
-                                    <button title="重命名编组" onClick={() => void renamePage(pg)}>✏</button>
-                                    <button title="删除编组" onClick={() => void removePage(pg)}>🗑</button>
-                                  </span>
-                                )}
-                              </div>
-                              {open && renderFrameList(list, false)}
-                            </div>
-                          );
-                        })}
-                        <div className="page-group page-group-unassigned">
-                          <div
-                            className={`page-row ${dropPageId === nameKey ? 'is-droptarget' : ''}`}
-                            onClick={() => togglePage(nameKey)}
-                            onDragOver={(e) => {
-                              if (droppable) {
-                                e.preventDefault();
-                                setDropPageId(nameKey);
-                                setDropFrameHint(null);
-                              }
-                            }}
-                            onDragLeave={() => setDropPageId((v) => (v === nameKey ? null : v))}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              if (droppable) void dropOnPage(fl.id, null);
-                            }}
-                          >
-                            <span className="page-caret">{openPages.has(nameKey) ? '▾' : '▸'}</span>
-                            <span className="page-name">未分组</span>
-                            <span className="page-count">{ungrouped.length}</span>
-                          </div>
-                          {openPages.has(nameKey) && renderFrameList(ungrouped, true)}
-                        </div>
-                      </div>
-                    )}
+                    {open && renderFrameList(list, false)}
                   </div>
                 );
               })}
+              <div className="page-group page-group-unassigned is-global">
+                <div
+                  className={`page-row ${dropPageId === '__none:global' ? 'is-droptarget' : ''}`}
+                  title="所有设计稿里未归入编组的画板"
+                  onDragOver={(e) => {
+                    if (!readOnly && dragFrameId) {
+                      e.preventDefault();
+                      setDropPageId('__none:global');
+                      setDropFrameHint(null);
+                      if (!openPages.has('__none:global')) setOpenPages((s) => new Set(s).add('__none:global'));
+                    }
+                  }}
+                  onDragLeave={() => setDropPageId((v) => (v === '__none:global' ? null : v))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (!readOnly && dragFrameId) void dropOutToUngrouped();
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="page-caret"
+                    aria-label={openPages.has('__none:global') ? '折叠 未分组' : '展开 未分组'}
+                    aria-expanded={openPages.has('__none:global')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePage('__none:global');
+                    }}
+                  >
+                    {openPages.has('__none:global') ? <ChevronDown /> : <ChevronRight />}
+                  </button>
+                  <span
+                    className="page-name"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={openPages.has('__none:global')}
+                    onClick={() => {
+                      if (!readOnly && globalUngrouped.length) {
+                        setSelectedFrames(new Set(globalUngrouped.map((f) => f.id)));
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        togglePage('__none:global');
+                      }
+                    }}
+                  >
+                    未分组
+                  </span>
+                  <span className="page-count">{globalUngrouped.length}</span>
+                </div>
+                {openPages.has('__none:global') && renderFrameList(globalUngrouped, true)}
+              </div>
             </div>
           </div>
         </aside>
@@ -752,7 +922,7 @@ export default function ViewerPage() {
           onSelect={onSelect}
           onHover={onHover}
           onZoomChange={setZoom}
-          device={device}
+          unit={unit}
           comments={comments}
           commentMode={commentMode}
           onAddComment={onAddComment}
@@ -781,6 +951,10 @@ export default function ViewerPage() {
             coords={selectedCoords}
             fileId={fileId}
             readOnly={readOnly}
+            unit={unit}
+            onNodeUpdated={() => {
+              api.getFrame(fileId, frameId).then(setData).catch(() => undefined);
+            }}
           />
         </aside>
       </div>
