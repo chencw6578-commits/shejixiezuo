@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
 import type { FrameDetail, FrameRow, LayerNode, PageRow } from '../types';
 import Canvas from '../viewer/Canvas';
@@ -7,6 +7,7 @@ import { DeviceOptionGroups, findDevice, type DevicePreset } from '../viewer/dev
 import LayerTree from '../viewer/LayerTree';
 import PropertyPanel from '../viewer/PropertyPanel';
 import CommentDrawer from '../viewer/CommentDrawer';
+import { useDialogs } from '../components/Dialogs';
 
 export default function ViewerPage() {
   const { fileId = '', frameId = '' } = useParams();
@@ -65,7 +66,11 @@ export default function ViewerPage() {
   const [openPages, setOpenPages] = useState<Set<string>>(new Set());
   const [dragFrameId, setDragFrameId] = useState<string | null>(null);
   const [dropPageId, setDropPageId] = useState<string | null>(null);
+  const [dropFrameHint, setDropFrameHint] = useState<{ frameId: string; position: 'before' | 'after' } | null>(null);
+  const [selectedFrames, setSelectedFrames] = useState<Set<string>>(new Set());
   const [zipBusy, setZipBusy] = useState('');
+  const dialogs = useDialogs();
+  const navigate = useNavigate();
   // 设备预览（iOS / Android / Web 尺寸规范），记住上次选择
   const [device, setDevice] = useState<DevicePreset | null>(() => {
     try {
@@ -109,47 +114,174 @@ export default function ViewerPage() {
     [fileId]
   );
 
+  // ---------- 页面（编组）编辑：新建 / 重命名 / 删除 / 成员调整 ----------
+  const fail = (e: unknown) => void dialogs.alert(e instanceof Error ? e.message : String(e));
+
+  const sortFrames = (list: FrameRow[]) =>
+    [...list].sort(
+      (a, b) =>
+        (a.page_sort ?? 0) - (b.page_sort ?? 0) ||
+        a.sort_order - b.sort_order ||
+        a.name.localeCompare(b.name)
+    );
+  const pageFrames = (pageId: string | null) =>
+    sortFrames(frames.filter((f) => (f.page_id ?? null) === pageId));
+  const draggingIds = () =>
+    dragFrameId ? (selectedFrames.has(dragFrameId) ? [...selectedFrames] : [dragFrameId]) : [];
+  const clearDrag = () => {
+    setDragFrameId(null);
+    setDropPageId(null);
+    setDropFrameHint(null);
+  };
+  const validatePageName = (value: string, exceptId?: string) =>
+    pages.some((p) => p.id !== exceptId && p.name === value) ? `已存在同名页面「${value}」` : null;
+
   const addPage = async () => {
-    const name = window.prompt('新页面名称');
-    if (!name?.trim()) return;
+    const name = await dialogs.prompt({
+      title: '新建页面（编组）',
+      label: '页面名称',
+      placeholder: '例如：登录流程',
+      maxLength: 50,
+      validate: (v) => validatePageName(v),
+    });
+    if (!name) return;
     try {
-      const pg = await api.createPage(fileId, name.trim());
+      const pg = await api.createPage(fileId, name);
       await refreshPages();
       setOpenPages((s) => new Set(s).add(pg.id));
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      fail(e);
+    }
+  };
+
+  const createGroupFromSelection = async () => {
+    if (!selectedFrames.size) return;
+    const name = await dialogs.prompt({
+      title: `新建编组（${selectedFrames.size} 个画板）`,
+      label: '页面名称',
+      placeholder: '例如：登录流程',
+      maxLength: 50,
+      validate: (v) => validatePageName(v),
+    });
+    if (!name) return;
+    try {
+      const pg = await api.createPage(fileId, name);
+      await api.moveFramesToPage(fileId, [...selectedFrames], pg.id);
+      setSelectedFrames(new Set());
+      await refreshPages();
+      setOpenPages((s) => new Set(s).add(pg.id));
+    } catch (e) {
+      fail(e);
     }
   };
 
   const renamePage = async (pg: PageRow) => {
-    const name = window.prompt('重命名页面', pg.name);
-    if (!name?.trim() || name.trim() === pg.name) return;
+    const name = await dialogs.prompt({
+      title: '重命名页面',
+      label: '页面名称',
+      initialValue: pg.name,
+      maxLength: 50,
+      validate: (v) => validatePageName(v, pg.id),
+    });
+    if (!name || name === pg.name) return;
     try {
-      await api.renamePage(fileId, pg.id, name.trim());
+      await api.renamePage(fileId, pg.id, name);
       await refreshPages();
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      fail(e);
     }
   };
 
   const removePage = async (pg: PageRow) => {
-    if (!window.confirm(`删除页面「${pg.name}」？其中的画板将变为未分组。`)) return;
+    const list = pageFrames(pg.id);
+    const mode = await dialogs.choose({
+      title: `删除页面「${pg.name}」`,
+      message: `该页面（编组）内有 ${list.length} 个画板，请选择处理方式：`,
+      options: [
+        { label: '解散编组，保留内容（画板移入未分组）', value: 'dissolve' },
+        { label: '删除编组并删除其中内容', value: 'content', danger: true },
+      ],
+    });
+    if (!mode) return;
+    if (mode === 'content') {
+      const ok = await dialogs.confirm({
+        title: '再次确认',
+        message: `将删除「${pg.name}」及其中的 ${list.length} 个画板、图层和评论，且不可恢复。`,
+        confirmText: '确认删除',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     try {
-      await api.deletePage(fileId, pg.id);
+      await api.deletePage(fileId, pg.id, mode as 'dissolve' | 'content');
+      setSelectedFrames((s) => {
+        const ids = new Set(list.map((f) => f.id));
+        return new Set([...s].filter((id) => !ids.has(id)));
+      });
       await refreshPages();
+      if (mode === 'content' && list.some((f) => f.id === frameId)) navigate(`/files/${fileId}`);
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      fail(e);
     }
   };
 
-  const moveFrame = async (fid: string, pageId: string | null) => {
+  const moveSelection = async (pageId: string | null) => {
+    const ids = [...selectedFrames];
+    if (!ids.length) return;
     try {
-      await api.moveFrameToPage(fileId, fid, pageId);
+      await api.moveFramesToPage(fileId, ids, pageId);
+      setSelectedFrames(new Set());
+      if (pageId) setOpenPages((s) => new Set(s).add(pageId));
       await refreshPages();
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      fail(e);
     }
   };
+
+  /** 拖到页面行：追加到该页面末尾（pageId=null 为未分组） */
+  const dropOnPage = async (pageId: string | null) => {
+    const ids = draggingIds();
+    if (!ids.length) return;
+    const rest = pageFrames(pageId).filter((f) => !ids.includes(f.id)).map((f) => f.id);
+    try {
+      await api.reorderFrames(fileId, pageId, [...rest, ...ids]);
+      if (pageId) setOpenPages((s) => new Set(s).add(pageId));
+      await refreshPages();
+    } catch (e) {
+      fail(e);
+    }
+    clearDrag();
+  };
+
+  /** 拖到画板行：在该画板前/后插入，跨组时一并移入目标组 */
+  const dropOnFrame = async (target: FrameRow, position: 'before' | 'after') => {
+    const ids = draggingIds();
+    if (!ids.length || ids.includes(target.id)) {
+      clearDrag();
+      return;
+    }
+    const pageId = target.page_id ?? null;
+    const rest = pageFrames(pageId).filter((f) => !ids.includes(f.id));
+    const idx = rest.findIndex((f) => f.id === target.id);
+    const at = idx < 0 ? rest.length : idx + (position === 'after' ? 1 : 0);
+    const order = [...rest.slice(0, at).map((f) => f.id), ...ids, ...rest.slice(at).map((f) => f.id)];
+    try {
+      await api.reorderFrames(fileId, pageId, order);
+      if (pageId) setOpenPages((s) => new Set(s).add(pageId));
+      await refreshPages();
+    } catch (e) {
+      fail(e);
+    }
+    clearDrag();
+  };
+
+  const toggleSelect = (id: string) =>
+    setSelectedFrames((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const togglePage = (key: string) =>
     setOpenPages((s) => {
@@ -164,7 +296,7 @@ export default function ViewerPage() {
     try {
       await api.exportZip({ fileId, frameId, mode: 'presets' });
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      fail(e);
     } finally {
       setZipBusy('');
     }
@@ -216,6 +348,66 @@ export default function ViewerPage() {
 
   const nodeById = new Map(data.nodes.map((n: LayerNode) => [n.node_id, n]));
   const selected = selectedId ? nodeById.get(selectedId) ?? null : null;
+
+  // 页面（编组）内的画板列表：支持多选、拖拽排序、跨组移动
+  const renderFrameList = (list: FrameRow[], showEmptyHint: boolean) => (
+    <div className="page-frames">
+      {list.map((f) => (
+        <Link
+          key={f.id}
+          className={`frame-item ${f.id === frameId ? 'is-current' : ''} ${
+            dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''
+          }`}
+          to={`/files/${fileId}/frames/${f.id}`}
+          title={f.name}
+          draggable={!readOnly}
+          onDragStart={(e) => {
+            setDragFrameId(f.id);
+            setDropFrameHint(null);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', f.id);
+          }}
+          onDragEnd={clearDrag}
+          onDragOver={(e) => {
+            if (readOnly || !dragFrameId) return;
+            e.preventDefault();
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+            if (dropFrameHint?.frameId !== f.id || dropFrameHint.position !== position) {
+              setDropFrameHint({ frameId: f.id, position });
+            }
+            setDropPageId(null);
+          }}
+          onDragLeave={() => setDropFrameHint((h) => (h?.frameId === f.id ? null : h))}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const position = dropFrameHint?.frameId === f.id ? dropFrameHint.position : 'before';
+            void dropOnFrame(f, position);
+          }}
+        >
+          {!readOnly && (
+            <input
+              type="checkbox"
+              className="page-frame-check"
+              checked={selectedFrames.has(f.id)}
+              draggable={false}
+              title="选中该画板，可用于批量编组"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleSelect(f.id);
+              }}
+            />
+          )}
+          <span className="frame-item-name">{f.name}</span>
+        </Link>
+      ))}
+      {showEmptyHint && list.length === 0 && (
+        <p className="dim small page-empty-hint">拖画板到这里归入页面</p>
+      )}
+    </div>
+  );
 
   return (
     <div className="viewer">
@@ -291,8 +483,30 @@ export default function ViewerPage() {
               )}
             </h3>
             <div className="page-list">
+              {!readOnly && selectedFrames.size > 0 && (
+                <div className="page-selection-bar">
+                  <span className="selection-count">已选 {selectedFrames.size}</span>
+                  <button onClick={() => void createGroupFromSelection()}>新建编组</button>
+                  <select
+                    value=""
+                    title="把选中的画板移入页面（编组）"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === '__none') void moveSelection(null);
+                      else if (v) void moveSelection(v);
+                    }}
+                  >
+                    <option value="">移入页面…</option>
+                    {pages.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                    <option value="__none">未分组</option>
+                  </select>
+                  <button onClick={() => setSelectedFrames(new Set())}>取消</button>
+                </div>
+              )}
               {pages.map((pg) => {
-                const list = frames.filter((f) => f.page_id === pg.id);
+                const list = pageFrames(pg.id);
                 const open = openPages.has(pg.id);
                 const droppable = !readOnly && !!dragFrameId;
                 return (
@@ -304,14 +518,13 @@ export default function ViewerPage() {
                         if (droppable) {
                           e.preventDefault();
                           setDropPageId(pg.id);
+                          setDropFrameHint(null);
                         }
                       }}
                       onDragLeave={() => setDropPageId((v) => (v === pg.id ? null : v))}
                       onDrop={(e) => {
                         e.preventDefault();
-                        setDropPageId(null);
-                        if (droppable && dragFrameId) void moveFrame(dragFrameId, pg.id);
-                        setDragFrameId(null);
+                        if (droppable) void dropOnPage(pg.id);
                       }}
                     >
                       <span className="page-caret">{open ? '▾' : '▸'}</span>
@@ -324,31 +537,12 @@ export default function ViewerPage() {
                         </span>
                       )}
                     </div>
-                    {open && (
-                      <div className="page-frames">
-                        {list.map((f) => (
-                          <Link
-                            key={f.id}
-                            className={`frame-item ${f.id === frameId ? 'is-current' : ''}`}
-                            to={`/files/${fileId}/frames/${f.id}`}
-                            title={f.name}
-                            draggable={!readOnly}
-                            onDragStart={() => setDragFrameId(f.id)}
-                            onDragEnd={() => setDragFrameId(null)}
-                          >
-                            {f.name}
-                          </Link>
-                        ))}
-                        {list.length === 0 && (
-                          <p className="dim small page-empty-hint">拖画板到这里归入页面</p>
-                        )}
-                      </div>
-                    )}
+                    {open && renderFrameList(list, true)}
                   </div>
                 );
               })}
               {(() => {
-                const list = frames.filter((f) => !f.page_id);
+                const list = pageFrames(null);
                 if (list.length === 0) return null;
                 const key = '__none';
                 const open = openPages.has(key);
@@ -362,37 +556,20 @@ export default function ViewerPage() {
                         if (droppable) {
                           e.preventDefault();
                           setDropPageId(key);
+                          setDropFrameHint(null);
                         }
                       }}
                       onDragLeave={() => setDropPageId((v) => (v === key ? null : v))}
                       onDrop={(e) => {
                         e.preventDefault();
-                        setDropPageId(null);
-                        if (droppable && dragFrameId) void moveFrame(dragFrameId, null);
-                        setDragFrameId(null);
+                        if (droppable) void dropOnPage(null);
                       }}
                     >
                       <span className="page-caret">{open ? '▾' : '▸'}</span>
                       <span className="page-name">未分组</span>
                       <span className="page-count">{list.length}</span>
                     </div>
-                    {open && (
-                      <div className="page-frames">
-                        {list.map((f) => (
-                          <Link
-                            key={f.id}
-                            className={`frame-item ${f.id === frameId ? 'is-current' : ''}`}
-                            to={`/files/${fileId}/frames/${f.id}`}
-                            title={f.name}
-                            draggable={!readOnly}
-                            onDragStart={() => setDragFrameId(f.id)}
-                            onDragEnd={() => setDragFrameId(null)}
-                          >
-                            {f.name}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
+                    {open && renderFrameList(list, false)}
                   </div>
                 );
               })()}
@@ -450,6 +627,7 @@ export default function ViewerPage() {
           />
         </aside>
       </div>
+      {dialogs.element}
     </div>
   );
 }

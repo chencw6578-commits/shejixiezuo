@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam } from '../api';
 import type { FileDetail, ProjectFrameRow } from '../types';
 import { DeviceOptionGroups, findDevice } from '../viewer/devices';
+import { useDialogs } from '../components/Dialogs';
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   pending: { text: '排队中', cls: 'status-wait' },
@@ -83,24 +84,41 @@ export default function ProjectCanvasPage() {
   useEffect(load, [load]);
 
   // ---------- 重命名：设计稿 / 画板（画布标题与侧栏均可触发） ----------
+  const dialogs = useDialogs();
   const renameFile = async (fileId: string, current: string) => {
-    const name = window.prompt('修改设计稿名称', current);
-    if (!name?.trim() || name.trim() === current) return;
+    const name = await dialogs.prompt({
+      title: '修改设计稿名称',
+      label: '设计稿名称',
+      initialValue: current,
+      maxLength: 100,
+      validate: (v) =>
+        files.some((f) => f.id !== fileId && f.name === v) ? `项目内已存在同名设计稿「${v}」` : null,
+    });
+    if (!name || name === current) return;
     try {
-      await api.renameFile(fileId, name.trim());
+      await api.renameFile(fileId, name);
       load();
     } catch (e) {
-      showToast('err', e instanceof Error ? e.message : '重命名失败');
+      void dialogs.alert(e instanceof Error ? e.message : '重命名失败');
     }
   };
   const renameFrame = async (f: ProjectFrameRow) => {
-    const name = window.prompt('修改画板名称', f.name);
-    if (!name?.trim() || name.trim() === f.name) return;
+    const name = await dialogs.prompt({
+      title: '修改画板名称',
+      label: '画板名称',
+      initialValue: f.name,
+      maxLength: 100,
+      validate: (v) =>
+        frames.some((x) => x.id !== f.id && x.file_id === f.file_id && x.name === v)
+          ? `该设计稿内已存在同名画板「${v}」`
+          : null,
+    });
+    if (!name || name === f.name) return;
     try {
-      await api.renameFrame(f.file_id, f.id, name.trim());
+      await api.renameFrame(f.file_id, f.id, name);
       load();
     } catch (e) {
-      showToast('err', e instanceof Error ? e.message : '重命名失败');
+      void dialogs.alert(e instanceof Error ? e.message : '重命名失败');
     }
   };
 
@@ -641,6 +659,7 @@ export default function ProjectCanvasPage() {
           )}
         </div>
       )}
+      {dialogs.element}
     </div>
   );
 }

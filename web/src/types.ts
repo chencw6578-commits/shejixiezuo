@@ -1,6 +1,7 @@
 export interface PageRow {
   id: string;
   name: string;
+  sort_order?: number;
 }
 
 export interface FrameRow {
@@ -9,6 +10,7 @@ export interface FrameRow {
   name: string;
   page_name: string | null;
   page_id?: string | null;
+  page_sort?: number;
   width: number;
   height: number;
   thumb_url: string | null;

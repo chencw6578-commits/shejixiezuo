@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS pages (
 CREATE UNIQUE INDEX IF NOT EXISTS pages_file_name_uniq ON pages(file_id, name);
 ALTER TABLE frames ADD COLUMN IF NOT EXISTS page_id UUID REFERENCES pages(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_frames_page ON frames(page_id);
+-- 编组内排序（不影响画布的全局 sort_order）
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS page_sort INT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_frames_page_sort ON frames(page_id, page_sort);
 
 CREATE TABLE IF NOT EXISTS nodes (
   id           BIGSERIAL PRIMARY KEY,  -- 自增，ORDER BY id 即插入顺序，保证 z-order

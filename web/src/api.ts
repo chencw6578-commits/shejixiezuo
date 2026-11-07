@@ -168,12 +168,27 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     }),
-  deletePage: (fileId: string, pageId: string) =>
-    request<{ ok: boolean }>(`/api/files/${fileId}/pages/${pageId}`, { method: 'DELETE' }),
+  deletePage: (fileId: string, pageId: string, mode: 'dissolve' | 'content' = 'dissolve') =>
+    request<{ ok: boolean; deletedFrames?: number }>(
+      `/api/files/${fileId}/pages/${pageId}${mode === 'content' ? '?mode=content' : ''}`,
+      { method: 'DELETE' }
+    ),
   moveFrameToPage: (fileId: string, frameId: string, pageId: string | null) =>
     request<{ ok: boolean }>(`/api/files/${fileId}/frames/${frameId}/page`, {
       method: 'PATCH',
       body: JSON.stringify({ pageId }),
+    }),
+  /** 批量移入编组（追加到末尾；pageId 传 null 移出为未分组） */
+  moveFramesToPage: (fileId: string, frameIds: string[], pageId: string | null) =>
+    request<{ ok: boolean; moved: number }>(`/api/files/${fileId}/frames/page`, {
+      method: 'PATCH',
+      body: JSON.stringify({ frameIds, pageId }),
+    }),
+  /** 编组内排序：frameIds 为目标编组的完整顺序（同时完成跨组移动） */
+  reorderFrames: (fileId: string, pageId: string | null, frameIds: string[]) =>
+    request<{ ok: boolean; ordered: number }>(`/api/files/${fileId}/frames/order`, {
+      method: 'PATCH',
+      body: JSON.stringify({ frameIds, pageId }),
     }),
 
   renameFile: (fileId: string, name: string) =>
