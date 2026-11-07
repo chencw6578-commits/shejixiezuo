@@ -303,7 +303,10 @@ export default function Canvas({
       onMouseDown={(e) => {
         // 点击空白取消选中（拖拽后不触发）；空格平移模式下不触发；评论模式下改为在点击处起草评论
         if (spaceRef.current) return;
-        if ((e.target as HTMLElement).dataset.bg !== undefined) {
+        const target = e.target as HTMLElement;
+        // 画板外的画布空白（容器本身）与画板/图片空白都算“点空白”
+        const onBlank = target.dataset.bg !== undefined || target === e.currentTarget;
+        if (onBlank) {
           if (!dragMovedRef.current) {
             if (commentMode) openDraftAt(e.clientX, e.clientY);
             else onSelect(null);

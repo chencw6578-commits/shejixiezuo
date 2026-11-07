@@ -8,6 +8,12 @@ interface Props {
   frame: FrameDetail['frame'];
   nodeCount: number;
   selected: LayerNode | null;
+  /** 坐标：absolute = 相对画板左上角；relative = 相对父级图层（顶层图层与 absolute 相同） */
+  coords?: {
+    absolute: { x: number; y: number };
+    relative: { x: number; y: number };
+    parentName: string | null;
+  } | null;
   fileId: string;
   readOnly?: boolean;
 }
@@ -50,7 +56,7 @@ function ColorRow({ color, label }: { color: ParsedColor; label?: string }) {
   );
 }
 
-export default function PropertyPanel({ frame, nodeCount, selected, fileId, readOnly = false }: Props) {
+export default function PropertyPanel({ frame, nodeCount, selected, coords, fileId, readOnly = false }: Props) {
   const [format, setFormat] = useState('PNG');
   const [scale, setScale] = useState('2');
   const [exporting, setExporting] = useState(false);
@@ -92,7 +98,11 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
           <div className="kv"><span>尺寸</span><b>{Math.round(frame.width)} × {Math.round(frame.height)}</b></div>
           <div className="kv"><span>图层数</span><b>{nodeCount}</b></div>
         </div>
-        <p className="prop-hint">点击画布或左侧图层层树中的图层，查看尺寸、颜色、字体；标记了切图的图层可导出。</p>
+        <p className="prop-hint">
+          {nodeCount === 0
+            ? '该画板是位图缩略图，文件里没有 Figma 节点数据，因此拿不到单个元素的宽高、填充、字体等属性（不会显示伪造数值）。需要逐元素看属性时，请用 Figma 文件链接导入并同步节点（服务端需配置 FIGMA_TOKEN）。'
+            : '点击画布中的元素即可查看宽高、坐标、颜色、字体等属性；标记了切图的元素可导出。'}
+        </p>
       </div>
     );
   }
@@ -139,8 +149,30 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
       <div className="prop-section">
         <h3>位置与尺寸</h3>
         <div className="kv-grid">
-          <div className="kv"><span>X</span><CopyChip text={String(selected.x)}><b>{selected.x}</b></CopyChip></div>
-          <div className="kv"><span>Y</span><CopyChip text={String(selected.y)}><b>{selected.y}</b></CopyChip></div>
+          <div className="kv">
+            <span>X（相对父级）</span>
+            <CopyChip text={String(coords?.relative.x ?? selected.x)}>
+              <b>{coords?.relative.x ?? selected.x}</b>
+            </CopyChip>
+          </div>
+          <div className="kv">
+            <span>Y（相对父级）</span>
+            <CopyChip text={String(coords?.relative.y ?? selected.y)}>
+              <b>{coords?.relative.y ?? selected.y}</b>
+            </CopyChip>
+          </div>
+          <div className="kv">
+            <span>X（绝对）</span>
+            <CopyChip text={String(coords?.absolute.x ?? selected.x)}>
+              <b>{coords?.absolute.x ?? selected.x}</b>
+            </CopyChip>
+          </div>
+          <div className="kv">
+            <span>Y（绝对）</span>
+            <CopyChip text={String(coords?.absolute.y ?? selected.y)}>
+              <b>{coords?.absolute.y ?? selected.y}</b>
+            </CopyChip>
+          </div>
           <div className="kv"><span>W</span><CopyChip text={String(selected.width)}><b>{selected.width}</b></CopyChip></div>
           <div className="kv"><span>H</span><CopyChip text={String(selected.height)}><b>{selected.height}</b></CopyChip></div>
           {p.cornerRadius !== undefined && p.cornerRadius > 0 && (
@@ -149,8 +181,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
           {p.cornerRadii && (
             <div className="kv"><span>四角</span><b>{p.cornerRadii.join(' / ')}</b></div>
           )}
-          <div className="kv"><span>透明度</span><b>{Math.round(p.opacity * 100)}%</b></div>
+          <div className="kv"><span>透明度</span><b>{Math.round((p.opacity ?? 1) * 100)}%</b></div>
         </div>
+        <p className="dim small hint">
+          {coords?.parentName
+            ? `相对父级「${coords.parentName}」；绝对坐标为相对画板左上角。`
+            : '该图层位于画板顶层，相对父级与绝对坐标相同。'}
+        </p>
       </div>
 
       {/* 文本 */}

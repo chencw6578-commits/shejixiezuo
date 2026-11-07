@@ -4,7 +4,6 @@ import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
 import type { FrameDetail, FrameRow, LayerNode, PageRow } from '../types';
 import Canvas from '../viewer/Canvas';
 import { DeviceOptionGroups, findDevice, type DevicePreset } from '../viewer/devices';
-import LayerTree from '../viewer/LayerTree';
 import PropertyPanel from '../viewer/PropertyPanel';
 import CommentDrawer from '../viewer/CommentDrawer';
 import { useDialogs } from '../components/Dialogs';
@@ -391,6 +390,18 @@ export default function ViewerPage() {
 
   const nodeById = new Map(data.nodes.map((n: LayerNode) => [n.node_id, n]));
   const selected = selectedId ? nodeById.get(selectedId) ?? null : null;
+  // 图层坐标：库里的 x/y 已归一为「相对画板左上角」，相对父级则再减去父级原点
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  const parent = selected?.parent_id ? nodeById.get(selected.parent_id) : undefined;
+  const selectedCoords = selected
+    ? {
+        absolute: { x: selected.x, y: selected.y },
+        relative: parent
+          ? { x: round2(selected.x - parent.x), y: round2(selected.y - parent.y) }
+          : { x: selected.x, y: selected.y },
+        parentName: parent?.name ?? null,
+      }
+    : null;
 
   // 页面（编组）内的画板列表：支持多选、拖拽排序、跨组移动
   const renderFrameList = (list: FrameRow[], showEmptyHint: boolean) => (
@@ -496,7 +507,7 @@ export default function ViewerPage() {
         <button
           className="icon-btn mobile-only"
           onClick={() => setDrawer(drawer === 'left' ? 'none' : 'left')}
-          title="画板与图层"
+          title="页面列表"
         >
           ☰
         </button>
@@ -553,7 +564,7 @@ export default function ViewerPage() {
           <div className="drawer-backdrop mobile-only" onClick={() => setDrawer('none')} />
         )}
         <aside className={`sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
-          <div className="sidebar-section">
+          <div className="sidebar-section sidebar-grow">
             <h3>
               页面
               <span className="sidebar-hspacer" />
@@ -564,8 +575,11 @@ export default function ViewerPage() {
               )}
             </h3>
             <div className="page-list">
-              {!readOnly && selectedFrames.size > 0 && (
-                <div className="page-selection-bar">
+              {!readOnly && (
+                <div
+                  className={`page-selection-bar${selectedFrames.size ? '' : ' is-empty'}`}
+                  aria-hidden={selectedFrames.size === 0}
+                >
                   <span className="selection-count">已选 {selectedFrames.size}</span>
                   <button onClick={() => void createGroupFromSelection()}>新建编组</button>
                   <select
@@ -656,17 +670,6 @@ export default function ViewerPage() {
               })()}
             </div>
           </div>
-          <div className="sidebar-section sidebar-grow">
-            <h3>图层层树</h3>
-            <LayerTree
-              nodes={data.nodes}
-              frameNodeId={data.frame.node_id}
-              selectedId={selectedId}
-              hoverId={hoverId}
-              onSelect={onSelect}
-              onHover={onHover}
-            />
-          </div>
         </aside>
 
         <Canvas
@@ -703,6 +706,7 @@ export default function ViewerPage() {
             frame={data.frame}
             nodeCount={data.nodes.length}
             selected={selected}
+            coords={selectedCoords}
             fileId={fileId}
             readOnly={readOnly}
           />

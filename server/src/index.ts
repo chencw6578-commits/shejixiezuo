@@ -45,8 +45,19 @@ if (config.storage.driver === 'local') {
 // 托管前端产物（web/dist 存在时单端口运行；compose 部署走 nginx 亦可并存）
 const webDist = path.resolve(process.cwd(), '../web/dist');
 if (existsSync(webDist)) {
-  app.use(express.static(webDist, { index: 'index.html' }));
+  app.use(
+    express.static(webDist, {
+      index: 'index.html',
+      setHeaders: (res, filePath) => {
+        // index.html 必须每次回源校验，避免用户普通刷新仍拿到旧 bundle；
+        // 静态资源文件名带内容 hash，可长期缓存
+        if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        else res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    })
+  );
   app.get(/^\/(?!api|storage).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(webDist, 'index.html'));
   });
   console.log(`[server] serving web from ${webDist}`);
