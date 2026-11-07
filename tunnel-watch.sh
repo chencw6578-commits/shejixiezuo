@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 公网隧道守护：经代理 SSH 连 localhost.run，断线 3 秒后自动重连
-# 新地址实时记录在 /workspace/tunnel.log，取最后一行 https://xxx.lhr.life 即当前入口
+# 注意：localhost.run 匿名模式每次重连会换随机域名，新地址取 tunnel.log 中最后一个 https://xxx.lhr.life
 export PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 while true; do
