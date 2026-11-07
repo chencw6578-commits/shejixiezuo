@@ -55,6 +55,8 @@ export default function ProjectCanvasPage() {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState('');
+  // 小屏左侧画板列表抽屉
+  const [drawer, setDrawer] = useState<'none' | 'left'>('none');
 
   const setZoom = useCallback((z: number) => {
     zoomRef.current = clamp(z, MIN_ZOOM, MAX_ZOOM);
@@ -369,9 +371,27 @@ export default function ProjectCanvasPage() {
 
   const parsing = files.filter((f) => f.status === 'pending' || f.status === 'processing').length;
 
+  // 左侧画板列表：按设计稿分组（保持画布上的文件分组顺序）
+  const frameGroups = useMemo(() => {
+    const groups: { fileId: string; fileName: string; items: ProjectFrameRow[] }[] = [];
+    for (const f of frames) {
+      const g = groups.find((x) => x.fileId === f.file_id);
+      if (g) g.items.push(f);
+      else groups.push({ fileId: f.file_id, fileName: f.file_name, items: [f] });
+    }
+    return groups;
+  }, [frames]);
+
   return (
     <div className="viewer">
       <header className="topbar">
+        <button
+          className="icon-btn mobile-only"
+          onClick={() => setDrawer(drawer === 'left' ? 'none' : 'left')}
+          title="画板列表"
+        >
+          ☰
+        </button>
         <Link to="/" className="back">← 返回首页</Link>
         <h1>📁 {project?.name ?? '…'}</h1>
         {project?.team_name && (
@@ -442,9 +462,41 @@ export default function ProjectCanvasPage() {
         <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
       </header>
 
-      <div
-        className={`canvas-container${spacePan ? ' space-pan' : ''}`}
-        ref={containerRef}
+      <div className="viewer-body">
+        {drawer !== 'none' && (
+          <div className="drawer-backdrop mobile-only" onClick={() => setDrawer('none')} />
+        )}
+        <aside className={`sidebar pcanvas-sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
+          <div className="sidebar-section sidebar-grow">
+            <h3>画板 · {frames.length}</h3>
+            <div className="pcanvas-frame-list">
+              {frameGroups.map((g) => (
+                <div key={g.fileId} className="pcanvas-file-group">
+                  <div className="pcanvas-file-name" title={g.fileName}>{g.fileName}</div>
+                  {g.items.map((f) => (
+                    <button
+                      key={f.id}
+                      className="pcanvas-frame-item"
+                      title={`${g.fileName} / ${f.name} · 点击打开画板详情`}
+                      onClick={() => {
+                        setDrawer('none');
+                        navigate(`/files/${f.file_id}/frames/${f.id}`);
+                      }}
+                    >
+                      <span className="pcanvas-frame-item-name">{f.name}</span>
+                      <em>{Math.round(f.width)}×{Math.round(f.height)}</em>
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {frames.length === 0 && <p className="page-empty-hint dim">暂无画板，先导入设计稿</p>}
+            </div>
+          </div>
+        </aside>
+
+        <div
+          className={`canvas-container${spacePan ? ' space-pan' : ''}`}
+          ref={containerRef}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           panRef.current = { x: e.clientX, y: e.clientY };
@@ -507,6 +559,7 @@ export default function ProjectCanvasPage() {
           <span className="zoom-value">{Math.round(zoom * 100)}%</span>
           <button onClick={() => zoomCenter(zoom * 1.25)} title="放大">+</button>
           <button onClick={fit} title="适应画布">适应</button>
+        </div>
         </div>
       </div>
 
