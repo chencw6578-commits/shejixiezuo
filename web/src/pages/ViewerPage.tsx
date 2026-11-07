@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
 import type { FrameDetail, FrameRow, LayerNode, PageRow } from '../types';
 import Canvas from '../viewer/Canvas';
+import { DeviceOptionGroups, findDevice, type DevicePreset } from '../viewer/devices';
 import LayerTree from '../viewer/LayerTree';
 import PropertyPanel from '../viewer/PropertyPanel';
 import CommentDrawer from '../viewer/CommentDrawer';
@@ -65,6 +66,21 @@ export default function ViewerPage() {
   const [dragFrameId, setDragFrameId] = useState<string | null>(null);
   const [dropPageId, setDropPageId] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState('');
+  // 设备预览（iOS / Android / Web 尺寸规范），记住上次选择
+  const [device, setDevice] = useState<DevicePreset | null>(() => {
+    try {
+      const id = (JSON.parse(localStorage.getItem('designhub-device') ?? 'null') as { id?: string } | null)?.id;
+      return id ? findDevice(id) : null;
+    } catch {
+      return null;
+    }
+  });
+  const pickDevice = (id: string) => {
+    const d = id ? findDevice(id) : null;
+    setDevice(d);
+    if (d) localStorage.setItem('designhub-device', JSON.stringify({ id: d.id }));
+    else localStorage.removeItem('designhub-device');
+  };
   useEffect(() => {
     api
       .getFile(fileId)
@@ -240,6 +256,15 @@ export default function ViewerPage() {
             </p>
           </div>
         </details>
+        <select
+          className="device-select"
+          value={device?.id ?? ''}
+          onChange={(e) => pickDevice(e.target.value)}
+          title="设备预览：设计稿按所选设备的尺寸规范显示（屏框内为第一屏可视区）"
+        >
+          <option value="">设备预览：跟随设计</option>
+          {DeviceOptionGroups()}
+        </select>
         <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
         <button
           className="icon-btn mobile-only"
@@ -394,6 +419,7 @@ export default function ViewerPage() {
           onSelect={onSelect}
           onHover={onHover}
           onZoomChange={setZoom}
+          device={device}
           comments={comments}
           commentMode={commentMode}
           onAddComment={onAddComment}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameDetail, LayerNode } from '../types';
 import type { CommentItem } from '../api';
+import type { DevicePreset } from './devices';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -10,6 +11,8 @@ interface Props {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   onZoomChange: (z: number) => void;
+  /** 设备预览：按所选设备尺寸规范显示（null=跟随设计） */
+  device?: DevicePreset | null;
   comments?: CommentItem[];
   commentMode?: boolean;
   onAddComment?: (draft: { x: number; y: number; nodeId?: string }, body: string) => Promise<void>;
@@ -47,7 +50,7 @@ function gapBetween(a: Rect, b: Rect): { dir: 'h' | 'v'; gap: number; x1: number
 }
 
 export default function Canvas({
-  frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange,
+  frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange, device = null,
   comments = [], commentMode = false, onAddComment, onOpenComment,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,11 +112,26 @@ export default function Canvas({
     [setZoom, setPanXY]
   );
 
-  // 首次加载自适应
+  // 设备预览状态：设备屏（可视区）应用时的缩放，后续手动缩放按比例跟随
+  const deviceZoomRef = useRef(1);
+
+  /** 按设备规范显示：画板宽度缩放到设备逻辑宽度（1 逻辑单位 = 1 屏幕像素），屏框与画板左上角对齐 */
+  const applyDevice = useCallback(() => {
+    if (!device) return;
+    const el = containerRef.current;
+    const z = clamp(device.width / frame.width, MIN_ZOOM, MAX_ZOOM);
+    deviceZoomRef.current = z;
+    setZoom(z);
+    const vw = el?.clientWidth ?? window.innerWidth;
+    const vh = el?.clientHeight ?? window.innerHeight;
+    setPanXY((vw - device.width) / 2, (vh - device.height) / 2);
+  }, [device, frame.width, setZoom, setPanXY]);
+
+  // 首次加载自适应；选中设备时改为按设备规范显示
   useEffect(() => {
-    const t = setTimeout(fit, 50);
+    const t = setTimeout(() => (device ? applyDevice() : fit()), 50);
     return () => clearTimeout(t);
-  }, [frame.id, fit]);
+  }, [frame.id, fit, applyDevice, device]);
 
   // ctrl/meta + 滚轮缩放（以光标为锚点）
   useEffect(() => {
@@ -302,6 +320,29 @@ export default function Canvas({
         {frame.thumb_url && (
           <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
         )}
+
+        {/* 设备预览屏框：与画板左上角对齐，宽度=画板显示宽（即设备逻辑宽），高度=设备屏高 × 缩放比例 */}
+        {device &&
+          (() => {
+            const ratio = zoom / (deviceZoomRef.current || 1);
+            const sh = device.height * ratio;
+            return (
+              <>
+                <div
+                  className="device-screen"
+                  style={{
+                    width: W,
+                    height: sh,
+                    borderWidth: lw,
+                    borderRadius: device.width * 0.06 * ratio,
+                  }}
+                />
+                <div className="device-screen-label" style={{ top: sh + 10 / zoom, fontSize: fs }}>
+                  {device.name} · {device.width}×{device.height} {device.unit} · @{device.dpr}x 屏
+                </div>
+              </>
+            );
+          })()}
 
         {/* 热区层：按数组顺序渲染，后渲染者在上层，天然符合 Figma z-order */}
         <div className="hotzones" style={{ width: W, height: H }}>

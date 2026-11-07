@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam } from '../api';
 import type { FileDetail, ProjectFrameRow } from '../types';
+import { DeviceOptionGroups, findDevice } from '../viewer/devices';
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   pending: { text: '排队中', cls: 'status-wait' },
@@ -80,6 +81,13 @@ export default function ProjectCanvasPage() {
   useEffect(load, [load]);
 
   // ---------- 剪贴板导入：图片直接成画板；Figma 图层剪贴板解析 figmeta 一键转 API 导入 ----------
+  // 粘贴图片的画板尺寸：自动（图片原始尺寸）或按设备规范（iOS/Android/Web）
+  const [pasteDeviceId, setPasteDeviceId] = useState('');
+  const pasteDeviceRef = useRef('');
+  const pickPasteDevice = (id: string) => {
+    setPasteDeviceId(id);
+    pasteDeviceRef.current = id;
+  };
   const [pasteToast, setPasteToast] = useState<{ kind: 'ok' | 'err' | 'figma'; text: string; url?: string } | null>(null);
   const pasteTimer = useRef<number | null>(null);
   const showToast = useCallback((kind: 'ok' | 'err' | 'figma', text: string, url?: string) => {
@@ -113,8 +121,13 @@ export default function ProjectCanvasPage() {
             img.onerror = () => reject(new Error('图片读取失败'));
             img.src = URL.createObjectURL(blob);
           });
-          const r = await api.uploadImage(blob, projectId, dims.w, dims.h);
-          showToast('ok', `已导入「${r.name}」，画板已出现在画布`);
+          const dev = findDevice(pasteDeviceRef.current);
+          const box = dev ? { w: dev.width, h: dev.height } : dims;
+          const r = await api.uploadImage(blob, projectId, box.w, box.h);
+          showToast(
+            'ok',
+            `已导入「${r.name}」${dev ? `（${dev.name} ${dev.width}×${dev.height}${dev.unit}）` : ''}，画板已出现在画布`
+          );
           load();
         } catch (err) {
           showToast('err', err instanceof Error ? err.message : '导入失败');
@@ -386,6 +399,18 @@ export default function ProjectCanvasPage() {
             <button className="upload-btn" disabled={!!uploading} onClick={() => fileInputRef.current?.click()}>
               {uploading || '⬆ 上传 Sketch / PSD 文件'}
             </button>
+            <div className="paste-device-row">
+              <label className="dim small" htmlFor="paste-device">粘贴图片的画板尺寸</label>
+              <select
+                id="paste-device"
+                value={pasteDeviceId}
+                onChange={(e) => pickPasteDevice(e.target.value)}
+                title="选择设备后，粘贴导入的图片画板将按该设备尺寸规范创建（图片按填充裁切）"
+              >
+                <option value="">自动（按图片原始尺寸）</option>
+                {DeviceOptionGroups()}
+              </select>
+            </div>
             <div className="file-list">
               <h2>项目内设计稿</h2>
               {files.length === 0 && <p className="empty">还没有设计稿，先导入或上传一份</p>}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
+import { EXPORT_SCALES, PLATFORM_LABEL, type PlatformId } from './devices';
 import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
 
 interface Props {
@@ -307,8 +308,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, fileId, read
             <option>PNG</option><option>SVG</option><option>JPG</option><option>PDF</option>
           </select>
           <select value={scale} onChange={(e) => setScale(e.target.value)} disabled={isSvg}>
-            <option value="0.5">0.5x</option><option value="1">1x</option>
-            <option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
+            {(Object.keys(EXPORT_SCALES) as PlatformId[]).map((pid) => (
+              <optgroup key={pid} label={PLATFORM_LABEL[pid]}>
+                {EXPORT_SCALES[pid].map((s) => (
+                  <option key={`${pid}-${s.value}`} value={s.value}>{s.label}</option>
+                ))}
+              </optgroup>
+            ))}
           </select>
           <button className="primary-btn" disabled={exporting} onClick={() => doExport()}>
             {exporting ? '导出中…' : '导出切图'}
