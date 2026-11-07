@@ -809,4 +809,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .frame-item { display: flex; align-items: center; gap: 6px; }
 .frame-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frame-item.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(13, 153, 255, 0.1); }
+/* 多选选中态：与左侧复选框保持一致，蓝色底 + 左侧强调条 */
+.frame-item.is-selected { background: rgba(13, 153, 255, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
+.frame-item.is-selected.is-current { background: rgba(13, 153, 255, 0.3); }
 

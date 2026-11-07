@@ -68,6 +68,10 @@ export default function ViewerPage() {
   const [dropPageId, setDropPageId] = useState<string | null>(null);
   const [dropFrameHint, setDropFrameHint] = useState<{ frameId: string; position: 'before' | 'after' } | null>(null);
   const [selectedFrames, setSelectedFrames] = useState<Set<string>>(new Set());
+  // 区间连选（Shift）的起点：上一次点击的画板
+  const selectionAnchorRef = useRef<string | null>(null);
+  // 是否刚发生过拖拽：用于屏蔽拖拽结束后的双击打开
+  const draggedRef = useRef(false);
   const [zipBusy, setZipBusy] = useState('');
   const dialogs = useDialogs();
   const navigate = useNavigate();
@@ -275,13 +279,52 @@ export default function ViewerPage() {
     clearDrag();
   };
 
-  const toggleSelect = (id: string) =>
+  // ---------- 侧栏多选：Ctrl/⌘ 切换、Shift 连选、普通点击单选 ----------
+  // macOS 上 Ctrl+点击 = 右键，所以 mac 只认 ⌘
+  const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+  const hasToggleModifier = (e: { ctrlKey: boolean; metaKey: boolean }) =>
+    isMac ? e.metaKey : e.ctrlKey || e.metaKey;
+
+  /** 侧栏当前“视觉顺序”里的画板 id：只算展开的编组，未分组排最后 */
+  const visibleFrameIds = () => {
+    const ids: string[] = [];
+    for (const pg of pages) {
+      if (!openPages.has(pg.id)) continue;
+      pageFrames(pg.id).forEach((f) => ids.push(f.id));
+    }
+    if (openPages.has('__none')) pageFrames(null).forEach((f) => ids.push(f.id));
+    return ids;
+  };
+
+  const toggleSelect = (id: string) => {
+    selectionAnchorRef.current = id;
     setSelectedFrames((s) => {
       const n = new Set(s);
       if (n.has(id)) n.delete(id);
       else n.add(id);
       return n;
     });
+  };
+
+  /** Shift：从锚点到当前项的区间（按可见顺序，可跨编组）；替换原有选择 */
+  const selectRangeTo = (id: string) => {
+    const order = visibleFrameIds();
+    const anchor = selectionAnchorRef.current;
+    const a = anchor ? order.indexOf(anchor) : -1;
+    const b = order.indexOf(id);
+    if (a < 0 || b < 0) {
+      setSelectedFrames(new Set([id]));
+      return;
+    }
+    const [from, to] = a <= b ? [a, b] : [b, a];
+    setSelectedFrames(new Set(order.slice(from, to + 1)));
+  };
+
+  /** 普通单击：只选中当前这张（清空其它），不打开画板 */
+  const plainSelect = (id: string) => {
+    selectionAnchorRef.current = id;
+    setSelectedFrames(new Set([id]));
+  };
 
   const togglePage = (key: string) =>
     setOpenPages((s) => {
@@ -356,18 +399,51 @@ export default function ViewerPage() {
         <Link
           key={f.id}
           className={`frame-item ${f.id === frameId ? 'is-current' : ''} ${
-            dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''
-          }`}
+            selectedFrames.has(f.id) ? 'is-selected' : ''
+          } ${dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''}`}
           to={`/files/${fileId}/frames/${f.id}`}
-          title={f.name}
+          title={`${f.name}（双击打开，Ctrl/⌘ 点击多选，Shift 连选）`}
           draggable={!readOnly}
+          onClick={(e) => {
+            if (readOnly) return; // 只读：保持原来的单击直接打开
+            if (e.shiftKey) {
+              e.preventDefault();
+              selectRangeTo(f.id);
+              return;
+            }
+            if (hasToggleModifier(e)) {
+              e.preventDefault();
+              toggleSelect(f.id);
+              return;
+            }
+            // 普通单击只选中，不跳转；打开由双击触发
+            e.preventDefault();
+            plainSelect(f.id);
+          }}
+          onDoubleClick={(e) => {
+            if (readOnly) return;
+            // 修饰键点击、刚拖拽过都不算“双击打开”
+            if (e.shiftKey || hasToggleModifier(e) || draggedRef.current) {
+              e.preventDefault();
+              return;
+            }
+            e.preventDefault();
+            navigate(`/files/${fileId}/frames/${f.id}`);
+          }}
           onDragStart={(e) => {
+            draggedRef.current = true;
             setDragFrameId(f.id);
             setDropFrameHint(null);
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', f.id);
           }}
-          onDragEnd={clearDrag}
+          onDragEnd={() => {
+            clearDrag();
+            // 拖拽结束后短时间内屏蔽双击判定
+            window.setTimeout(() => {
+              draggedRef.current = false;
+            }, 300);
+          }}
           onDragOver={(e) => {
             if (readOnly || !dragFrameId) return;
             e.preventDefault();
@@ -397,6 +473,11 @@ export default function ViewerPage() {
                 e.preventDefault();
                 e.stopPropagation();
                 toggleSelect(f.id);
+              }}
+              onDoubleClick={(e) => {
+                // 双击复选框只做两次切换，不触发画板打开
+                e.preventDefault();
+                e.stopPropagation();
               }}
             />
           )}
