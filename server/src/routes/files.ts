@@ -295,6 +295,34 @@ filesRouter.delete('/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+/** 重命名设计稿 */
+filesRouter.patch('/:id', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const name = typeof (req.body as { name?: unknown })?.name === 'string' ? (req.body as { name: string }).name.trim() : '';
+  if (!name || name.length > 100) return res.status(400).json({ error: '名称需为 1-100 个字符' });
+  const { rows } = await pool.query(
+    'UPDATE design_files SET name = $1 WHERE id = $2::uuid RETURNING id, name',
+    [name, req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: '文件不存在' });
+  res.json(rows[0]);
+});
+
+/** 重命名画板 */
+filesRouter.patch('/:id/frames/:frameId', async (req, res) => {
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const name = typeof (req.body as { name?: unknown })?.name === 'string' ? (req.body as { name: string }).name.trim() : '';
+  if (!name || name.length > 100) return res.status(400).json({ error: '名称需为 1-100 个字符' });
+  const { rows } = await pool.query(
+    'UPDATE frames SET name = $1 WHERE id = $2::uuid AND file_id = $3::uuid RETURNING id, name',
+    [name, req.params.frameId, req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: '画板不存在' });
+  res.json(rows[0]);
+});
+
 // ---------- 原型交互与静态原型导出（必须注册在 /:id 之前，避免路径被吞） ----------
 
 /** 配置/清除图层「原型交互：跳转到某画板」 */

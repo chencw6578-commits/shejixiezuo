@@ -82,6 +82,28 @@ export default function ProjectCanvasPage() {
 
   useEffect(load, [load]);
 
+  // ---------- 重命名：设计稿 / 画板（画布标题与侧栏均可触发） ----------
+  const renameFile = async (fileId: string, current: string) => {
+    const name = window.prompt('修改设计稿名称', current);
+    if (!name?.trim() || name.trim() === current) return;
+    try {
+      await api.renameFile(fileId, name.trim());
+      load();
+    } catch (e) {
+      showToast('err', e instanceof Error ? e.message : '重命名失败');
+    }
+  };
+  const renameFrame = async (f: ProjectFrameRow) => {
+    const name = window.prompt('修改画板名称', f.name);
+    if (!name?.trim() || name.trim() === f.name) return;
+    try {
+      await api.renameFrame(f.file_id, f.id, name.trim());
+      load();
+    } catch (e) {
+      showToast('err', e instanceof Error ? e.message : '重命名失败');
+    }
+  };
+
   // ---------- 剪贴板导入：图片直接成画板；Figma 图层剪贴板解析 figmeta 一键转 API 导入 ----------
   // 粘贴图片的画板尺寸：自动（图片原始尺寸）或按设备规范（iOS/Android/Web）
   const [pasteDeviceId, setPasteDeviceId] = useState('');
@@ -472,7 +494,18 @@ export default function ProjectCanvasPage() {
             <div className="pcanvas-frame-list">
               {frameGroups.map((g) => (
                 <div key={g.fileId} className="pcanvas-file-group">
-                  <div className="pcanvas-file-name" title={g.fileName}>{g.fileName}</div>
+                  <div className="pcanvas-file-name" title={g.fileName}>
+                    <span className="pcanvas-file-name-text">{g.fileName}</span>
+                    {!readOnly && (
+                      <button
+                        className="pcanvas-edit-btn"
+                        title="重命名设计稿"
+                        onClick={() => void renameFile(g.fileId, g.fileName)}
+                      >
+                        ✏
+                      </button>
+                    )}
+                  </div>
                   {g.items.map((f) => (
                     <button
                       key={f.id}
@@ -485,6 +518,18 @@ export default function ProjectCanvasPage() {
                     >
                       <span className="pcanvas-frame-item-name">{f.name}</span>
                       <em>{Math.round(f.width)}×{Math.round(f.height)}</em>
+                      {!readOnly && (
+                        <span
+                          className="pcanvas-edit-btn"
+                          title="重命名画板"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void renameFrame(f);
+                          }}
+                        >
+                          ✏
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -546,7 +591,29 @@ export default function ProjectCanvasPage() {
                   </div>
                 )}
                 <span className="pcanvas-label">
-                  {f.file_name} / {f.name}
+                  <span
+                    className={`pcanvas-label-part ${readOnly ? '' : 'is-editable'}`}
+                    title={readOnly ? f.file_name : '点击修改设计稿名称'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (dragMovedRef.current || readOnly) return;
+                      void renameFile(f.file_id, f.file_name);
+                    }}
+                  >
+                    {f.file_name}
+                  </span>
+                  {' / '}
+                  <span
+                    className={`pcanvas-label-part ${readOnly ? '' : 'is-editable'}`}
+                    title={readOnly ? f.name : '点击修改画板名称'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (dragMovedRef.current || readOnly) return;
+                      void renameFrame(f);
+                    }}
+                  >
+                    {f.name}
+                  </span>
                   <em> {Math.round(f.width)}×{Math.round(f.height)}</em>
                 </span>
               </div>

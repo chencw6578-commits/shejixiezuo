@@ -176,6 +176,18 @@ export const api = {
       body: JSON.stringify({ pageId }),
     }),
 
+  renameFile: (fileId: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/files/${fileId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
+  renameFrame: (fileId: string, frameId: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/files/${fileId}/frames/${frameId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
   // ---- 团队 ----
   listTeams: () =>
     request<{ id: string; name: string; project_count: string; created_at: string }[]>('/api/teams'),
