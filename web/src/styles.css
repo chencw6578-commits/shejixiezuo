@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #1e1e1e;
   --bg-panel: #2c2c2c;
   --bg-elevated: #383838;
@@ -265,7 +265,7 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .sidebar-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 12px 8px; }
 .sidebar-grow { flex: 1; overflow-y: auto; border-bottom: none; }
 /* 左侧只保留页面列表：占满整个侧栏高度 */
-.sidebar-grow .page-list { max-height: none; }
+.sidebar-grow .page-list { max-height: none; overflow: visible; }
 
 .frame-list { max-height: 180px; overflow-y: auto; padding: 0 6px; }
 .frame-item {
@@ -802,20 +802,45 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .dlg-btn.is-block { width: 100%; text-align: left; padding: 9px 12px; }
 .dlg-btn:disabled { opacity: 0.5; cursor: default; }
 
-/* ---------- 页面（编组）多选与拖拽排序 ---------- */
-.page-selection-bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  margin: 0 0 4px; padding: 6px 8px; border-radius: 4px;
-  background: rgba(13, 153, 255, 0.12); font-size: 12px;
+/* ---------- 侧栏：设计稿 → 编组 → 画板 三层树 ---------- */
+.file-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.file-row {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
 }
-.page-selection-bar .selection-count { color: var(--accent); font-weight: 600; flex: none; }
-/* 未选中时仍占位（隐藏而非移除），避免选中后工具条插入把画板行整体下推、导致双击落空 */
-.page-selection-bar.is-empty { visibility: hidden; pointer-events: none; }
-.page-selection-bar button { padding: 2px 8px; font-size: 11px; border-radius: 4px; }
-.page-selection-bar select {
-  padding: 2px 4px; font-size: 11px; border-radius: 4px;
-  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text);
+.file-row:hover { background: var(--bg-elevated); }
+.file-group.is-current-file > .file-row { color: var(--accent); }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-children {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-left: 12px; padding-left: 8px; border-left: 1px solid var(--border);
 }
+.file-children .page-row { padding-left: 8px; }
+.sidebar-grow { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+.sidebar-grow::-webkit-scrollbar { width: 8px; }
+.sidebar-grow::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 4px; }
+.sidebar-grow::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+.sidebar-grow::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- 右键菜单（轻量编组入口） ---------- */
+.ctx-backdrop { position: fixed; inset: 0; z-index: 40; }
+.ctx-menu {
+  position: fixed; z-index: 41; min-width: 200px; max-width: 250px; max-height: 340px;
+  overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 1px;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.ctx-menu button {
+  display: block; width: 100%; text-align: left; padding: 7px 10px;
+  background: none; border: none; border-radius: 5px;
+  color: var(--text); font-size: 12px; cursor: pointer;
+}
+.ctx-menu button:hover:not(:disabled) { background: rgba(13, 153, 255, 0.16); color: var(--accent); }
+.ctx-menu button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ctx-title { padding: 6px 10px 2px; font-size: 11px; color: var(--text-dim); }
+.ctx-label { padding: 4px 10px; font-size: 10px; letter-spacing: 0.5px; color: var(--text-dim); }
+.ctx-hint { padding: 0 10px 4px; font-size: 11px; line-height: 1.4; color: #f59e0b; }
+.ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
 .frame-item { display: flex; align-items: center; gap: 6px; padding: 7px 10px; }
 .frame-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frame-item.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(13, 153, 255, 0.1); }

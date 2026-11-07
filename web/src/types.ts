@@ -144,6 +144,7 @@ export interface ProjectPageRow {
   file_id: string;
   name: string;
   sort_order?: number;
+  file_name?: string;
 }
 
 export interface SpecData {

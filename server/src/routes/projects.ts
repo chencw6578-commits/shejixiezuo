@@ -62,16 +62,16 @@ projectsRouter.get('/:id/frames', async (req, res) => {
        FROM frames fr
        JOIN design_files df ON df.id = fr.file_id
        WHERE df.project_id = $1 AND df.status = 'ready'
-       ORDER BY df.created_at, COALESCE(fr.page_sort, -1), fr.sort_order, fr.id`,
+       ORDER BY df.created_at, df.id, COALESCE(fr.page_sort, -1), fr.sort_order, fr.id`,
       [req.params.id]
     )
   ).rows;
   const pages = (
     await pool.query(
-      `SELECT pg.id, pg.file_id, pg.name, pg.sort_order
+      `SELECT pg.id, pg.file_id, pg.name, pg.sort_order, df.name AS file_name
        FROM pages pg JOIN design_files df ON df.id = pg.file_id
        WHERE df.project_id = $1 AND df.status = 'ready'
-       ORDER BY df.created_at, pg.sort_order, pg.created_at`,
+       ORDER BY df.created_at, df.id, pg.sort_order, pg.created_at`,
       [req.params.id]
     )
   ).rows;
