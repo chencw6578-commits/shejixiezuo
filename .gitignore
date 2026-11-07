@@ -7,3 +7,7 @@ dist/
 .DS_Store
 server/storage/
 web/dist/
+.uploads/
+.tunnel_url
+*.tsbuildinfo
+/*.png
