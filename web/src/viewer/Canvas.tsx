@@ -41,6 +41,8 @@ function layerBoxStyle(n: LayerNode, zoom: number): React.CSSProperties {
   const fills = (p.fills ?? []).filter((f) => f.visible);
   const fill = fills.find((f) => f.type === 'solid' || f.type === 'gradient');
   const stroke = (p.strokes ?? []).find((s) => s.visible && s.color);
+  // 有渲染资产（SVG/位图）时形状与填充由资产承载，不再 CSS 近似绘制
+  const hasRender = !!n.render_url;
   const box: React.CSSProperties = {
     position: 'absolute',
     left: n.x * zoom,
@@ -53,11 +55,11 @@ function layerBoxStyle(n: LayerNode, zoom: number): React.CSSProperties {
   const radius = p.cornerRadius ?? 0;
   if (radius > 0) box.borderRadius = radius * zoom;
   else if (n.type === 'ELLIPSE') box.borderRadius = '50%';
-  if (n.type !== 'TEXT' && fill) {
+  if (!hasRender && n.type !== 'TEXT' && fill) {
     if (fill.type === 'solid' && fill.color) box.background = fill.color.rgba;
     else if (fill.type === 'gradient' && fill.css) box.background = fill.css;
   }
-  if (stroke?.color) {
+  if (!hasRender && stroke?.color) {
     box.border = `${Math.max((p.strokeWeight ?? 1) * zoom, 0.5)}px solid ${stroke.color.rgba}`;
   }
   const shadows = (p.effects ?? [])
@@ -415,7 +417,19 @@ export default function Canvas({
                 data-layer-type={n.type}
                 style={{ ...layerBoxStyle(n, zoom), ...(layerTextStyle(n, zoom) ?? {}) }}
               >
-                {n.props?.text?.content ?? null}
+                {n.render_url ? (
+                  <img
+                    src={n.render_url}
+                    alt={n.name}
+                    draggable={false}
+                    style={{
+                      width: '100%', height: '100%', display: 'block',
+                      objectFit: 'fill', pointerEvents: 'none',
+                    }}
+                  />
+                ) : (
+                  n.props?.text?.content ?? null
+                )}
               </div>
             ))}
           </div>

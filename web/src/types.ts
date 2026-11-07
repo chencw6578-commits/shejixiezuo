@@ -98,6 +98,7 @@ export interface LayerNode {
   width: number;
   height: number;
   props: ParsedNodeProps;
+  render_url?: string | null;  // 渲染资产（矢量 SVG / 位图），有则优先替代 CSS 近似
   children?: LayerNode[];
 }
 

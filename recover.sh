@@ -24,18 +24,19 @@ cd /workspace/web
 [ -d node_modules ] || npm install --no-audit --no-fund
 [ -f dist/index.html ] || npm run build
 
-# 3. seed（仅在库为空时）
-ROWS=$(psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM design_files' 2>/dev/null || echo 0)
-if [ "$ROWS" = "0" ]; then
-  echo '[recover] seeding demo data...'
-  cd /workspace/server && npx tsx scripts/seed.ts
-fi
-
-# 4. server（若 3000 未监听则后台拉起）
+# 3. server（启动时 db.ts 自动建表，必须先于 seed）
+PSQL=/usr/lib/postgresql/16/bin/psql
 if ! curl -s -m 2 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
   echo '[recover] starting server...'
   cd /workspace/server
   nohup env DATABASE_URL=$DATABASE_URL PORT=3000 npx tsx src/index.ts >/tmp/server.log 2>&1 &
-  sleep 4
+  for i in $(seq 1 15); do curl -s -m 1 http://127.0.0.1:3000/api/health >/dev/null 2>&1 && break; sleep 1; done
+fi
+
+# 4. seed（仅在库为空时；表已由 server 启动建好）
+ROWS=$([ -x "$PSQL" ] && $PSQL "$DATABASE_URL" -tAc 'SELECT count(*) FROM design_files' 2>/dev/null || echo 0)
+if [ "$ROWS" = "0" ]; then
+  echo '[recover] seeding demo data...'
+  cd /workspace/server && npx tsx scripts/seed.ts
 fi
 curl -s http://127.0.0.1:3000/api/health && echo ' <- server OK'

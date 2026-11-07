@@ -97,10 +97,13 @@ CREATE TABLE IF NOT EXISTS nodes (
   width        REAL NOT NULL,
   height       REAL NOT NULL,
   visible      BOOLEAN NOT NULL DEFAULT TRUE,
-  props        JSONB NOT NULL DEFAULT '{}'::jsonb
+  props        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  render_url   TEXT                   -- 渲染资产（矢量 SVG / 位图），为空则用 CSS 近似绘制
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_frame ON nodes(frame_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_file_node ON nodes(file_id, node_id);
+-- 节点渲染资产（矢量 SVG / 位图），旧库补列
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS render_url TEXT;
 
 CREATE TABLE IF NOT EXISTS comments (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -369,7 +369,7 @@ filesRouter.get('/:id/frames/:frameId', async (req, res) => {
   if (!frame) return res.status(404).json({ error: '画板不存在' });
   const nodes = (
     await pool.query(
-      `SELECT id, node_id, parent_id, name, type, x, y, width, height, props
+      `SELECT id, node_id, parent_id, name, type, x, y, width, height, props, render_url
        FROM nodes WHERE frame_id = $1 ORDER BY id`,
       [req.params.frameId]
     )
