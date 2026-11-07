@@ -735,6 +735,11 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch-create { display: flex; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
 .team-switch-create .compact-input { flex: 1; width: auto; padding: 5px 8px; font-size: 12px; }
 .team-switch-create button { padding: 5px 10px; font-size: 12px; background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 顶栏团队切换器（取代顶部面包屑与侧栏团队下拉） */
+.topbar-team-switch { padding: 0; }
+.topbar-team-switch summary { padding: 4px 8px; border-radius: 8px; gap: 6px; }
+.topbar-team-switch .team-switch-name { flex: none; max-width: 200px; font-size: 13px; }
+.topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
 /* 团队成员 */
 .member-list { list-style: none; max-width: 560px; }
