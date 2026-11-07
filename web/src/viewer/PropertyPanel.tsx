@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
 import { EXPORT_SCALES, PLATFORM_LABEL, type PlatformId } from './devices';
@@ -68,10 +69,14 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
 
   // 原型交互（跳转到画板）
   const [protoFrames, setProtoFrames] = useState<{ id: string; name: string }[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
   useEffect(() => {
     api
       .getFile(fileId)
-      .then((f) => setProtoFrames((f.frames ?? []).map((x) => ({ id: x.id, name: x.name }))))
+      .then((f) => {
+        setProtoFrames((f.frames ?? []).map((x) => ({ id: x.id, name: x.name })));
+        setProjectId(f.project_id ?? null);
+      })
       .catch(() => undefined);
   }, [fileId]);
   const interactionTarget =
@@ -99,9 +104,21 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           <div className="kv"><span>图层数</span><b>{nodeCount}</b></div>
         </div>
         <p className="prop-hint">
-          {nodeCount === 0
-            ? '该画板是位图缩略图，文件里没有 Figma 节点数据，因此拿不到单个元素的宽高、填充、字体等属性（不会显示伪造数值）。需要逐元素看属性时，请用 Figma 文件链接导入并同步节点（服务端需配置 FIGMA_TOKEN）。'
-            : '点击画布中的元素即可查看宽高、坐标、颜色、字体等属性；标记了切图的元素可导出。'}
+          {nodeCount === 0 ? (
+            <>
+              该画板为图片，无结构数据，因此无法逐元素查看宽高、坐标、填充、字体等属性。
+              {projectId ? (
+                <>
+                  {' '}
+                  <Link className="prop-import-link" to={`/projects/${projectId}`}>
+                    导入 Figma 文件
+                  </Link>
+                </>
+              ) : null}
+            </>
+          ) : (
+            '点击画布中的元素即可查看宽高、坐标、颜色、字体等属性；标记了切图的元素可导出。'
+          )}
         </p>
       </div>
     );

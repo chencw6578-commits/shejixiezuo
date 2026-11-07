@@ -29,6 +29,70 @@ interface Rect {
   x: number; y: number; w: number; h: number;
 }
 
+/**
+ * 节点矢量渲染：把 parse.ts / 演示种子共用的 props 映射为渲染样式。
+ * 文本图层的 fills 表示字形颜色而不是背景色，因此这里与 parse.ts 保持同一约定。
+ */
+function layerBoxStyle(n: LayerNode, zoom: number): React.CSSProperties {
+  const p = n.props ?? ({} as LayerNode['props']);
+  const fills = (p.fills ?? []).filter((f) => f.visible);
+  const fill = fills.find((f) => f.type === 'solid' || f.type === 'gradient');
+  const stroke = (p.strokes ?? []).find((s) => s.visible && s.color);
+  const box: React.CSSProperties = {
+    position: 'absolute',
+    left: n.x * zoom,
+    top: n.y * zoom,
+    width: Math.max(0, n.width) * zoom,
+    height: Math.max(0, n.height) * zoom,
+    boxSizing: 'border-box',
+    opacity: p.opacity ?? 1,
+  };
+  const radius = p.cornerRadius ?? 0;
+  if (radius > 0) box.borderRadius = radius * zoom;
+  else if (n.type === 'ELLIPSE') box.borderRadius = '50%';
+  if (n.type !== 'TEXT' && fill) {
+    if (fill.type === 'solid' && fill.color) box.background = fill.color.rgba;
+    else if (fill.type === 'gradient' && fill.css) box.background = fill.css;
+  }
+  if (stroke?.color) {
+    box.border = `${Math.max((p.strokeWeight ?? 1) * zoom, 0.5)}px solid ${stroke.color.rgba}`;
+  }
+  const shadows = (p.effects ?? [])
+    .filter((e) => e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW')
+    .map(
+      (e) =>
+        `${e.type === 'INNER_SHADOW' ? 'inset ' : ''}${(e.offsetX ?? 0) * zoom}px ${(e.offsetY ?? 0) * zoom}px ${(e.radius ?? 0) * zoom}px ${(e.spread ?? 0) * zoom}px ${e.color?.rgba ?? 'rgba(0,0,0,0.25)'}`
+    );
+  if (shadows.length) box.boxShadow = shadows.join(', ');
+  return box;
+}
+
+function layerTextStyle(n: LayerNode, zoom: number): React.CSSProperties | null {
+  const t = n.props?.text;
+  if (!t?.content) return null;
+  const align = (t.alignHorizontal ?? 'LEFT').toUpperCase();
+  return {
+    fontFamily: t.family
+      ? `"${t.family}", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`
+      : undefined,
+    fontSize: (t.size ?? 12) * zoom,
+    fontWeight: t.weight ?? 400,
+    lineHeight: t.lineHeight ? `${t.lineHeight * zoom}px` : undefined,
+    letterSpacing: t.letterSpacing ? `${t.letterSpacing * zoom}px` : undefined,
+    color:
+      t.color?.rgba ??
+      n.props?.fills?.find((f) => f.visible && f.color)?.color?.rgba ??
+      '#1D2129',
+    textAlign: align === 'CENTER' ? 'center' : align === 'RIGHT' ? 'right' : 'left',
+    justifyContent: align === 'CENTER' ? 'center' : align === 'RIGHT' ? 'flex-end' : 'flex-start',
+    display: 'flex',
+    alignItems: t.alignVertical === 'TOP' ? 'flex-start' : t.alignVertical === 'BOTTOM' ? 'flex-end' : 'center',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    overflow: 'visible',
+  };
+}
+
 /** 计算两个矩形的标注间距（仅在另一轴有重叠时），返回线段与数值。 */
 function gapBetween(a: Rect, b: Rect): { dir: 'h' | 'v'; gap: number; x1: number; y1: number; x2: number; y2: number } | null {
   const vOverlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
@@ -278,6 +342,8 @@ export default function Canvas({
 
   const W = frame.width * zoom;
   const H = frame.height * zoom;
+  // 有节点数据 → 节点矢量渲染；否则回退到位图 + 热区（两条路径共用同一套热区命中逻辑）
+  const hasNodes = nodes.length > 0;
   const lw = 1 / zoom; // 视觉恒定 1px
   const fs = 11 / zoom;
 
@@ -320,8 +386,25 @@ export default function Canvas({
         style={{ width: W, height: H, transform: `translate(${pan.x}px, ${pan.y}px)` }}
         ref={artboardRef}
       >
-        {frame.thumb_url && (
-          <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
+        {hasNodes ? (
+          /* 有节点数据：直接按节点渲染矢量视图，像素位置/颜色与属性面板同源 */
+          <div className="artboard-vector" data-render="nodes" aria-hidden="true">
+            {nodes.map((n) => (
+              <div
+                key={n.node_id}
+                data-node-id={n.node_id}
+                data-layer-type={n.type}
+                style={{ ...layerBoxStyle(n, zoom), ...(layerTextStyle(n, zoom) ?? {}) }}
+              >
+                {n.props?.text?.content ?? null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* 无节点数据（纯截图/位图导入）：保留位图底图 + 热区 */
+          frame.thumb_url && (
+            <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
+          )
         )}
 
         {/* 设备预览屏框：与画板左上角对齐，宽度=画板显示宽（即设备逻辑宽），高度=设备屏高 × 缩放比例 */}
@@ -353,6 +436,8 @@ export default function Canvas({
             <div
               key={n.node_id}
               className="hotzone"
+              data-node-id={n.node_id}
+              data-layer-type={n.type}
               style={{ left: n.x * zoom, top: n.y * zoom, width: n.width * zoom, height: n.height * zoom }}
               onMouseEnter={() => onHover(n.node_id)}
               onMouseLeave={() => onHover(null)}

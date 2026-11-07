@@ -405,10 +405,12 @@ export default function ViewerPage() {
 
   // 页面（编组）内的画板列表：支持多选、拖拽排序、跨组移动
   const renderFrameList = (list: FrameRow[], showEmptyHint: boolean) => (
-    <div className="page-frames">
+    <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
       {list.map((f) => (
         <Link
           key={f.id}
+          role={readOnly ? undefined : 'option'}
+          aria-selected={readOnly ? undefined : selectedFrames.has(f.id)}
           className={`frame-item ${f.id === frameId ? 'is-current' : ''} ${
             selectedFrames.has(f.id) ? 'is-selected' : ''
           } ${dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''}`}
@@ -473,25 +475,6 @@ export default function ViewerPage() {
             void dropOnFrame(f, position);
           }}
         >
-          {!readOnly && (
-            <input
-              type="checkbox"
-              className="page-frame-check"
-              checked={selectedFrames.has(f.id)}
-              draggable={false}
-              title="选中该画板，可用于批量编组"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleSelect(f.id);
-              }}
-              onDoubleClick={(e) => {
-                // 双击复选框只做两次切换，不触发画板打开
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-            />
-          )}
           <span className="frame-item-name">{f.name}</span>
         </Link>
       ))}

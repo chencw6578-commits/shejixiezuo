@@ -128,11 +128,22 @@ export interface ProjectFrameRow {
   file_id: string;
   name: string;
   page_name: string | null;
+  page_id?: string | null;
+  page_sort?: number;
+  sort_order?: number;
   width: number;
   height: number;
   thumb_url: string | null;
   file_name: string;
   source: string;
+}
+
+/** 项目画板页里的编组（pages 表，属于某份设计稿） */
+export interface ProjectPageRow {
+  id: string;
+  file_id: string;
+  name: string;
+  sort_order?: number;
 }
 
 export interface SpecData {

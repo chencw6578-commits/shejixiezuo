@@ -100,7 +100,7 @@ filesRouter.get('/:id', async (req, res) => {
 // ---------- 页面（画板编组） ----------
 
 /** 页面回填：历史上按 page_name 存储的画板，首次访问时物化成 pages 记录并挂接 */
-const ensurePages = async (fileId: string) => {
+export const ensurePages = async (fileId: string) => {
   await pool.query(
     `INSERT INTO pages (file_id, name, sort_order)
      SELECT DISTINCT $1::uuid, page_name, 0 FROM frames

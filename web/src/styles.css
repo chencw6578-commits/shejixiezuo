@@ -332,6 +332,11 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .canvas-container:active { cursor: grabbing; }
 .artboard { position: absolute; left: 0; top: 0; margin: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 8px 40px rgba(0,0,0,0.5); }
 .artboard-img { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; object-fit: cover; }
+/* 有节点数据时的矢量渲染层（节点位置/颜色与属性面板同源） */
+.artboard-vector {
+  position: absolute; inset: 0; overflow: hidden; background: #fff;
+  pointer-events: none; user-select: none;
+}
 
 /* 设备预览（iOS / Android / Web 尺寸规范） */
 .device-select { max-width: 200px; font-size: 12px; padding: 5px 8px; }
@@ -381,6 +386,8 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 }
 .prop-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prop-hint { color: var(--text-dim); padding: 8px 14px 20px; line-height: 1.6; }
+.prop-import-link { color: var(--accent); text-decoration: none; font-weight: 600; }
+.prop-import-link:hover { text-decoration: underline; }
 
 .prop-section { padding: 10px 14px 14px; border-bottom: 1px solid var(--border); }
 .prop-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 10px; }
@@ -809,11 +816,35 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
   padding: 2px 4px; font-size: 11px; border-radius: 4px;
   background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text);
 }
-.page-frame-check { flex: none; margin: 0; cursor: pointer; accent-color: var(--accent); }
-.frame-item { display: flex; align-items: center; gap: 6px; }
+.frame-item { display: flex; align-items: center; gap: 6px; padding: 7px 10px; }
 .frame-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frame-item.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(13, 153, 255, 0.1); }
-/* 多选选中态：与左侧复选框保持一致，蓝色底 + 左侧强调条 */
+/* 多选选中态：蓝色底 + 左侧强调条（无复选框，靠高亮表达） */
 .frame-item.is-selected { background: rgba(13, 153, 255, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
 .frame-item.is-selected.is-current { background: rgba(13, 153, 255, 0.3); }
+
+/* ---------- 项目画板页：编组 + 多选 ---------- */
+.pcanvas-frame.is-selected {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(13, 153, 255, 0.3), 0 8px 40px rgba(0, 0, 0, 0.5);
+  z-index: 4;
+}
+.pcanvas-frame.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -2px; }
+.pcanvas-group-band {
+  position: absolute; left: 0; display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 8px 0 2px; white-space: nowrap;
+  font-size: 12px; color: var(--text-dim); cursor: pointer;
+}
+.pcanvas-group-band:hover { color: var(--text); }
+.pcanvas-group-band.is-droptarget {
+  outline: 1.5px dashed var(--accent); outline-offset: -1px; border-radius: 4px;
+  background: rgba(13, 153, 255, 0.12);
+}
+.pcanvas-band-name { color: var(--text); font-weight: 600; }
+.pcanvas-band-count { color: var(--text-dim); font-size: 11px; }
+.pcanvas-frame-item { padding: 6px 10px; }
+.pcanvas-frame-item.is-selected { background: rgba(13, 153, 255, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
+.pcanvas-frame-item.is-drop-target {
+  outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(13, 153, 255, 0.1);
+}
+.page-row.is-selected { background: rgba(13, 153, 255, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
 
