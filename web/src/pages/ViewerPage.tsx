@@ -624,7 +624,8 @@ export default function ViewerPage() {
           draggable={!readOnly}
           onClick={(e) => {
             if (readOnly) {
-              navigate(`/files/${f.file_id}/frames/${f.id}`);
+              // 查看器内切换画板用 replace：不往历史里堆画板详情，浏览器后退可回项目页
+              navigate(`/files/${f.file_id}/frames/${f.id}`, { replace: true });
               return;
             }
             if (e.shiftKey) {
@@ -647,7 +648,7 @@ export default function ViewerPage() {
               return;
             }
             e.preventDefault();
-            navigate(`/files/${f.file_id}/frames/${f.id}`);
+            navigate(`/files/${f.file_id}/frames/${f.id}`, { replace: true });
           }}
           onDragStart={(e) => {
             draggedRef.current = true;
@@ -701,20 +702,20 @@ export default function ViewerPage() {
     </div>
   );
 
-  // 返回上一页：历史栈为首个记录时回项目页，避免退回空白页
+  // 返回：固定回当前项目的画板列表页，不走历史栈（历史里可能是一串画板详情）
   const goBack = () => {
-    const idx = (window.history.state as { idx?: number } | null)?.idx;
-    if (typeof idx !== 'number' || idx <= 0) {
-      navigate(file?.project_id ? `/projects/${file.project_id}` : '/', { replace: true });
+    const projectId = file?.project_id;
+    if (!projectId) {
+      navigate('/', { replace: true });
       return;
     }
-    navigate(-1);
+    navigate(`/projects/${projectId}`, { replace: true });
   };
 
   return (
     <div className="viewer">
       <header className="topbar">
-        <button className="icon-btn" onClick={goBack} title="返回上一页" aria-label="返回上一页">
+        <button className="icon-btn" onClick={goBack} title="返回项目画板列表" aria-label="返回项目画板列表">
           <ArrowLeft />
         </button>
         <h1><Folder /> {file?.name ?? '…'}</h1>
