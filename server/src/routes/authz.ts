@@ -1,16 +1,19 @@
 import { pool } from '../db.js';
+import { getSessionUser } from '../auth.js';
 import type { Request } from 'express';
 
 export type MemberRole = 'owner' | 'admin' | 'collaborator';
 
 /**
  * 解析当前请求身份在指定团队中的角色。
- * 身份通过请求头 X-Member-Email 传递（前端「以此身份体验」写入 localStorage 后自动附带）；
- * 未携带邮箱 = 所有者，拥有最高权限。
+ * 身份优先取登录会话 cookie（邮箱注册登录），其次兼容 X-Member-Email 头
+ * （前端「以此身份体验」写入 localStorage 后自动附带）；
+ * 均未携带 = 所有者，拥有最高权限。
  */
 export async function teamRole(teamId: string | null | undefined, req: Request): Promise<MemberRole> {
   if (!teamId) return 'owner';
-  const email = (req.header('x-member-email') ?? '').trim().toLowerCase();
+  const session = getSessionUser(req);
+  const email = (session?.email ?? req.header('x-member-email') ?? '').trim().toLowerCase();
   if (!email) return 'owner';
   const { rows } = await pool.query<{ role: string }>(
     'SELECT role FROM team_members WHERE team_id = $1 AND email = $2 LIMIT 1',

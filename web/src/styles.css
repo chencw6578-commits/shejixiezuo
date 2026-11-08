@@ -139,6 +139,49 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .avatar-pop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .avatar-pop-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .avatar-pop-info b { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.auth-logout-btn { margin-top: 4px; width: 100%; color: var(--err); border-color: transparent; }
+.auth-logout-btn:hover { background: rgba(242, 72, 34, 0.08); }
+
+/* ---------- 登录 / 注册页（浅色，与首页一致） ---------- */
+.auth-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(108, 76, 241, 0.14), transparent 60%),
+    radial-gradient(900px 420px at 110% 20%, rgba(13, 153, 255, 0.12), transparent 55%),
+    #f5f6f8;
+  color: #1d2129;
+}
+.auth-card {
+  width: 380px; max-width: 100%; background: #fff;
+  border: 1px solid #e4e7ec; border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(16, 24, 40, 0.10);
+  padding: 30px 30px 22px;
+}
+.auth-brand { text-align: center; margin-bottom: 18px; }
+.auth-brand .logo { font-size: 30px; color: var(--accent); display: block; }
+.auth-brand strong { font-size: 17px; display: block; margin-top: 6px; }
+.auth-brand p { font-size: 12px; color: #6b7280; margin-top: 3px; }
+.auth-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: #f2f4f7; border-radius: 9px; padding: 4px; margin-bottom: 18px;
+}
+.auth-tabs button {
+  border: 0; background: transparent; color: #6b7280;
+  padding: 7px 0; border-radius: 6px; font-weight: 500;
+}
+.auth-tabs button.is-active { background: #fff; color: #1d2129; box-shadow: 0 1px 4px rgba(16, 24, 40, 0.12); }
+.auth-card form { display: flex; flex-direction: column; gap: 12px; }
+.auth-card label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #6b7280; }
+.auth-card input { background: #f7f8fa; border-color: #e4e7ec; color: #1d2129; padding: 9px 12px; }
+.auth-err { color: var(--err); font-size: 12px; margin: 0; }
+.auth-submit {
+  margin-top: 4px; padding: 10px 0; font-weight: 600;
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.auth-submit:hover:not(:disabled) { background: #0b87e0; }
+.auth-foot { text-align: center; margin-top: 14px; font-size: 12px; }
+.auth-foot a { color: var(--accent); text-decoration: none; }
 @media (max-width: 640px) {
   .avatar-name, .avatar-menu .caret { display: none; }
   .topbar-crumb { font-size: 12px; }

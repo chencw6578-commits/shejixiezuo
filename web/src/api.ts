@@ -89,7 +89,30 @@ export interface CommentItem {
   created_at: string;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+}
+
 export const api = {
+  // ---------- 登录注册 ----------
+  register: (email: string, password: string, name?: string) =>
+    request<AuthUser>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    }),
+
+  login: (email: string, password: string) =>
+    request<AuthUser>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+
+  me: () => request<AuthUser>('/api/auth/me'),
+
   /** 服务端是否配置了统一 Figma 令牌（只看 true/false，不含令牌本身） */
   figmaImportStatus: () => request<{ configured: boolean }>('/api/import/figma/status'),
 
