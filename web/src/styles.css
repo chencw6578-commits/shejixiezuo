@@ -233,12 +233,28 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   align-items: center; justify-content: center; gap: 8px; cursor: default; text-align: center;
 }
 .import-panel { width: 340px; padding: 14px; }
-.import-panel .import-box { margin-bottom: 10px; }
+.import-panel .import-box { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 .import-panel .import-box input { padding: 8px 10px; font-size: 13px; }
 .import-panel .upload-btn { width: 100%; }
 .import-panel .file-list { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .import-panel .file-list h2 { font-size: 12px; }
 .import-panel .file-list li { padding: 6px 0; }
+
+/* Figma 导入：可折叠高级选项 + 禁用说明 + 错误提示 */
+.import-advanced { flex: 1 0 100%; font-size: 12px; }
+.import-advanced summary { cursor: pointer; color: var(--text-dim); user-select: none; }
+.import-advanced[open] summary { margin-bottom: 8px; }
+.import-advanced-tip { margin: 0 0 8px; font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+.import-advanced input { width: 100%; padding: 8px 10px; font-size: 12px; }
+.import-hint {
+  flex: 1 0 100%; margin: 0; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  color: #b45309; background: #fffaeb; border: 1px solid #fde68a; border-radius: 6px;
+}
+.import-error {
+  flex: 1 0 100%; margin: 0; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  color: #b42318; background: #fef3f2; border: 1px solid #fda29b; border-radius: 6px;
+  word-break: break-word;
+}
 
 .import-box { display: flex; gap: 8px; }
 .import-box input { flex: 1; padding: 12px 14px; font-size: 14px; }

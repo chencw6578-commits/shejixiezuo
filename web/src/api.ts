@@ -80,10 +80,13 @@ export interface CommentItem {
 }
 
 export const api = {
-  importFile: (url: string, projectId?: string) =>
-    request<{ id: string; name: string }>('/api/files', {
+  /** 服务端是否配置了统一 Figma 令牌（只看 true/false，不含令牌本身） */
+  figmaImportStatus: () => request<{ configured: boolean }>('/api/import/figma/status'),
+
+  importFile: (url: string, projectId?: string, token?: string) =>
+    request<{ id: string; name: string; nodeId?: string | null; frameCount?: number }>('/api/files', {
       method: 'POST',
-      body: JSON.stringify({ url, projectId }),
+      body: JSON.stringify({ url, projectId, token: token?.trim() || undefined }),
     }),
 
   /** 上传 .sketch / .psd 文件导入（可指定所属项目） */

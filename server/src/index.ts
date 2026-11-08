@@ -2,7 +2,7 @@ import express from 'express';
 import compression from 'compression';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { config } from './config.js';
+import { config, isFigmaConfigured } from './config.js';
 import { initDb } from './db.js';
 import { filesRouter } from './routes/files.js';
 import { assetsRouter } from './routes/assets.js';
@@ -23,6 +23,11 @@ app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, queue: queueDepth() });
+});
+
+// Figma 导入能力探测：只告诉前端服务端有没有统一令牌，绝不返回令牌内容
+app.get('/api/import/figma/status', (_req, res) => {
+  res.json({ configured: isFigmaConfigured() });
 });
 
 app.use('/api/files', filesRouter);

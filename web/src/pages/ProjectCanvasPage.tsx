@@ -170,6 +170,11 @@ export default function ProjectCanvasPage() {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState('');
+  // 服务端统一 Figma 令牌是否就绪（null = 探测中/探测失败）
+  const [figmaConfigured, setFigmaConfigured] = useState<boolean | null>(null);
+  // 高级选项：用户个人令牌（仅本次导入使用，不落库、不写 localStorage）
+  const [personalToken, setPersonalToken] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   // 小屏左侧画板列表抽屉
   const [drawer, setDrawer] = useState<'none' | 'left'>('none');
   // 画布底色（localStorage，按用户，跨项目共用）
@@ -1687,14 +1692,26 @@ export default function ProjectCanvasPage() {
     };
   }, [setPanXY, updatePositions, snapOffset, commitDrag, savePositions]);
 
+  // 打开导入面板时探测服务端是否配置了统一令牌（只拿 true/false，不含令牌）
+  useEffect(() => {
+    if (!importOpen) return;
+    let alive = true;
+    api.figmaImportStatus()
+      .then((r) => { if (alive) setFigmaConfigured(Boolean(r.configured)); })
+      .catch(() => { if (alive) setFigmaConfigured(null); });
+    return () => { alive = false; };
+  }, [importOpen]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim() || busy || !projectId) return;
+    if (figmaConfigured === false && !personalToken.trim()) return;
     setBusy(true);
     setError('');
     try {
-      const { id } = await api.importFile(url.trim(), projectId);
+      const { id } = await api.importFile(url.trim(), projectId, personalToken);
       setUrl('');
+      setPersonalToken('');
       setImportOpen(false);
       navigate(`/files/${id}`);
     } catch (err) {
@@ -1814,9 +1831,35 @@ export default function ProjectCanvasPage() {
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://www.figma.com/design/xxxxx/文件名"
               />
-              <button type="submit" disabled={busy || !url.trim()}>
+              <button
+                type="submit"
+                disabled={busy || !url.trim() || (figmaConfigured === false && !personalToken.trim())}
+              >
                 {busy ? '导入中…' : '导入'}
               </button>
+              {figmaConfigured === false && !personalToken.trim() && (
+                <p className="import-hint">
+                  服务端未配置统一令牌：请展开「高级选项」填入你的个人 Figma 令牌后再导入。
+                </p>
+              )}
+              <details
+                className="import-advanced"
+                open={advancedOpen}
+                onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+              >
+                <summary>高级选项</summary>
+                <p className="import-advanced-tip">
+                  仅当文件不是公开可查看时需要：用你自己的个人令牌（需 file_content:read 权限）。令牌只用于本次导入，不会保存到浏览器。
+                </p>
+                <input
+                  value={personalToken}
+                  onChange={(e) => setPersonalToken(e.target.value)}
+                  placeholder="figd_…（个人 Figma 令牌）"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </details>
+              {error && <p className="import-error">{error}</p>}
             </form>
             <input ref={fileInputRef} type="file" accept=".sketch,.psd" hidden onChange={onUpload} />
             <button className="upload-btn" disabled={!!uploading} onClick={() => fileInputRef.current?.click()}>

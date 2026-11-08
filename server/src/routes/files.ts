@@ -1,15 +1,75 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { pool } from '../db.js';
-import { parseFileKey, getFileMeta } from '../figma/client.js';
-import { enqueueImport } from '../jobs/importFile.js';
 import { isFigmaConfigured } from '../config.js';
+import { FigmaApiError, getFileMeta, parseFigmaUrl } from '../figma/client.js';
+import { enqueueImport, fetchImportData } from '../jobs/importFile.js';
 import { editGuard, fileTeamId } from './authz.js';
 
 export const filesRouter = Router();
 
-/** 导入 Figma 文件（可指定所属项目） */
+const ROUTE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 校验路径里的 UUID；不合法时直接返回 400 JSON，避免 Postgres uuid 转换抛未捕获异常 */
+function badUuid(res: Response, ...values: string[]): boolean {
+  if (values.some((v) => !ROUTE_UUID_RE.test(v))) {
+    res.status(400).json({ error: '非法的 ID 格式：路径参数必须是 UUID' });
+    return true;
+  }
+  return false;
+}
+
+/** 把 Figma 错误映射成具体、可操作的提示（不包含令牌或响应体） */
+function respondFigmaError(res: Response, err: unknown) {
+  if (err instanceof FigmaApiError) {
+    // 先区分「令牌问题」与「文件权限问题」，避免把令牌错误说成文件未公开
+    if (/invalid token|token.*(invalid|expired)/i.test(err.detail)) {
+      return res.status(401).json({
+        error: 'Figma 令牌无效或已过期：请检查服务端 FIGMA_TOKEN，或在导入弹窗「高级选项」里填你自己的个人令牌',
+      });
+    }
+    if (/scope/i.test(err.detail)) {
+      return res.status(401).json({
+        error:
+          'Figma 令牌权限不足：当前令牌缺少 file_content:read 权限，请重新生成令牌（或在「高级选项」填有该权限的个人令牌）',
+      });
+    }
+    switch (err.status) {
+      case 401:
+        return res.status(401).json({
+          error: 'Figma 令牌无效或已过期：请检查服务端 FIGMA_TOKEN，或在导入弹窗「高级选项」里填你自己的个人令牌',
+        });
+      case 403:
+        return res.status(403).json({
+          error:
+            '该 Figma 文件不可访问（403）：请在 Figma 分享设置里改为「任何知道链接的人可查看」，或展开「高级选项」填入有权限的个人令牌',
+        });
+      case 404:
+        return res.status(404).json({
+          error:
+            '找不到该 Figma 文件或指定画板（404）：请确认链接完整正确，并确认 Figma 分享设置为「任何知道链接的人可查看」',
+        });
+      case 429:
+        return res.status(429).json({ error: 'Figma 接口限流（429），请稍后重试' });
+      default:
+        return res.status(502).json({ error: `Figma 接口请求失败（${err.status}），请稍后重试` });
+    }
+  }
+  const name = (err as { name?: string } | null)?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return res.status(504).json({ error: '请求 Figma 超时（20s），请检查网络后重试' });
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return res.status(502).json({ error: `导入失败：${message}` });
+}
+
+/**
+ * 导入 Figma 文件。
+ * body: { url, projectId?, token? }
+ * - url 支持 /design/:key、/file/:key，可带 ?node-id=（- 转 :）
+ * - token 为用户个人令牌（可选）；缺省时用服务端 FIGMA_TOKEN
+ */
 filesRouter.post('/', async (req, res) => {
-  const { url, projectId } = req.body ?? {};
+  const { url, projectId, token } = req.body ?? {};
   let teamId: string | null = null;
   if (projectId) {
     const p = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [projectId]);
@@ -18,31 +78,54 @@ filesRouter.post('/', async (req, res) => {
   }
   const denied = await editGuard(teamId, req);
   if (denied) return res.status(403).json({ error: denied });
-  if (!isFigmaConfigured()) {
-    return res.status(503).json({ error: '服务端未配置 FIGMA_TOKEN，请先在 .env 中设置' });
+
+  const rawUrl = typeof url === 'string' ? url.trim() : '';
+  if (!rawUrl) {
+    return res.status(400).json({ error: '请粘贴 Figma 文件链接，例如 https://www.figma.com/design/xxxxx/文件名' });
   }
-  const figmaKey = typeof url === 'string' ? parseFileKey(url) : null;
-  if (!figmaKey) {
-    return res.status(400).json({ error: '无法识别的 Figma 链接，请粘贴形如 https://www.figma.com/design/... 的链接' });
+  const parsed = parseFigmaUrl(rawUrl);
+  if (!parsed) {
+    return res.status(400).json({
+      error:
+        '无法识别的链接：这不是 Figma 文件链接，或缺少 file key（应形如 https://www.figma.com/design/xxxxx/文件名）',
+    });
   }
-  let name = figmaKey;
-  let version: string | null = null;
+
+  const userToken = typeof token === 'string' ? token.trim() : '';
+  if (!userToken && !isFigmaConfigured()) {
+    return res.status(503).json({
+      error: '服务端未配置 Figma 令牌：请展开「高级选项」填入你自己的个人令牌后再导入',
+    });
+  }
+
+  let prefetched;
   try {
-    const meta = await getFileMeta(figmaKey);
-    name = meta.name;
-    version = meta.version ?? null;
+    prefetched = await fetchImportData(parsed.key, {
+      nodeId: parsed.nodeId,
+      token: userToken || undefined,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return res.status(502).json({ error: `获取 Figma 文件失败：${message}` });
+    return respondFigmaError(res, err);
   }
 
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO design_files (figma_key, name, version, status, project_id) VALUES ($1, $2, $3, 'pending', $4) RETURNING id`,
-    [figmaKey, name, version, projectId ?? null]
+    `INSERT INTO design_files (figma_key, name, version, status, project_id)
+     VALUES ($1, $2, $3, 'pending', $4) RETURNING id`,
+    [parsed.key, prefetched.name, prefetched.version, projectId ?? null]
   );
   const id = rows[0].id;
-  void enqueueImport(id, figmaKey);
-  res.json({ id, name, status: 'pending' });
+  void enqueueImport(id, parsed.key, {
+    nodeId: parsed.nodeId,
+    token: userToken || undefined,
+    prefetched,
+  });
+  res.json({
+    id,
+    name: prefetched.name,
+    status: 'pending',
+    nodeId: parsed.nodeId,
+    frameCount: prefetched.frames.length,
+  });
 });
 
 /** 文件列表（支持 ?projectId= 过滤；无参数返回未归属项目的文件） */
@@ -223,6 +306,7 @@ const resolveMoveTarget = async (fileId: string, pageId: string | null) => {
 
 /** 移动画板到页面（pageId 传 null 表示移出为未分组） */
 filesRouter.patch('/:id/frames/:frameId/page', async (req, res) => {
+  if (badUuid(res, req.params.id, req.params.frameId)) return;
   const denied = await editGuard(await fileTeamId(req.params.id), req);
   if (denied) return res.status(403).json({ error: denied });
   const pageId = (req.body as { pageId?: string | null }).pageId ?? null;
@@ -359,6 +443,8 @@ filesRouter.patch('/:id/frames/order', async (req, res) => {
 
 /** 画板详情（含全部图层，平铺，客户端组树） */
 filesRouter.get('/:id/frames/:frameId', async (req, res) => {
+  // 非法 UUID 直接 400：避免把脏参数传给 Postgres 触发未捕获异常导致进程退出
+  if (badUuid(res, req.params.id, req.params.frameId)) return;
   const frame = (
     await pool.query(
       `SELECT id, file_id, node_id, name, page_name, page_id, page_sort, width, height, thumb_url
@@ -395,8 +481,7 @@ filesRouter.post('/:id/sync', async (req, res) => {
       return res.json({ updated: false, version: meta.version });
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return res.status(502).json({ error: `获取 Figma 文件失败：${message}` });
+    return respondFigmaError(res, err);
   }
   await pool.query("UPDATE design_files SET status = 'pending', error = NULL WHERE id = $1", [file.id]);
   void enqueueImport(file.id, file.figma_key);
@@ -478,6 +563,7 @@ filesRouter.patch('/:id', async (req, res) => {
 
 /** 重命名画板 */
 filesRouter.patch('/:id/frames/:frameId', async (req, res) => {
+  if (badUuid(res, req.params.id, req.params.frameId)) return;
   const denied = await editGuard(await fileTeamId(req.params.id), req);
   if (denied) return res.status(403).json({ error: denied });
   const name = typeof (req.body as { name?: unknown })?.name === 'string' ? (req.body as { name: string }).name.trim() : '';
@@ -492,6 +578,7 @@ filesRouter.patch('/:id/frames/:frameId', async (req, res) => {
 
 /** 删除画板（nodes / comments 由外键级联删除） */
 filesRouter.delete('/:id/frames/:frameId', async (req, res) => {
+  if (badUuid(res, req.params.id, req.params.frameId)) return;
   const denied = await editGuard(await fileTeamId(req.params.id), req);
   if (denied) return res.status(403).json({ error: denied });
   const { rowCount } = await pool.query(

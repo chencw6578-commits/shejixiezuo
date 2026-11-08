@@ -1,20 +1,19 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
 import { enqueue } from '../queue.js';
-import { downloadImage, getImages, getFile, type FileResponse } from '../figma/client.js';
-import { parseFile, thumbScale } from '../figma/parse.js';
+import {
+  downloadImage,
+  getFile,
+  getFileDepth,
+  getImages,
+  getNodes,
+  FigmaApiError,
+  type FigmaNode,
+} from '../figma/client.js';
+import { isArtboardType, parseFile, parseNodeSubtree, thumbScale, type ParsedFrame } from '../figma/parse.js';
+import { config } from '../config.js';
 import { getStorage } from '../storage/index.js';
 import { batchInsert } from '../util/batchInsert.js';
-
-interface FrameRow {
-  nodeId: string;
-  name: string;
-  pageName: string;
-  width: number;
-  height: number;
-  sortOrder: number;
-  layers: unknown[];
-}
 
 const CONTENT_TYPES: Record<string, string> = {
   png: 'image/png',
@@ -23,11 +22,34 @@ const CONTENT_TYPES: Record<string, string> = {
   pdf: 'application/pdf',
 };
 
-async function updateStatus(
-  fileId: string,
-  status: string,
-  error?: string
-) {
+/** 一次导入所需的上下文：可选节点（链接里的 node-id）与用户个人令牌 */
+export interface ImportOptions {
+  nodeId?: string | null;
+  /** 用户个人令牌；为空时用服务端 FIGMA_TOKEN */
+  token?: string;
+  /** POST 预检阶段已经拉好并解析完的结果：直接落库，避免二次请求 Figma */
+  prefetched?: PrefetchedImport;
+}
+
+/** 一次导入的解析结果 */
+export interface PrefetchedImport {
+  name: string;
+  version: string | null;
+  frames: ParsedFrame[];
+  raw: unknown;
+}
+
+/** 把令牌从错误信息里抹掉，保证日志/数据库里不出现完整令牌 */
+function sanitize(message: string, userToken?: string): string {
+  const tokens = [(config.figmaToken ?? '').trim(), (userToken ?? '').trim()];
+  let out = message;
+  for (const t of tokens) {
+    if (t && t.length >= 8) out = out.split(t).join('***');
+  }
+  return out;
+}
+
+async function updateStatus(fileId: string, status: string, error?: string) {
   await pool.query('UPDATE design_files SET status = $2, error = $3 WHERE id = $1', [
     fileId,
     status,
@@ -35,88 +57,173 @@ async function updateStatus(
   ]);
 }
 
-async function processImport(fileId: string, figmaKey: string): Promise<void> {
+/**
+ * 只请求需要的节点并解析：
+ * - 带 node-id：GET /files/:key/nodes?ids=<nodeId>，解析该子树
+ * - 不带：先 depth=2 拿到页面/画板 id，再 GET nodes?ids=<画板 id>
+ * 任何 Figma 错误都抛出 FigmaApiError，由路由映射成可操作提示。
+ */
+export async function fetchImportData(
+  figmaKey: string,
+  opts: ImportOptions = {}
+): Promise<PrefetchedImport> {
+  const token = (opts.token ?? '').trim() || undefined;
+
+  if (opts.nodeId) {
+    const res = await getNodes(figmaKey, [opts.nodeId], token);
+    const entry = res.nodes?.[opts.nodeId];
+    if (!entry?.document) throw new FigmaApiError(404, '指定画板不存在或不可访问');
+    const doc = entry.document;
+    return {
+      name: res.name || figmaKey,
+      version: res.version ?? null,
+      frames: parseNodeSubtree(doc, doc.name || figmaKey),
+      raw: { name: res.name, version: res.version, nodes: { [opts.nodeId]: doc } },
+    };
+  }
+
+  // 先浅拉一层（页面 + 页面下一层画板/SECTION），只把真正需要的画板节点拉全
+  let shallow: { name: string; version: string; document: FigmaNode };
+  try {
+    shallow = await getFileDepth(figmaKey, 2, token);
+  } catch (err) {
+    if (err instanceof FigmaApiError && err.status !== 0) throw err;
+    shallow = await getFile(figmaKey, token);
+  }
+
+  const pages = (shallow.document?.children ?? []).filter(
+    (p) => p.type === 'PAGE' || p.type === 'CANVAS'
+  );
+  const ids: string[] = [];
+  for (const page of pages) {
+    for (const child of page.children ?? []) {
+      if (child.visible === false) continue;
+      // SECTION 自身不是画板，但它的子树里可能有画板，整段取回后代解析
+      if (child.type === 'SECTION' || isArtboardType(child.type)) ids.push(child.id);
+    }
+  }
+
+  if (!ids.length) {
+    // 没有可识别画板（或结构异常）：退回完整文件，保持原有行为
+    const full = await getFile(figmaKey, token);
+    return {
+      name: full.name,
+      version: full.version ?? null,
+      frames: parseFile(full),
+      raw: full,
+    };
+  }
+
+  const subtree = await getNodes(figmaKey, ids, token);
+  const document: FigmaNode = {
+    ...shallow.document,
+    children: pages.map((page) => ({
+      ...page,
+      children: (page.children ?? []).map((child) => subtree.nodes?.[child.id]?.document ?? child),
+    })),
+  };
+  const synthesized = {
+    name: shallow.name,
+    version: shallow.version ?? '',
+    document,
+  };
+  return {
+    name: shallow.name,
+    version: shallow.version ?? null,
+    frames: parseFile(synthesized),
+    raw: synthesized,
+  };
+}
+
+async function processImport(fileId: string, figmaKey: string, opts: ImportOptions = {}): Promise<void> {
   try {
     await updateStatus(fileId, 'processing');
 
-    const file: FileResponse = await getFile(figmaKey);
-    const frames: FrameRow[] = parseFile(file) as FrameRow[];
+    const data: PrefetchedImport = opts.prefetched ?? (await fetchImportData(figmaKey, opts));
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('UPDATE design_files SET raw = $2, version = $3, name = $4 WHERE id = $1', [
-        fileId,
-        JSON.stringify(file),
-        file.version,
-        file.name,
-      ]);
-      await client.query('DELETE FROM frames WHERE file_id = $1', [fileId]);
-
-      if (frames.length > 0) {
-        // 画板
-        await batchInsert(
-          client,
-          `INSERT INTO frames (file_id, node_id, name, page_name, width, height, sort_order)`,
-          frames.map((f) => [fileId, f.nodeId, f.name, f.pageName, f.width, f.height, f.sortOrder])
-        );
-        const { rows } = await client.query<{ id: string; node_id: string }>(
-          'SELECT id, node_id FROM frames WHERE file_id = $1',
-          [fileId]
-        );
-        const frameIdByNode = new Map(rows.map((r) => [r.node_id, r.id]));
-
-        // 图层
-        const nodeRows: unknown[][] = [];
-        for (const f of frames) {
-          const frameId = frameIdByNode.get(f.nodeId);
-          if (!frameId) continue;
-          for (const layer of f.layers as {
-            nodeId: string; parentId: string; name: string; type: string;
-            x: number; y: number; width: number; height: number; props: unknown;
-          }[]) {
-            nodeRows.push([
-              fileId, frameId, layer.nodeId, layer.parentId, layer.name, layer.type,
-              layer.x, layer.y, layer.width, layer.height, true,
-              JSON.stringify(layer.props ?? {}),
-              null,
-            ]);
-          }
-        }
-        if (nodeRows.length > 0) {
-          await batchInsert(
-            client,
-            `INSERT INTO nodes (file_id, frame_id, node_id, parent_id, name, type, x, y, width, height, visible, props, render_url)`,
-            nodeRows
-          );
-        }
-      }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-
-    await generateThumbnails(fileId, figmaKey, frames);
-    await generateNodeRenders(fileId, figmaKey, frames);
+    await writeFrames(fileId, data);
+    await generateThumbnails(fileId, figmaKey, data.frames, opts.token);
+    await generateNodeRenders(fileId, figmaKey, data.frames, opts.token);
     await updateStatus(fileId, 'ready');
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitize(err instanceof Error ? err.message : String(err), opts.token);
     console.error(`[import] file ${fileId} failed:`, message);
     await updateStatus(fileId, 'failed', message).catch(() => {});
     throw err;
   }
 }
 
+/** 把解析结果写入 frames/nodes（事务内替换该文件的画板与节点，失败整体回滚） */
+export async function writeFrames(
+  fileId: string,
+  data: PrefetchedImport
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE design_files SET raw = $2, version = $3, name = $4 WHERE id = $1', [
+      fileId,
+      JSON.stringify(data.raw ?? {}),
+      data.version,
+      data.name,
+    ]);
+    await client.query('DELETE FROM frames WHERE file_id = $1', [fileId]);
+
+    if (data.frames.length > 0) {
+      await batchInsert(
+        client,
+        `INSERT INTO frames (file_id, node_id, name, page_name, width, height, sort_order)`,
+        data.frames.map((f) => [fileId, f.nodeId, f.name, f.pageName, f.width, f.height, f.sortOrder])
+      );
+      const { rows } = await client.query<{ id: string; node_id: string }>(
+        'SELECT id, node_id FROM frames WHERE file_id = $1',
+        [fileId]
+      );
+      const frameIdByNode = new Map(rows.map((r) => [r.node_id, r.id]));
+
+      const nodeRows: unknown[][] = [];
+      for (const f of data.frames) {
+        const frameId = frameIdByNode.get(f.nodeId);
+        if (!frameId) continue;
+        for (const layer of f.layers) {
+          nodeRows.push([
+            fileId, frameId, layer.nodeId, layer.parentId, layer.name, layer.type,
+            layer.x, layer.y, layer.width, layer.height, true,
+            JSON.stringify(layer.props ?? {}),
+            null,
+          ]);
+        }
+      }
+      if (nodeRows.length > 0) {
+        await batchInsert(
+          client,
+          `INSERT INTO nodes (file_id, frame_id, node_id, parent_id, name, type, x, y, width, height, visible, props, render_url)`,
+          nodeRows
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /** 生成画板缩略图（渲染 PNG），按倍率分组调用 images API。 */
-async function generateThumbnails(fileId: string, figmaKey: string, frames: FrameRow[]) {
+async function generateThumbnails(
+  fileId: string,
+  figmaKey: string,
+  frames: ParsedFrame[],
+  userToken?: string
+) {
   if (frames.length === 0) return;
   const storage = await getStorage();
+  const token = (userToken ?? '').trim() || undefined;
 
   // 按导出倍率分组，减少 API 调用
-  const byScale = new Map<number, FrameRow[]>();
+  const byScale = new Map<number, ParsedFrame[]>();
   for (const f of frames) {
     const scale = thumbScale(f.width, f.height);
     const list = byScale.get(scale) ?? [];
@@ -128,7 +235,14 @@ async function generateThumbnails(fileId: string, figmaKey: string, frames: Fram
     // images API 单次 id 数量上限，分块
     for (let i = 0; i < group.length; i += 50) {
       const chunk = group.slice(i, i + 50);
-      const res = await getImages(figmaKey, chunk.map((f) => f.nodeId), 'png', scale);
+      let res;
+      try {
+        res = await getImages(figmaKey, chunk.map((f) => f.nodeId), 'png', scale, token);
+      } catch (err) {
+        // 缩略图失败不影响导入成功
+        console.warn('[import] thumbnails skipped:', sanitize(err instanceof Error ? err.message : String(err), token));
+        return;
+      }
       await Promise.all(
         chunk.map(async (f) => {
           const url = res.images[f.nodeId];
@@ -150,8 +264,12 @@ async function generateThumbnails(fileId: string, figmaKey: string, frames: Fram
 }
 
 /** 提交导入任务。 */
-export function enqueueImport(fileId: string, figmaKey: string): Promise<void> {
-  return enqueue(() => processImport(fileId, figmaKey));
+export function enqueueImport(
+  fileId: string,
+  figmaKey: string,
+  opts: ImportOptions = {}
+): Promise<void> {
+  return enqueue(() => processImport(fileId, figmaKey, opts));
 }
 
 /** 需要 SVG 渲染的矢量类节点：CSS 无法表达形状本身。 */
@@ -164,12 +282,10 @@ interface RenderJob {
 }
 
 /** 挑出 CSS 近似不够的节点：矢量类导 SVG，图片填充导位图。 */
-function collectRenderJobs(frames: FrameRow[]): RenderJob[] {
+function collectRenderJobs(frames: ParsedFrame[]): RenderJob[] {
   const jobs = new Map<string, RenderJob>();
   for (const f of frames) {
-    for (const layer of f.layers as {
-      nodeId: string; type: string; width: number; height: number; props: { hasImageFill?: boolean };
-    }[]) {
+    for (const layer of f.layers) {
       if (SVG_TYPES.has(layer.type)) {
         jobs.set(layer.nodeId, { nodeId: layer.nodeId, format: 'svg', scale: 1 });
       } else if (layer.props?.hasImageFill) {
@@ -189,15 +305,21 @@ function collectRenderJobs(frames: FrameRow[]): RenderJob[] {
  * 生成节点渲染资产：矢量节点导 SVG（无限缩放、自带描边），
  * 图片填充节点按倍率导 PNG 落 storage，写入 nodes.render_url 供前端替代占位框。
  */
-async function generateNodeRenders(fileId: string, figmaKey: string, frames: FrameRow[]) {
+async function generateNodeRenders(
+  fileId: string,
+  figmaKey: string,
+  frames: ParsedFrame[],
+  userToken?: string
+) {
   const jobs = collectRenderJobs(frames);
   if (jobs.length === 0) return;
   const storage = await getStorage();
+  const token = (userToken ?? '').trim() || undefined;
 
   const run = async (format: 'svg' | 'png', scale: number, group: RenderJob[]) => {
     for (let i = 0; i < group.length; i += 50) {
       const chunk = group.slice(i, i + 50);
-      const res = await getImages(figmaKey, chunk.map((j) => j.nodeId), format, scale);
+      const res = await getImages(figmaKey, chunk.map((j) => j.nodeId), format, scale, token);
       await Promise.all(
         chunk.map(async (j) => {
           const url = res.images[j.nodeId];

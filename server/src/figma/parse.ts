@@ -225,6 +225,9 @@ const SELECTABLE = new Set([
 /** 画板类型（页面直系子节点）。 */
 const ARTBOARD_TYPES = new Set(['FRAME', 'COMPONENT', 'INSTANCE', 'GROUP']);
 
+/** 是否画板类节点（供「按节点导入」筛选 id 使用）。 */
+export const isArtboardType = (type: string): boolean => ARTBOARD_TYPES.has(type);
+
 function bbox(node: FigmaNode): Rect | undefined {
   return node.absoluteBoundingBox ?? undefined;
 }
@@ -290,27 +293,60 @@ function parseArtboard(node: FigmaNode, pageName: string, sortOrder: number): Pa
   };
 }
 
+/** 收集一个页面（或容器节点）下的画板；SECTION 内的画板也纳入。 */
+function collectFrames(node: FigmaNode, pageName: string, startOrder = 0): ParsedFrame[] {
+  const frames: ParsedFrame[] = [];
+  let sortOrder = startOrder;
+  const collect = (n: FigmaNode) => {
+    for (const child of n.children ?? []) {
+      if (child.visible === false) continue;
+      if (child.type === 'SECTION') {
+        collect(child); // SECTION 本身不是画板，继续找里面的
+        continue;
+      }
+      if (ARTBOARD_TYPES.has(child.type) && bbox(child)) {
+        frames.push(parseArtboard(child, pageName, sortOrder++));
+      }
+    }
+  };
+  collect(node);
+  return frames;
+}
+
 /** 解析整个文件：页面直系子节点中找画板；SECTION 内的画板也纳入。 */
 export function parseFile(file: FileResponse): ParsedFrame[] {
   const frames: ParsedFrame[] = [];
-  const pages = file.document?.children ?? [];
+  for (const page of file.document?.children ?? []) {
+    // Figma REST 里页面节点的 type 是 CANVAS（兼容历史数据里的 PAGE）
+    if (page.type !== 'PAGE' && page.type !== 'CANVAS') continue;
+    frames.push(...collectFrames(page, page.name, frames.length));
+  }
+  return frames;
+}
 
-  for (const page of pages) {
-    if (page.type !== 'PAGE') continue;
-    let sortOrder = 0;
-    const collect = (node: FigmaNode) => {
-      for (const child of node.children ?? []) {
-        if (child.visible === false) continue;
-        if (child.type === 'SECTION') {
-          collect(child); // SECTION 本身不是画板，继续找里面的
-          continue;
-        }
-        if (ARTBOARD_TYPES.has(child.type) && bbox(child)) {
-          frames.push(parseArtboard(child, page.name, sortOrder++));
-        }
-      }
-    };
-    collect(page);
+/**
+ * 解析「按节点导入」返回的子树：
+ * - PAGE / CANVAS：按页面解析其中的画板
+ * - SECTION：解析其中的画板
+ * - 画板类（FRAME/COMPONENT/INSTANCE/GROUP）：自身即一张画板
+ * - 其他（比如组件集）：把子节点里能当画板的收进来
+ */
+export function parseNodeSubtree(doc: FigmaNode, fallbackPageName: string): ParsedFrame[] {
+  if (doc.type === 'PAGE' || doc.type === 'CANVAS') {
+    return collectFrames(doc, doc.name || fallbackPageName);
+  }
+  if (doc.type === 'SECTION') {
+    return collectFrames(doc, fallbackPageName);
+  }
+  if (ARTBOARD_TYPES.has(doc.type) && bbox(doc)) {
+    return [parseArtboard(doc, fallbackPageName, 0)];
+  }
+  const frames: ParsedFrame[] = [];
+  for (const child of doc.children ?? []) {
+    if (child.visible === false) continue;
+    if (ARTBOARD_TYPES.has(child.type) && bbox(child)) {
+      frames.push(parseArtboard(child, fallbackPageName, frames.length));
+    }
   }
   return frames;
 }
