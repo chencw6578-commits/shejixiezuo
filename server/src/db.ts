@@ -3,6 +3,11 @@ import { config } from './config.js';
 
 export const pool = new Pool({ connectionString: config.databaseUrl, max: 10 });
 
+// 空闲连接上的异步错误（如 PG 偶发 53200）不带走整个进程：记录并丢弃该连接
+pool.on('error', (err) => {
+  console.error('[db] idle client error (connection dropped):', err.message);
+});
+
 const SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -139,6 +144,8 @@ CREATE TABLE IF NOT EXISTS import_tokens (
 CREATE INDEX IF NOT EXISTS idx_import_tokens_team ON import_tokens(team_id);
 -- 令牌作用范围：team=仅创建时的团队；all=可访问全部团队（默认）
 ALTER TABLE import_tokens ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'team';
+-- 撤销已改为硬删除：启动时清理历史遗留的已撤销记录（幂等）
+DELETE FROM import_tokens WHERE revoked_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS assets (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
