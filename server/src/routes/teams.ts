@@ -108,7 +108,7 @@ teamsRouter.get('/:id/import-tokens', async (req, res) => {
   const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [req.params.id]);
   if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
   const { rows } = await pool.query(
-    `SELECT id, prefix, created_at, last_used_at, revoked_at
+    `SELECT id, prefix, scope, created_at, last_used_at, revoked_at
      FROM import_tokens WHERE team_id = $1 ORDER BY created_at DESC LIMIT 50`,
     [req.params.id]
   );
@@ -122,6 +122,7 @@ teamsRouter.post('/:id/import-tokens', async (req, res) => {
   if (denied) return res.status(403).json({ error: denied });
   const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [req.params.id]);
   if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
+  const scope = req.body?.scope === 'team' ? 'team' : 'all';
   const active = await pool.query(
     'SELECT count(*)::int AS n FROM import_tokens WHERE team_id = $1 AND revoked_at IS NULL',
     [req.params.id]
@@ -131,9 +132,9 @@ teamsRouter.post('/:id/import-tokens', async (req, res) => {
   }
   const token = `imp_${randomBytes(24).toString('base64url')}`;
   const { rows } = await pool.query(
-    `INSERT INTO import_tokens (team_id, hash, prefix) VALUES ($1, $2, $3)
-     RETURNING id, prefix, created_at`,
-    [req.params.id, hashToken(token), token.slice(0, 12)]
+    `INSERT INTO import_tokens (team_id, hash, prefix, scope) VALUES ($1, $2, $3, $4)
+     RETURNING id, prefix, scope, created_at`,
+    [req.params.id, hashToken(token), token.slice(0, 12), scope]
   );
   res.status(201).json({ ...rows[0], token });
 });

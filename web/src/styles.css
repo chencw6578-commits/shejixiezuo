@@ -834,6 +834,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .settings-head h2 { margin: 0 0 4px; font-size: 15px; }
 .settings-head p { margin: 0; max-width: 460px; }
 .settings-head .new-project-btn { flex: 0 0 auto; }
+.token-create { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.token-create select { padding: 7px 8px; font-size: 13px; max-width: 150px; }
 .token-once {
   margin-top: 14px; padding: 12px; border: 1px solid rgba(108, 76, 241, 0.35);
   border-radius: 10px; background: rgba(108, 76, 241, 0.06);

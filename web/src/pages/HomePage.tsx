@@ -40,6 +40,8 @@ export default function HomePage() {
   // 团队导入令牌：newToken 只在生成后展示一次
   const [tokens, setTokens] = useState<ImportToken[]>([]);
   const [newToken, setNewToken] = useState('');
+  // 令牌作用范围：默认「全部团队」，插件里可先选团队再选项目
+  const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
   const navigate = useNavigate();
   const dialogs = useDialogs();
 
@@ -97,7 +99,7 @@ export default function HomePage() {
     setBusy(true);
     setError('');
     try {
-      const created = await api.createImportToken(activeTeam);
+      const created = await api.createImportToken(activeTeam, tokenScope);
       setNewToken(created.token);
       loadTokens();
     } catch (err) {
@@ -376,9 +378,19 @@ export default function HomePage() {
                       令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后插件立即失效（401）。
                     </p>
                   </div>
-                  <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>
-                    <Plus /> 生成导入令牌
-                  </button>
+                  <div className="token-create">
+                    <select
+                      value={tokenScope}
+                      aria-label="令牌作用范围"
+                      onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
+                    >
+                      <option value="all">全部团队</option>
+                      <option value="team">仅 {activeTeamName}</option>
+                    </select>
+                    <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>
+                      <Plus /> 生成导入令牌
+                    </button>
+                  </div>
                 </div>
 
                 {newToken && (
@@ -388,7 +400,7 @@ export default function HomePage() {
                       <code>{newToken}</code>
                       <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
                     </div>
-                    <p className="dim small">粘贴到 Figma 插件第 3 步「导入令牌」，之后无法再从网站查看明文。</p>
+                    <p className="dim small">粘贴到 Figma 插件的「导入令牌」输入框，之后无法再从网站查看明文。</p>
                   </div>
                 )}
 
@@ -397,6 +409,9 @@ export default function HomePage() {
                   {tokens.map((t) => (
                     <li key={t.id} className="token-row">
                       <code>{t.prefix}…</code>
+                      <span className={`role-badge ${t.scope === 'all' ? 'admin' : 'collaborator'}`}>
+                        {t.scope === 'all' ? '全部团队' : '单团队'}
+                      </span>
                       <span className="dim small">创建于 {new Date(t.created_at).toLocaleString('zh-CN')}</span>
                       <span className="dim small">
                         {t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : '尚未使用'}

@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS import_tokens (
   revoked_at   TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_import_tokens_team ON import_tokens(team_id);
+-- 令牌作用范围：team=仅创建时的团队；all=可访问全部团队（默认）
+ALTER TABLE import_tokens ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'team';
 
 CREATE TABLE IF NOT EXISTS assets (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

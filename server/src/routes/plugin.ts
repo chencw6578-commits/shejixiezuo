@@ -19,10 +19,14 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** 单次请求最多画板数：位图很大，插件默认逐个上传 */
 const MAX_BOARDS_PER_REQUEST = 12;
 
+/** 令牌作用范围：team=仅创建时的团队；all=创建该令牌的账号下全部团队 */
+type TokenScope = 'all' | 'team';
+
 interface PluginCtx {
   teamId: string;
   teamName: string;
   tokenId: string;
+  scope: TokenScope;
 }
 
 type PluginReq = Request & { pluginCtx?: PluginCtx };
@@ -47,8 +51,13 @@ async function pluginAuth(req: Request, res: Response, next: NextFunction) {
       return res.status(401).json({ error: '导入令牌格式不正确（应以 imp_ 开头）' });
     }
     const hash = createHash('sha256').update(token).digest('hex');
-    const { rows } = await pool.query<{ id: string; team_id: string; team_name: string }>(
-      `SELECT it.id, t.id AS team_id, t.name AS team_name
+    const { rows } = await pool.query<{
+      id: string;
+      team_id: string;
+      team_name: string;
+      scope: string;
+    }>(
+      `SELECT it.id, it.scope, t.id AS team_id, t.name AS team_name
        FROM import_tokens it JOIN teams t ON t.id = it.team_id
        WHERE it.hash = $1 AND it.revoked_at IS NULL LIMIT 1`,
       [hash]
@@ -61,6 +70,7 @@ async function pluginAuth(req: Request, res: Response, next: NextFunction) {
       teamId: rows[0].team_id,
       teamName: rows[0].team_name,
       tokenId: rows[0].id,
+      scope: rows[0].scope === 'all' ? 'all' : 'team',
     };
     next();
   } catch (err) {
@@ -72,13 +82,46 @@ async function pluginAuth(req: Request, res: Response, next: NextFunction) {
 
 pluginRouter.use(pluginAuth);
 
-/** 校验项目属于令牌所在团队 */
-async function projectOfTeam(projectId: string, teamId: string) {
-  const { rows } = await pool.query<{ id: string; name: string }>(
-    'SELECT id, name FROM projects WHERE id = $1 AND team_id = $2',
-    [projectId, teamId]
+/** 未归属团队的伪 ID：team_id IS NULL 的历史项目归到这里（仅「全部团队」令牌可见） */
+const UNASSIGNED_TEAM = 'unassigned';
+
+/** 令牌是否有权访问某个团队 */
+async function teamAccess(
+  rawTeamId: string,
+  ctx: PluginCtx
+): Promise<{ ok: true; teamId: string | null } | { ok: false; status: 404 | 403 }> {
+  if (rawTeamId === UNASSIGNED_TEAM) {
+    return ctx.scope === 'all' ? { ok: true, teamId: null } : { ok: false, status: 403 };
+  }
+  if (!UUID_RE.test(rawTeamId)) return { ok: false, status: 404 };
+  if (ctx.scope === 'team' && rawTeamId !== ctx.teamId) return { ok: false, status: 403 };
+  const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [rawTeamId]);
+  return t.rows[0] ? { ok: true, teamId: rawTeamId } : { ok: false, status: 404 };
+}
+
+/** 项目访问：不存在 404；存在但令牌无权访问 403（不能伪装成空列表） */
+async function projectAccess(
+  projectId: string,
+  ctx: PluginCtx
+): Promise<
+  | { ok: true; project: { id: string; name: string; team_id: string | null } }
+  | { ok: false; status: 404 | 403 }
+> {
+  const { rows } = await pool.query<{ id: string; name: string; team_id: string | null }>(
+    'SELECT id, name, team_id FROM projects WHERE id = $1',
+    [projectId]
   );
-  return rows[0] ?? null;
+  const project = rows[0];
+  if (!project) return { ok: false, status: 404 };
+  if (ctx.scope === 'all') return { ok: true, project };
+  return project.team_id === ctx.teamId ? { ok: true, project } : { ok: false, status: 403 };
+}
+
+/** 越权固定文案：明确是权限问题，而不是「没有数据」 */
+function forbidden(res: Response, what: '团队' | '项目' | '编组') {
+  return res.status(403).json({
+    error: `令牌无权访问该${what}（权限问题）：请在网站「团队设置」重新生成作用范围为「全部团队」的导入令牌`,
+  });
 }
 
 /** 取（或创建）项目下共用的插件导入设计稿 */
@@ -133,24 +176,80 @@ async function ensureGroup(fileId: string, name: string): Promise<{ id: string; 
   return again.rows[0];
 }
 
-/** GET /api/plugin/me → 令牌所属团队 */
+/** GET /api/plugin/me → 令牌所属团队与作用范围 */
 pluginRouter.get('/me', (req, res) => {
   const ctx = ctxOf(req);
-  res.json({ teamId: ctx.teamId, teamName: ctx.teamName });
+  res.json({ teamId: ctx.teamId, teamName: ctx.teamName, scope: ctx.scope });
 });
 
-/** GET /api/plugin/projects → 团队下的项目（id / name / 画板数） */
+const PROJECT_LIST_SQL = `
+  SELECT p.id, p.name, p.team_id,
+         (SELECT count(*)::int FROM frames fr
+          JOIN design_files df ON df.id = fr.file_id
+          WHERE df.project_id = p.id) AS frame_count
+  FROM projects p`;
+
+/** GET /api/plugin/teams → 令牌可访问的团队（id / name / 项目数） */
+pluginRouter.get('/teams', async (req, res) => {
+  try {
+    const ctx = ctxOf(req);
+    const { rows } = await pool.query<{ id: string; name: string; project_count: number }>(
+      `SELECT t.id, t.name,
+              (SELECT count(*)::int FROM projects p WHERE p.team_id = t.id) AS project_count
+       FROM teams t
+       ${ctx.scope === 'team' ? 'WHERE t.id = $1' : ''}
+       ORDER BY t.created_at DESC LIMIT 200`,
+      ctx.scope === 'team' ? [ctx.teamId] : []
+    );
+    // 「全部团队」令牌额外带上未归属团队的历史项目
+    if (ctx.scope === 'all') {
+      const un = await pool.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM projects WHERE team_id IS NULL'
+      );
+      if (un.rows[0].n > 0) {
+        rows.push({ id: UNASSIGNED_TEAM, name: '未归属团队', project_count: un.rows[0].n });
+      }
+    }
+    res.json(rows);
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] teams ${errId}:`, err);
+    res.status(502).json({ error: userFacingFailure(errId) });
+  }
+});
+
+/** GET /api/plugin/teams/:teamId/projects → 指定团队的项目（id / name / 画板数） */
+pluginRouter.get('/teams/:teamId/projects', async (req, res) => {
+  try {
+    const ctx = ctxOf(req);
+    const access = await teamAccess(req.params.teamId, ctx);
+    if (!access.ok) {
+      if (access.status === 403) return forbidden(res, '团队');
+      return res.status(404).json({ error: '团队不存在' });
+    }
+    const { rows } = await pool.query(
+      `${PROJECT_LIST_SQL}
+       WHERE ${access.teamId === null ? 'p.team_id IS NULL' : 'p.team_id = $1'}
+       ORDER BY p.created_at DESC LIMIT 200`,
+      access.teamId === null ? [] : [access.teamId]
+    );
+    res.json(rows);
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] team projects ${errId}:`, err);
+    res.status(502).json({ error: userFacingFailure(errId) });
+  }
+});
+
+/** GET /api/plugin/projects → 兼容旧版：令牌可访问的全部项目 */
 pluginRouter.get('/projects', async (req, res) => {
   try {
     const ctx = ctxOf(req);
     const { rows } = await pool.query(
-      `SELECT p.id, p.name,
-              (SELECT count(*)::int FROM frames fr
-               JOIN design_files df ON df.id = fr.file_id
-               WHERE df.project_id = p.id) AS frame_count
-       FROM projects p WHERE p.team_id = $1
+      `${PROJECT_LIST_SQL}
+       ${ctx.scope === 'team' ? 'WHERE p.team_id = $1' : ''}
        ORDER BY p.created_at DESC LIMIT 200`,
-      [ctx.teamId]
+      ctx.scope === 'team' ? [ctx.teamId] : []
     );
     res.json(rows);
   } catch (err) {
@@ -165,8 +264,12 @@ pluginRouter.get('/projects/:id/groups', async (req, res) => {
   if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的项目 ID' });
   try {
     const ctx = ctxOf(req);
-    const project = await projectOfTeam(req.params.id, ctx.teamId);
-    if (!project) return res.status(404).json({ error: '项目不存在或不属于该团队' });
+    const access = await projectAccess(req.params.id, ctx);
+    if (!access.ok) {
+      if (access.status === 403) return forbidden(res, '项目');
+      return res.status(404).json({ error: '项目不存在' });
+    }
+    const project = access.project;
     const file = await pool.query<{ id: string }>(
       'SELECT id FROM design_files WHERE project_id = $1 AND figma_key = $2 LIMIT 1',
       [project.id, pluginFileKey(project.id)]
@@ -204,8 +307,12 @@ pluginRouter.post('/projects/:id/groups', async (req, res) => {
   if (name.length > 50) return res.status(400).json({ error: '编组名称过长（最多 50 字）' });
   try {
     const ctx = ctxOf(req);
-    const project = await projectOfTeam(req.params.id, ctx.teamId);
-    if (!project) return res.status(404).json({ error: '项目不存在或不属于该团队' });
+    const access = await projectAccess(req.params.id, ctx);
+    if (!access.ok) {
+      if (access.status === 403) return forbidden(res, '项目');
+      return res.status(404).json({ error: '项目不存在' });
+    }
+    const project = access.project;
     const fileId = await ensurePluginFile(project.id);
     const group = await ensureGroup(fileId, name);
     res.status(201).json(group);
@@ -239,6 +346,20 @@ pluginRouter.post('/import', async (req, res) => {
   }
   const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
   if (!UUID_RE.test(projectId)) return res.status(400).json({ error: '非法的项目 ID' });
+
+  // 先校验令牌对项目的访问权：越权必须在任何数据校验之前返回 403
+  try {
+    const access = await projectAccess(projectId, ctxOf(req));
+    if (!access.ok) {
+      if (access.status === 403) return forbidden(res, '项目');
+      return res.status(404).json({ error: '项目不存在' });
+    }
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] import access ${errId}:`, err);
+    return res.status(502).json({ error: userFacingFailure(errId) });
+  }
+
   const boards = Array.isArray(body.boards) ? body.boards : [];
   if (!boards.length) return res.status(400).json({ error: '缺少画板数据（boards 不能为空）' });
   if (boards.length > MAX_BOARDS_PER_REQUEST) {
@@ -273,9 +394,6 @@ pluginRouter.post('/import', async (req, res) => {
   let groupId: string | null = null;
   let groupName: string | null = null;
   try {
-    const ctx = ctxOf(req);
-    const project = await projectOfTeam(projectId, ctx.teamId);
-    if (!project) return res.status(404).json({ error: '项目不存在或不属于该团队' });
     fileId = await ensurePluginFile(projectId, platform, scale);
 
     const rawGroupId = typeof body.groupId === 'string' ? body.groupId.trim() : '';

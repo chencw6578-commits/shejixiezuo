@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.1.0';
+const PLUGIN_VERSION = '1.2.0';
 const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -196,7 +196,7 @@ function basePayload(artboards) {
 async function exportBoard(boardId, scale, includeImage) {
   await ensureCurrentPageLoaded();
   const node = await getNodeById(boardId);
-  if (!node) return { ok: false, message: `找不到画板 ${boardId}，请返回第一步刷新画板列表` };
+  if (!node) return { ok: false, message: `找不到画板 ${boardId}，请重新打开插件刷新画板列表` };
   if (!isArtboard(node)) return { ok: false, message: `「${node.name}」不是画板（${node.type}）` };
 
   const artboard = exportNode(node, null);
