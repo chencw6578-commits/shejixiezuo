@@ -284,6 +284,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: flex; align-items: center; gap: 14px; padding: 10px 16px;
   border-bottom: 1px solid var(--border); background: var(--bg-panel);
   min-height: 50px;
+  /* 顶栏下拉菜单（导入设计稿等）必须盖在画布之上：给顶栏建立独立层叠上下文 */
+  position: relative; z-index: 10;
 }
 .topbar h1 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .topbar .crumb { color: var(--text-dim); font-size: 12px; }
