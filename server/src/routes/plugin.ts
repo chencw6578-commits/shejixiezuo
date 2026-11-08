@@ -8,6 +8,36 @@ import { batchInsert } from '../util/batchInsert.js';
 
 export const pluginRouter = Router();
 
+/**
+ * Figma 插件 UI 运行在沙箱 iframe，Origin 通常是 null（也可能是 figma.com）。
+ * 没有跨域头时浏览器会直接报 Failed to fetch，因此这里显式允许 figma.com、null 与本地开发来源。
+ */
+function pluginCors(req: Request, res: Response, next: NextFunction) {
+  const origin = (req.headers.origin ?? '').trim();
+  const allowed =
+    origin === '' ||
+    origin === 'null' ||
+    /^https:\/\/(www\.)?figma\.com$/i.test(origin) ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+  if (origin) {
+    res.setHeader('Vary', 'Origin');
+    if (allowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      res.setHeader('Access-Control-Max-Age', '86400');
+    }
+  }
+  if (req.method === 'OPTIONS') {
+    if (!allowed) return res.status(403).json({ error: '该来源未允许跨域访问 /api/plugin' });
+    return res.status(204).end();
+  }
+  next();
+}
+
+// 预检必须在鉴权与 body 解析之前结束
+pluginRouter.use(pluginCors);
+
 // 插件逐画板上传，单张 PNG 可能到达数 MB：单独放宽解析上限（必须挂在全局 1mb 解析器之前）
 pluginRouter.use(express.json({ limit: '40mb' }));
 

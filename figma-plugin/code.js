@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.2.0';
+const PLUGIN_VERSION = '1.3.0';
 const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -34,6 +34,17 @@ function post(message) {
   } catch (err) {
     // 窗口已关闭时忽略
   }
+}
+
+// Figma 里改变选中后自动同步列表（列表是选中项只读镜像，不需要用户在插件里勾选）
+try {
+  figma.on('selectionchange', () => {
+    listBoards()
+      .then((data) => post({ type: 'boards', ...data }))
+      .catch(() => undefined);
+  });
+} catch (err) {
+  // 旧版本 Figma 没有该事件时忽略，重新运行插件仍可同步
 }
 
 function reportError(err, prefix) {

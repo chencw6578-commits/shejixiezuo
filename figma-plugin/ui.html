@@ -85,21 +85,20 @@
   .target-v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .target-editor { padding: 12px; border-top: 1px solid var(--border); background: #fff; }
 
-  /* 画板列表 */
+  /* 画板列表：只读镜像 Figma 当前选中项，紧凑可滚动 */
   .boards { margin-top: 12px; }
-  .list-tools { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .list-tools { margin-bottom: 6px; }
   .list-tools .t { font-size: 12px; color: var(--dim); }
-  .board-list { list-style: none; margin: 0; padding: 0; }
+  .board-list { list-style: none; margin: 0; padding: 0; max-height: 172px; overflow-y: auto; }
   .board {
-    display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
-    border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 7px;
-    background: var(--panel);
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 4px; background: var(--panel);
   }
-  .board.sel { border-color: var(--accent); background: var(--accent-weak); }
-  .board input { margin-top: 2px; }
-  .board .body { flex: 1; min-width: 0; }
-  .board .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .board .tag { font-size: 11px; color: var(--dim); }
+  .board .name { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board-empty {
+    padding: 16px 12px; border: 1px dashed var(--border); border-radius: 6px;
+    color: var(--dim); font-size: 12px; text-align: center;
+  }
 
   /* 高级设置 */
   .advanced { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -245,10 +244,10 @@
 
     <section class="boards">
       <div class="list-tools">
-        <span id="boardCount" class="t">0 个画板</span>
-        <button id="toggleAll" class="btn text" type="button">全选</button>
+        <span class="t">当前选中的画板</span>
       </div>
       <ul id="boardList" class="board-list"></ul>
+      <div id="boardHint" class="board-empty hidden">请在 Figma 里选中要导出的画板</div>
     </section>
 
     <details id="advanced" class="advanced">
@@ -346,7 +345,6 @@
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
-    selected: {},
     platform: 'android',
     scale: 2,
     includeImage: true,
@@ -444,49 +442,30 @@
     postToPlugin({ type: 'resize', width: 480, height: 720 });
   }
 
-  // ---------- 画板 ----------
-  function selectedIds() {
-    return Object.keys(state.selected).filter(function (id) { return state.selected[id]; });
-  }
-
+  // ---------- 画板（只读镜像 Figma 当前选中项） ----------
   function renderBoards() {
     $('boardList').innerHTML = state.boards.map(function (b) {
-      var on = !!state.selected[b.id];
-      return (
-        '<li class="board ' + (on ? 'sel' : '') + '" data-id="' + esc(b.id) + '">' +
-          '<input type="checkbox" ' + (on ? 'checked' : '') + ' data-check="' + esc(b.id) + '" />' +
-          '<div class="body">' +
-            '<div class="name">' + esc(b.name) + '</div>' +
-            '<div class="tag">' + esc(b.width) + ' × ' + esc(b.height) + ' · ' + esc(b.nodeCount) + ' 层' +
-              (b.selected ? ' · 当前选中' : '') + '</div>' +
-          '</div>' +
-        '</li>'
-      );
+      return '<li class="board"><div class="name">' + esc(b.name) + '</div></li>';
     }).join('');
-    updateBoardTools();
+    $('boardHint').classList.toggle('hidden', state.boards.length > 0);
+    updateUploadButton();
   }
 
-  function updateBoardTools() {
-    $('boardCount').textContent = selectedIds().length + ' / ' + state.boards.length + ' 个已选';
-    $('toggleAll').textContent = state.boards.length && selectedIds().length === state.boards.length ? '全不选' : '全选';
-    $('upload').textContent = '导出并上传（' + selectedIds().length + ' 个画板）';
-    $('upload').disabled = state.busy || !selectedIds().length;
+  function updateUploadButton() {
+    var n = state.boards.length;
+    $('upload').textContent = '导出并上传（' + n + ' 个画板）';
+    $('upload').disabled = state.busy || n === 0;
   }
 
   function applyBoards(data) {
-    state.boards = Array.isArray(data.boards) ? data.boards : [];
-    var anySelected = state.boards.some(function (b) { return b.selected; });
-    state.selected = {};
-    state.boards.forEach(function (b) {
-      state.selected[b.id] = anySelected ? !!b.selected : true;
+    // Figma 里选中哪些画板，这里就显示哪些；取消勾选在插件里不存在
+    state.boards = (Array.isArray(data.boards) ? data.boards : []).filter(function (b) {
+      return b.selected;
     });
     renderBoards();
     $('meta').textContent =
       'v' + (state.boot.pluginVersion || '') + ' · ' + (state.boot.buildDate || '') +
       ' · ' + (data.fileName || state.boot.fileName || '') + ' / ' + (data.pageName || '');
-    if (!state.boards.length) {
-      showError('当前页面没有顶层画板：请在 Figma 里先创建 Frame，或切换到有画板的页面');
-    }
   }
 
   // ---------- 高级设置 ----------
@@ -613,6 +592,17 @@
     el.classList.toggle('err', !!isError);
   }
 
+  /** fetch 失败时区分：服务器未启动 / 地址错误 vs 域名未在 manifest 授权 */
+  function describeConnectionError(url) {
+    var m = /^https?:\/\/([^/:?#]+)/i.exec(String(url || ''));
+    if (!m) return '服务器地址不正确：请检查高级设置里的地址（需要以 http:// 或 https:// 开头）';
+    var host = m[1].toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+      return '连不上服务器，请确认网站已启动、地址正确（' + url + '）';
+    }
+    return '无法访问 ' + url + '：该域名未在插件 manifest 中授权（networkAccess），请同步修改 manifest.json 后重新导入插件';
+  }
+
   async function api(path, options) {
     options = options || {};
     var headers = { Authorization: 'Bearer ' + state.token };
@@ -625,7 +615,7 @@
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
       });
     } catch (err) {
-      throw new Error('无法连接服务器 ' + baseUrl() + '（' + (err && err.message ? err.message : err) + '）。请确认网站已启动，或检查服务器地址。');
+      throw new Error(describeConnectionError(baseUrl()));
     }
     var data = null;
     try { data = await res.json(); } catch (err) { /* 非 JSON 响应 */ }
@@ -788,7 +778,7 @@
         showGate('令牌已失效或已撤销：' + err.message);
         postToPlugin({ type: 'notify', message: '导入令牌已失效，请重新粘贴' });
       } else {
-        showError('连接失败：' + ((err && err.message) || String(err)), function () { retryConnect(); });
+        showError(((err && err.message) || String(err)), function () { retryConnect(); });
       }
     }
   }
@@ -802,7 +792,7 @@
         persistPrefs();
         showGate('令牌已失效或已撤销：' + err.message);
       } else {
-        showError('连接失败：' + ((err && err.message) || String(err)), retryConnect);
+        showError(((err && err.message) || String(err)), retryConnect);
       }
     });
   }
@@ -832,8 +822,8 @@
 
   async function startUpload() {
     if (state.busy) return;
-    var ids = selectedIds();
-    if (!ids.length) { showError('请至少选择一个画板'); return; }
+    var ids = state.boards.map(function (b) { return b.id; });
+    if (!ids.length) { showError('请先在 Figma 里选中要导出的画板'); return; }
     if (!state.token) { showGate('请先粘贴导入令牌'); return; }
     if (!state.projectId) { showError('请先选择目标项目'); return; }
     if (state.groupId === '__new__' && !state.newGroupName.trim()) {
@@ -843,7 +833,7 @@
 
     clearError();
     state.busy = true;
-    updateBoardTools();
+    updateUploadButton();
     $('successBox').classList.add('hidden');
     $('jsonBox').classList.add('hidden');
     $('progressFail').classList.add('hidden');
@@ -909,15 +899,15 @@
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
       state.busy = false;
-      updateBoardTools();
+      updateUploadButton();
     }
   }
 
   // ---------- 仅导出 JSON ----------
   var lastJson = '';
   async function exportJsonOnly() {
-    var ids = selectedIds();
-    if (!ids.length) { showError('请至少选择一个画板'); return; }
+    var ids = state.boards.map(function (b) { return b.id; });
+    if (!ids.length) { showError('请先在 Figma 里选中要导出的画板'); return; }
     clearError();
     $('jsonOnly').disabled = true;
     $('jsonOnly').textContent = '正在导出…';
@@ -994,7 +984,7 @@
         persistPrefs();
         showGate('令牌无效或已撤销：' + err.message);
       } else {
-        showError('连接失败：' + ((err && err.message) || String(err)), retryConnect);
+        showError(((err && err.message) || String(err)), retryConnect);
       }
     }
   }
@@ -1084,31 +1074,7 @@
     persistPrefs();
   };
 
-  // 画板多选
-  $('boardList').addEventListener('change', function (e) {
-    var target = e.target;
-    if (!target || !target.dataset || !target.dataset.check) return;
-    var id = target.dataset.check;
-    state.selected[id] = target.checked;
-    var li = target.closest('.board');
-    if (li) li.classList.toggle('sel', target.checked);
-    updateBoardTools();
-    clearError();
-  });
-  $('boardList').addEventListener('click', function (e) {
-    var li = e.target.closest ? e.target.closest('.board') : null;
-    if (!li) return;
-    var checkbox = li.querySelector('input[type="checkbox"]');
-    if (!checkbox || e.target === checkbox) return;
-    checkbox.checked = !checkbox.checked;
-    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  $('toggleAll').onclick = function () {
-    var all = selectedIds().length === state.boards.length;
-    state.boards.forEach(function (b) { state.selected[b.id] = !all; });
-    renderBoards();
-    clearError();
-  };
+  // 画板列表是 Figma 选中项的只读镜像，没有勾选交互
 
   $('upload').onclick = function () { startUpload(); };
   $('progressRetry').onclick = function () {
