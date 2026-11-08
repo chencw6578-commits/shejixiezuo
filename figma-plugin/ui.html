@@ -85,6 +85,22 @@
   .target-v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .target-editor { padding: 12px; border-top: 1px solid var(--border); background: #fff; }
 
+  /* 常用导出选项：常驻显示，紧凑两行 */
+  .options {
+    margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--panel);
+  }
+  .opt-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+  .opt-row + .opt-row { margin-top: 6px; }
+  .opt-label { flex: 0 0 auto; width: 30px; font-size: 11px; color: var(--dim); }
+  .options .segmented { flex: 1; gap: 6px; }
+  .options .segmented button { padding: 5px 6px; border-radius: 6px; font-size: 12px; }
+  .options .segmented button .s { display: inline; margin-left: 3px; font-size: 10px; }
+  .options .radios { flex: 0 0 auto; gap: 4px; }
+  .options .radios label { flex: 0 0 auto; padding: 4px 10px; border-radius: 6px; }
+  .options .toggle { display: flex; align-items: center; gap: 5px; margin-left: auto; font-size: 12px; white-space: nowrap; }
+  #scaleHint { margin-top: 6px; font-size: 11px; color: var(--dim); }
+
   /* 画板列表：只读镜像 Figma 当前选中项，紧凑可滚动 */
   .boards { margin-top: 12px; }
   .list-tools { margin-bottom: 6px; }
@@ -242,6 +258,27 @@
       </div>
     </section>
 
+    <section class="options">
+      <div class="opt-row">
+        <span class="opt-label">平台</span>
+        <div id="platformGroup" class="segmented">
+          <button type="button" data-platform="android">Android<span class="s">dp</span></button>
+          <button type="button" data-platform="ios">iOS<span class="s">pt</span></button>
+          <button type="button" data-platform="web">Web<span class="s">px</span></button>
+        </div>
+      </div>
+      <div class="opt-row">
+        <span class="opt-label">倍率</span>
+        <div id="scaleGroup" class="radios">
+          <label data-scale="1"><input type="radio" name="scale" value="1" /> 1x</label>
+          <label data-scale="2"><input type="radio" name="scale" value="2" /> 2x</label>
+          <label data-scale="3"><input type="radio" name="scale" value="3" /> 3x</label>
+        </div>
+        <label class="toggle" for="includeImage"><input type="checkbox" id="includeImage" checked /> 位图切图</label>
+      </div>
+      <div id="scaleHint" class="hint small"></div>
+    </section>
+
     <section class="boards">
       <div class="list-tools">
         <span class="t">当前选中的画板</span>
@@ -266,36 +303,6 @@
           <div class="row">
             <input id="token" class="grow" type="password" placeholder="imp_ 开头" />
             <button id="saveToken" class="btn" type="button">保存令牌</button>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>目标平台</label>
-          <div id="platformGroup" class="segmented">
-            <button type="button" data-platform="android">Android<span class="s">单位 dp</span></button>
-            <button type="button" data-platform="ios">iOS<span class="s">单位 pt</span></button>
-            <button type="button" data-platform="web">Web<span class="s">单位 px</span></button>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>位图倍率</label>
-          <div id="scaleGroup" class="radios">
-            <label data-scale="1"><input type="radio" name="scale" value="1" /> 1x</label>
-            <label data-scale="2"><input type="radio" name="scale" value="2" /> 2x</label>
-            <label data-scale="3"><input type="radio" name="scale" value="3" /> 3x</label>
-          </div>
-          <div id="scaleHint" class="hint"></div>
-        </div>
-
-        <div class="field">
-          <label>位图切图</label>
-          <div class="switch">
-            <input type="checkbox" id="includeImage" checked />
-            <div class="body">
-              <div style="font-weight: 600;">导出 PNG（按上面的倍率）</div>
-              <div class="dim small">作为缩略图与切图保存；关掉可显著加快上传，单张超过 5MB 会自动跳过图片。</div>
-            </div>
           </div>
         </div>
       </div>
@@ -363,6 +370,10 @@
     boot: {},
     started: false,
     busy: false,
+    // 上传失败后重试时复用已导出的结果，避免重新遍历节点
+    exportCache: {},
+    boardKey: '',
+    progressPct: 0,
   };
 
   var pending = new Map();
@@ -377,14 +388,22 @@
   function postToPlugin(message) {
     parent.postMessage({ pluginMessage: message }, '*');
   }
-  function ask(message, timeoutMs) {
+  // 心跳超时：只有「连续 10 秒没收到主线程任何消息」才算无响应；
+  // 30 秒长任务只要主线程持续发 progress 心跳就不会被误判。
+  var HEARTBEAT_TIMEOUT_MS = 10000;
+  function ask(message) {
     var requestId = 'r' + (++seq);
     return new Promise(function (resolve, reject) {
-      var timer = setTimeout(function () {
-        pending.delete(requestId);
-        reject(new Error('插件主线程 20 秒无响应：请重新打开插件再试'));
-      }, timeoutMs || 30000);
-      pending.set(requestId, { resolve: resolve, reject: reject, timer: timer });
+      var entry = { resolve: resolve, reject: reject, timer: null };
+      entry.arm = function () {
+        clearTimeout(entry.timer);
+        entry.timer = setTimeout(function () {
+          pending.delete(requestId);
+          reject(new Error('插件主线程 10 秒没有响应（Figma 可能正在处理大画板）：请点「重试」，仍不行再关闭插件重新打开'));
+        }, HEARTBEAT_TIMEOUT_MS);
+      };
+      entry.arm();
+      pending.set(requestId, entry);
       postToPlugin(Object.assign({}, message, { requestId: requestId }));
     });
   }
@@ -394,6 +413,13 @@
     clearTimeout(p.timer);
     pending.delete(requestId);
     p.resolve(payload);
+    return true;
+  }
+  /** 收到主线程 progress 心跳：重置该请求的无响应计时 */
+  function heartbeat(requestId) {
+    var p = pending.get(requestId);
+    if (!p || typeof p.arm !== 'function') return false;
+    p.arm();
     return true;
   }
   function rejectAll(message) {
@@ -462,6 +488,12 @@
     state.boards = (Array.isArray(data.boards) ? data.boards : []).filter(function (b) {
       return b.selected;
     });
+    // 选中项变了，旧画板的导出缓存不再适用
+    var key = state.boards.map(function (b) { return b.id; }).join(',');
+    if (key !== state.boardKey) {
+      state.boardKey = key;
+      state.exportCache = {};
+    }
     renderBoards();
     $('meta').textContent =
       'v' + (state.boot.pluginVersion || '') + ' · ' + (state.boot.buildDate || '') +
@@ -482,8 +514,8 @@
     $('baseUrl').value = state.baseUrl;
     $('token').value = state.token;
     $('scaleHint').textContent = state.includeImage
-      ? state.scale + 'x 会导出 PNG 切图，画板越大上传越慢；3x 单张超过 5MB 会自动跳过图片。'
-      : '已关闭位图导出：只上传画板与节点结构，速度最快。';
+      ? state.scale + 'x 导出 PNG 切图；单张超过 5MB 自动跳过图片。'
+      : '已关闭位图切图：只上传画板与节点结构，速度最快。';
   }
 
   function pickPlatform(platform) {
@@ -770,6 +802,7 @@
       await connect();
     } catch (err) {
       if (err && err.status === 401) {
+        // 只有服务端明确返回 401（令牌无效/已撤销）才清空本地令牌
         state.token = '';
         state.teams = [];
         state.projects = [];
@@ -778,6 +811,7 @@
         showGate('令牌已失效或已撤销：' + err.message);
         postToPlugin({ type: 'notify', message: '导入令牌已失效，请重新粘贴' });
       } else {
+        // 网络失败/超时/CORS/5xx：保留已存令牌，给重试
         showError(((err && err.message) || String(err)), function () { retryConnect(); });
       }
     }
@@ -799,11 +833,15 @@
 
   // ---------- 上传 ----------
   function setProgress(current, total, stage) {
+    total = total || 1;
+    var pct = Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+    if (pct < state.progressPct) pct = state.progressPct;
+    state.progressPct = pct;
     $('progressBox').classList.remove('hidden');
-    $('progressTitle').textContent = '正在上传 ' + Math.min(current + 1, total) + ' / ' + total;
-    $('progressCount').textContent = Math.round((current / total) * 100) + '%';
-    $('progressBar').style.width = Math.round((current / total) * 100) + '%';
-    $('progressStage').textContent = stage;
+    $('progressTitle').textContent = '正在处理 ' + Math.min(current + 1, total) + ' / ' + total;
+    $('progressCount').textContent = pct + '%';
+    $('progressBar').style.width = pct + '%';
+    if (stage) $('progressStage').textContent = stage;
   }
 
   function showProgressFail(message) {
@@ -818,9 +856,14 @@
     $('progressFail').classList.add('hidden');
     $('progressFailText').textContent = '';
     $('progressBar').style.width = '0%';
+    state.progressPct = 0;
   }
 
-  async function startUpload() {
+  function exportCacheKey(boardId) {
+    return boardId + '|' + state.scale + '|' + (state.includeImage ? '1' : '0');
+  }
+
+  async function startUpload(isRetry) {
     if (state.busy) return;
     var ids = state.boards.map(function (b) { return b.id; });
     if (!ids.length) { showError('请先在 Figma 里选中要导出的画板'); return; }
@@ -833,6 +876,7 @@
 
     clearError();
     state.busy = true;
+    state.progressPct = 0;
     updateUploadButton();
     $('successBox').classList.add('hidden');
     $('jsonBox').classList.add('hidden');
@@ -841,17 +885,36 @@
     persistPrefs();
 
     var totals = { frames: 0, nodes: 0, warnings: [] };
+    var total = ids.length;
 
     try {
-      for (var i = 0; i < ids.length; i++) {
-        setProgress(i, ids.length, '读取节点…');
-        var exported = await ask({ type: 'export-board', boardId: ids[i], scale: state.scale, includeImage: state.includeImage });
-        if (!exported || !exported.ok) {
-          throw new Error((exported && exported.message) || ('画板 ' + ids[i] + ' 导出失败'));
-        }
-        if (exported.imageSkipped) totals.warnings.push('「' + exported.name + '」' + exported.imageSkipped);
+      for (var i = 0; i < total; i++) {
+        var key = exportCacheKey(ids[i]);
+        var exported = state.exportCache[key];
+        var name = (state.boards[i] && state.boards[i].name) || ids[i];
 
-        setProgress(i, ids.length, (state.includeImage ? '导出图片 → ' : '') + '上传「' + exported.name + '」…');
+        if (exported) {
+          // 重试：直接复用已序列化的结果，不再重新遍历节点
+          setProgress(i, total, '复用已读取的「' + (exported.name || name) + '」，直接上传…');
+        } else {
+          setProgress(i, total, isRetry ? '重新读取节点（上次未完成）…' : '读取节点…');
+          exported = await ask({
+            type: 'export-board',
+            boardId: ids[i],
+            scale: state.scale,
+            includeImage: state.includeImage,
+            index: i,
+            total: total,
+          });
+          if (!exported || !exported.ok) {
+            throw new Error((exported && exported.message) || ('画板 ' + ids[i] + ' 导出失败'));
+          }
+          state.exportCache[key] = exported;
+        }
+        name = exported.name || name;
+        if (exported.imageSkipped) totals.warnings.push('「' + name + '」' + exported.imageSkipped);
+
+        setProgress(i, total, '上传「' + name + '」…');
         var images = exported.image
           ? [{ nodeId: ids[i], dataUrl: 'data:image/png;base64,' + exported.image }]
           : [];
@@ -874,9 +937,10 @@
         totals.nodes += Number(result.nodeCount || 0);
         if (Array.isArray(result.warnings)) totals.warnings = totals.warnings.concat(result.warnings);
         if (result.groupId && state.groupId === '__new__') state.groupId = result.groupId;
-        setProgress(i + 1, ids.length, '已导入「' + exported.name + '」');
+        setProgress(i + 1, total, '已导入「' + name + '」');
       }
 
+      state.exportCache = {};
       await loadGroups();
       hideProgress();
       $('successBox').classList.remove('hidden');
@@ -895,7 +959,7 @@
       postToPlugin({ type: 'notify', message: '已导入 ' + totals.frames + ' 个画板 / ' + totals.nodes + ' 个节点' });
     } catch (err) {
       var failMsg = err && err.message ? err.message : String(err);
-      showProgressFail(failMsg);
+      showProgressFail(failMsg + '\n重试会复用已读取的画板；未读取完成的画板会重新读取节点。');
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
       state.busy = false;
@@ -912,7 +976,7 @@
     $('jsonOnly').disabled = true;
     $('jsonOnly').textContent = '正在导出…';
     try {
-      var result = await ask({ type: 'export-json', boardIds: ids }, 30000);
+      var result = await ask({ type: 'export-json', boardIds: ids, total: ids.length });
       if (!result || !result.ok) throw new Error((result && result.message) || '导出失败');
       lastJson = JSON.stringify(result.payload, null, 2);
       $('jsonText').textContent = lastJson;
@@ -1080,7 +1144,7 @@
   $('progressRetry').onclick = function () {
     $('progressFail').classList.add('hidden');
     $('progressFailText').textContent = '';
-    startUpload();
+    startUpload(true);
   };
   $('jsonOnly').onclick = function () { exportJsonOnly(); };
   $('copyJson').onclick = function () { copyJson(); };
@@ -1110,12 +1174,37 @@
       return;
     }
     if (msg.type === 'boards') { applyBoards(msg); return; }
-    if (msg.type === 'progress') { if (msg.message) $('progressStage').textContent = msg.message; return; }
+    if (msg.type === 'progress') {
+      // 心跳：收到任何 progress 都重置「无响应」计时
+      if (msg.requestId) heartbeat(msg.requestId);
+      if (msg.message) $('progressStage').textContent = msg.message;
+      if (typeof msg.done === 'number' && typeof msg.total === 'number' && msg.total > 0) {
+        var pct = Math.max(0, Math.min(100, Math.round((msg.done / msg.total) * 100)));
+        if (pct > state.progressPct) {
+          state.progressPct = pct;
+          $('progressCount').textContent = pct + '%';
+          $('progressBar').style.width = pct + '%';
+        }
+      }
+      return;
+    }
     if (msg.type === 'board-exported') { settle(msg.requestId, msg); return; }
     if (msg.type === 'json-result') { settle(msg.requestId, msg); return; }
     if (msg.type === 'error') {
-      rejectAll(msg.message || '主线程操作失败');
-      showError(msg.message || '主线程操作失败');
+      // 主线程已回传真实异常：按 requestId 结束对应请求，界面显示原因而不是「无响应」
+      var errText = msg.message || '主线程操作失败';
+      if (msg.requestId) {
+        var p = pending.get(msg.requestId);
+        if (p) {
+          clearTimeout(p.timer);
+          pending.delete(msg.requestId);
+          p.reject(new Error(errText));
+        }
+      } else {
+        rejectAll(errText);
+      }
+      showError(errText);
+      return;
     }
   };
 

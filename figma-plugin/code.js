@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.0';
+const PLUGIN_VERSION = '1.3.1';
 const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -47,9 +47,9 @@ try {
   // 旧版本 Figma 没有该事件时忽略，重新运行插件仍可同步
 }
 
-function reportError(err, prefix) {
+function reportError(err, prefix, requestId) {
   const message = (prefix ? prefix + '：' : '') + (err instanceof Error ? err.message : String(err));
-  post({ type: 'error', message });
+  post({ type: 'error', requestId: requestId || undefined, message });
   figma.notify(message, { timeout: 6000 });
 }
 
@@ -69,8 +69,32 @@ function copyVisual(node, out) {
   if ('clipsContent' in node) out.clipsContent = node.clipsContent;
 }
 
-/** 导出子树：字段与网站 schemaVersion 1 对应 */
-function exportNode(node, parentId) {
+/** 让出一次宏任务，避免大画板序列化把主线程整段占住 */
+function nextTask() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** 进度心跳：UI 收到后就把「无响应」计时重置 */
+function postProgress(ctx, stage, done, message) {
+  if (!ctx || !ctx.requestId) return;
+  post({
+    type: 'progress',
+    requestId: ctx.requestId,
+    stage: stage,
+    done: done,
+    total: ctx.total || 1,
+    message: message || '',
+  });
+}
+
+/** 导出子树：字段与网站 schemaVersion 1 对应；每 300 个节点发一次心跳并让出事件循环 */
+async function exportNodeAsync(node, parentId, ctx) {
+  ctx.count = (ctx.count || 0) + 1;
+  if (ctx.count % 300 === 0) {
+    postProgress(ctx, 'nodes', ctx.index, '读取节点…（已 ' + ctx.count + ' 个）');
+    await nextTask();
+  }
+
   const out = {
     id: node.id,
     parentId: parentId || null,
@@ -110,7 +134,12 @@ function exportNode(node, parentId) {
     }
   }
 
-  out.children = 'children' in node ? node.children.map((child) => exportNode(child, node.id)) : [];
+  out.children = [];
+  if ('children' in node) {
+    for (const child of node.children) {
+      out.children.push(await exportNodeAsync(child, node.id, ctx));
+    }
+  }
   return out;
 }
 
@@ -120,30 +149,15 @@ async function getNodeById(id) {
   return figma.getNodeById(id);
 }
 
-/** dynamic-page 下读取页面 children 前必须加载 */
-async function ensureCurrentPageLoaded() {
+/** dynamic-page 下只需加载当前页；不调用 loadAllPagesAsync，避免大文件整页加载卡死 */
+async function ensurePageLoaded() {
   try {
     if (figma.currentPage && typeof figma.currentPage.loadAsync === 'function') {
       await figma.currentPage.loadAsync();
     }
   } catch (err) {
-    try {
-      await figma.loadAllPagesAsync();
-    } catch (err2) {
-      // 页面已加载时可能抛错，忽略
-    }
+    // 页面已加载时可能抛错，忽略
   }
-}
-
-function countNodes(node, budget) {
-  let count = 1;
-  if ('children' in node) {
-    for (const child of node.children) {
-      count += countNodes(child, budget);
-      if (count >= budget) return budget;
-    }
-  }
-  return count;
 }
 
 function isArtboard(node) {
@@ -151,27 +165,25 @@ function isArtboard(node) {
 }
 
 async function listBoards() {
-  await ensureCurrentPageLoaded();
-  const selected = new Set(figma.currentPage.selection.map((n) => n.id));
-  const boards = figma.currentPage.children
-    .filter(isArtboard)
-    .map((node) => ({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      width: Math.round(node.width * 100) / 100,
-      height: Math.round(node.height * 100) / 100,
-      x: Math.round(node.x),
-      y: Math.round(node.y),
-      selected: selected.has(node.id),
-      nodeCount: countNodes(node, 2000),
-    }));
+  await ensurePageLoaded();
+  const selection = figma.currentPage.selection || [];
+  // 只读镜像当前选中项：不再遍历整页 children，大文件也不会卡在「读取节点」
+  const boards = selection.filter(isArtboard).map((node) => ({
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    width: Math.round(node.width * 100) / 100,
+    height: Math.round(node.height * 100) / 100,
+    x: Math.round(node.x),
+    y: Math.round(node.y),
+    selected: true,
+  }));
   return {
     ok: true,
     pageName: figma.currentPage.name,
     fileName: figma.root.name || 'Figma 文件',
     boards,
-    selectionCount: selected.size,
+    selectionCount: selection.length,
   };
 }
 
@@ -203,20 +215,24 @@ function basePayload(artboards) {
   };
 }
 
-/** 导出单个画板（JSON + 可选 PNG），供向导逐个上传 */
-async function exportBoard(boardId, scale, includeImage) {
-  await ensureCurrentPageLoaded();
+/** 导出单个画板（JSON + 可选 PNG），逐板发进度心跳，供向导逐个上传 */
+async function exportBoard(boardId, scale, includeImage, ctx) {
+  const index = (ctx && ctx.index) || 0;
+  postProgress(ctx, 'nodes', index, '读取节点…');
+  await ensurePageLoaded();
   const node = await getNodeById(boardId);
   if (!node) return { ok: false, message: `找不到画板 ${boardId}，请重新打开插件刷新画板列表` };
   if (!isArtboard(node)) return { ok: false, message: `「${node.name}」不是画板（${node.type}）` };
 
-  const artboard = exportNode(node, null);
+  const artboard = await exportNodeAsync(node, null, ctx || { count: 0 });
   const payload = basePayload([artboard]);
+  postProgress(ctx, 'nodes', index + 1, '已读取「' + node.name + '」');
 
   let image = null;
   let imageBytes = 0;
   let imageSkipped = null;
   if (includeImage) {
+    postProgress(ctx, 'images', index, '导出 PNG「' + node.name + '」（' + scale + 'x）…');
     try {
       const bytes = await node.exportAsync({
         format: 'PNG',
@@ -231,19 +247,26 @@ async function exportBoard(boardId, scale, includeImage) {
     } catch (err) {
       imageSkipped = `位图导出失败：${err instanceof Error ? err.message : String(err)}`;
     }
+    postProgress(ctx, 'images', index + 1, '图片已导出「' + node.name + '」');
   }
 
   return { ok: true, boardId: node.id, name: node.name, payload, image, imageBytes, imageSkipped };
 }
 
-/** 仅导出 JSON（不上传）：合并多个画板为一份 payload */
-async function exportBoardsJson(boardIds) {
-  await ensureCurrentPageLoaded();
-  const ids = Array.isArray(boardIds) && boardIds.length ? boardIds : figma.currentPage.children.filter(isArtboard).map((n) => n.id);
+/** 仅导出 JSON（不上传）：合并多个画板为一份 payload，逐板发心跳 */
+async function exportBoardsJson(boardIds, ctx) {
+  await ensurePageLoaded();
+  const ids = Array.isArray(boardIds) && boardIds.length ? boardIds : figma.currentPage.selection.filter(isArtboard).map((n) => n.id);
+  const total = ids.length;
   const artboards = [];
-  for (const id of ids) {
-    const node = await getNodeById(id);
-    if (node && isArtboard(node)) artboards.push(exportNode(node, null));
+  for (let i = 0; i < total; i++) {
+    postProgress(ctx, 'nodes', i, '读取第 ' + (i + 1) + ' / ' + total + ' 个画板…');
+    const node = await getNodeById(ids[i]);
+    if (node && isArtboard(node)) {
+      artboards.push(await exportNodeAsync(node, null, Object.assign({}, ctx, { count: 0 })));
+    }
+    postProgress(ctx, 'nodes', i + 1, '已读取第 ' + (i + 1) + ' 个画板');
+    await nextTask();
   }
   if (!artboards.length) return { ok: false, message: '没有可导出的画板' };
   return { ok: true, payload: basePayload(artboards) };
@@ -288,13 +311,14 @@ figma.ui.onmessage = async (msg) => {
     }
     if (type === 'export-board') {
       const scale = [1, 2, 3].indexOf(Number(msg.scale)) >= 0 ? Number(msg.scale) : 2;
-      post({ type: 'progress', stage: 'read', boardId: msg.boardId, message: '读取节点…' });
-      const result = await exportBoard(msg.boardId, scale, !!msg.includeImage);
+      const ctx = { requestId: msg.requestId, index: Number(msg.index) || 0, total: Number(msg.total) || 1, count: 0 };
+      const result = await exportBoard(msg.boardId, scale, !!msg.includeImage, ctx);
       post({ type: 'board-exported', requestId: msg.requestId, ...result });
       return;
     }
     if (type === 'export-json') {
-      const result = await exportBoardsJson(msg.boardIds);
+      const ctx = { requestId: msg.requestId, index: 0, total: Array.isArray(msg.boardIds) ? msg.boardIds.length : 0 };
+      const result = await exportBoardsJson(msg.boardIds, ctx);
       post({ type: 'json-result', requestId: msg.requestId, ...result });
       return;
     }
@@ -317,6 +341,7 @@ figma.ui.onmessage = async (msg) => {
       figma.closePlugin();
     }
   } catch (err) {
-    reportError(err, '操作失败');
+    // 必须把真实异常回传 UI，否则界面只会报「主线程无响应」
+    reportError(err, '操作失败', (msg && msg.requestId) || null);
   }
 };
