@@ -160,9 +160,20 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
 .home-main { flex: 1; overflow-y: auto; }
 .home-main-inner { max-width: 1040px; margin: 0 auto; padding: 40px 36px 60px; }
-.view-header { margin-bottom: 22px; }
+.view-header { margin-bottom: 20px; }
 .view-header h1 { font-size: 22px; }
 .view-header p { color: var(--text-dim); margin-top: 6px; }
+/* 标题行：标题与「新建项目」按钮同一行，按钮与标题文字垂直居中、右边缘贴内容区右边界 */
+.view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.view-header-row h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-project-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; white-space: nowrap;
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+}
+.new-project-btn:hover { background: var(--accent-hover); }
+/* 覆盖 .home-shell button:hover（优先级更高，否则悬停变成浅灰底、白字不可见） */
+.home-shell .new-project-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
 .team-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
 .team-card .file-name { margin-bottom: 6px; }
 
@@ -233,12 +244,61 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   align-items: center; justify-content: center; gap: 8px; cursor: default; text-align: center;
 }
 .import-panel { width: 340px; padding: 14px; }
-.import-panel .import-box { margin-bottom: 10px; }
+.import-panel .import-box { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 .import-panel .import-box input { padding: 8px 10px; font-size: 13px; }
 .import-panel .upload-btn { width: 100%; }
 .import-panel .file-list { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .import-panel .file-list h2 { font-size: 12px; }
 .import-panel .file-list li { padding: 6px 0; }
+
+/* Figma 导入：可折叠高级选项 + 禁用说明 + 错误提示 */
+.import-advanced { flex: 1 0 100%; font-size: 12px; }
+.import-advanced summary { cursor: pointer; color: var(--text-dim); user-select: none; }
+.import-advanced[open] summary { margin-bottom: 8px; }
+.import-advanced-tip { margin: 0 0 8px; font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+.import-advanced input { width: 100%; padding: 8px 10px; font-size: 12px; }
+.import-hint {
+  flex: 1 0 100%; margin: 0; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  color: #b45309; background: #fffaeb; border: 1px solid #fde68a; border-radius: 6px;
+}
+.import-error {
+  flex: 1 0 100%; margin: 0; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  color: #b42318; background: #fef3f2; border: 1px solid #fda29b; border-radius: 6px;
+  word-break: break-word;
+}
+.import-progress {
+  flex: 1 0 100%; margin: 0; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
+}
+
+/* 导入面板：两种方式切换（Figma 链接 / Figma 插件 JSON） */
+.import-mode-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.import-mode-tabs button {
+  flex: 1; padding: 6px 8px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text-dim);
+}
+.import-mode-tabs button.is-active {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(108, 76, 241, 0.08); font-weight: 600;
+}
+.import-panel .import-json-box { flex-direction: column; align-items: stretch; }
+.import-json-text {
+  width: 100%; min-height: 110px; max-height: 220px; padding: 8px 10px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--text); background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 6px; resize: vertical;
+}
+.import-json-actions { display: flex; gap: 8px; align-items: stretch; }
+.import-json-actions .upload-btn {
+  flex: 1; width: auto; padding: 8px 10px; font-size: 12px;
+  background: transparent; border: 1.5px dashed var(--border-strong); color: var(--text-dim);
+}
+.import-json-actions button[type="submit"] {
+  padding: 0 18px; font-weight: 600; border-radius: var(--radius);
+  background: var(--accent); border: 1px solid var(--accent); color: #fff;
+}
+.import-json-actions button[type="submit"]:disabled { opacity: 0.55; }
 
 .import-box { display: flex; gap: 8px; }
 .import-box input { flex: 1; padding: 12px 14px; font-size: 14px; }
@@ -268,6 +328,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: flex; align-items: center; gap: 14px; padding: 10px 16px;
   border-bottom: 1px solid var(--border); background: var(--bg-panel);
   min-height: 50px;
+  /* 顶栏下拉菜单（导入设计稿等）必须盖在画布之上：给顶栏建立独立层叠上下文 */
+  position: relative; z-index: 10;
 }
 .topbar h1 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .topbar .crumb { color: var(--text-dim); font-size: 12px; }
@@ -572,12 +634,15 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; }
   .home-shell { flex-direction: column; }
+  .home-body { flex-direction: column; }
   .home-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 14px; border-right: none; border-bottom: 1px solid var(--border); }
   .home-brand { padding: 0 10px 0 0; }
   .home-brand p { display: none; }
   .side-nav { flex-direction: row; gap: 6px; }
   .side-nav-item { width: auto; padding: 7px 12px; }
   .home-main-inner { padding: 24px 16px 40px; }
+  .view-header-row { gap: 8px; }
+  .new-project-btn { padding: 5px 10px; font-size: 12px; }
 
   /* 触屏上热区点击已足够，禁掉画布的 grab 光标和拖拽选中干扰 */
   .canvas-container { cursor: default; }
@@ -760,6 +825,39 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .member-row .small { margin-left: auto; font-size: 12px; }
 .member-remove { padding: 4px 10px; font-size: 12px; color: var(--err); background: transparent; }
 .member-remove:hover { border-color: var(--err); background: rgba(242, 72, 34, 0.08); }
+/* 团队设置：导入令牌 */
+.settings-section {
+  max-width: 720px; padding: 18px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.settings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.settings-head h2 { margin: 0 0 4px; font-size: 15px; }
+.settings-head p { margin: 0; max-width: 460px; }
+.settings-head .new-project-btn { flex: 0 0 auto; }
+.token-create { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.token-create select { padding: 7px 8px; font-size: 13px; max-width: 150px; }
+.token-once {
+  margin-top: 14px; padding: 12px; border: 1px solid rgba(108, 76, 241, 0.35);
+  border-radius: 10px; background: rgba(108, 76, 241, 0.06);
+}
+.token-once-head { font-weight: 600; margin-bottom: 8px; color: var(--accent); }
+.token-once-body { display: flex; align-items: center; gap: 10px; }
+.token-once-body code {
+  flex: 1; min-width: 0; padding: 7px 10px; overflow-x: auto; white-space: nowrap;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.token-once p { margin: 8px 0 0; }
+.token-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.token-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+}
+.token-row code { font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.token-row .small { margin-left: auto; }
+.token-row .role-badge { flex: 0 0 auto; }
+.token-row .member-remove { flex: 0 0 auto; }
+
 .members-empty { text-align: center; margin-top: 80px; }
 .members-empty p { font-size: 15px; }
 .members-empty .dim { margin-top: 8px; }
@@ -921,9 +1019,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .frame-item { display: flex; align-items: center; gap: 6px; padding: 7px 10px; }
 .frame-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frame-item.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(108, 76, 241, 0.1); }
-/* 多选选中态：蓝色底 + 左侧强调条（无复选框，靠高亮表达） */
-.frame-item.is-selected { background: rgba(108, 76, 241, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
-.frame-item.is-selected.is-current { background: rgba(108, 76, 241, 0.3); }
 
 /* ---------- 项目画板页：编组 + 多选 ---------- */
 .pcanvas-frame.is-selected {

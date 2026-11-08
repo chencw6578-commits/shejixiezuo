@@ -1,0 +1,401 @@
+{
+  "schemaVersion": 1,
+  "generator": "shejixiezuo-figma-plugin",
+  "exportedAt": "2026-11-08T03:20:00.000Z",
+  "file": {
+    "name": "插件样例（登录页）",
+    "fileKey": "plugin-sample",
+    "pageName": "Page 1"
+  },
+  "artboards": [
+    {
+      "id": "10:1",
+      "parentId": null,
+      "name": "登录页",
+      "type": "FRAME",
+      "x": 0,
+      "y": 0,
+      "boardX": 0,
+      "boardY": 0,
+      "absoluteBoundingBox": {
+        "x": 0,
+        "y": 0,
+        "width": 375,
+        "height": 812
+      },
+      "rotation": 0,
+      "opacity": 1,
+      "visible": true,
+      "cornerRadius": 0,
+      "fills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "color": {
+            "r": 0.976,
+            "g": 0.98,
+            "b": 0.984,
+            "a": 1
+          }
+        }
+      ],
+      "strokes": [],
+      "effects": [],
+      "hasImageFill": false,
+      "imageFillNodeId": null,
+      "children": [
+        {
+          "id": "10:2",
+          "parentId": "10:1",
+          "name": "顶部渐变",
+          "type": "RECTANGLE",
+          "x": 0,
+          "y": 0,
+          "boardX": 0,
+          "boardY": 0,
+          "absoluteBoundingBox": {
+            "x": 0,
+            "y": 0,
+            "width": 375,
+            "height": 240
+          },
+          "rotation": 0,
+          "opacity": 1,
+          "visible": true,
+          "rectangleCornerRadii": [
+            0,
+            0,
+            24,
+            24
+          ],
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "gradientStops": [
+                {
+                  "position": 0,
+                  "color": {
+                    "r": 0.145,
+                    "g": 0.388,
+                    "b": 0.922,
+                    "a": 1
+                  }
+                },
+                {
+                  "position": 1,
+                  "color": {
+                    "r": 0.557,
+                    "g": 0.267,
+                    "b": 0.933,
+                    "a": 1
+                  }
+                }
+              ],
+              "gradientHandlePositions": [
+                {
+                  "x": 0,
+                  "y": 0
+                },
+                {
+                  "x": 0.5,
+                  "y": 0.5
+                },
+                {
+                  "x": 1,
+                  "y": 1
+                }
+              ]
+            }
+          ],
+          "strokes": [],
+          "effects": [],
+          "hasImageFill": false,
+          "imageFillNodeId": null,
+          "children": []
+        },
+        {
+          "id": "10:3",
+          "parentId": "10:1",
+          "name": "邮箱输入框",
+          "type": "RECTANGLE",
+          "x": 24,
+          "y": 300,
+          "boardX": 24,
+          "boardY": 300,
+          "absoluteBoundingBox": {
+            "x": 24,
+            "y": 300,
+            "width": 327,
+            "height": 48
+          },
+          "rotation": 0,
+          "opacity": 1,
+          "visible": true,
+          "cornerRadius": 12,
+          "fills": [
+            {
+              "type": "SOLID",
+              "visible": true,
+              "opacity": 1,
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          ],
+          "strokes": [
+            {
+              "type": "SOLID",
+              "visible": true,
+              "opacity": 1,
+              "color": {
+                "r": 0.886,
+                "g": 0.902,
+                "b": 0.925,
+                "a": 1
+              }
+            }
+          ],
+          "strokeWeight": 1,
+          "strokeAlign": "INSIDE",
+          "effects": [
+            {
+              "type": "DROP_SHADOW",
+              "visible": true,
+              "radius": 8,
+              "spread": 0,
+              "offset": {
+                "x": 0,
+                "y": 2
+              },
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.08
+              }
+            }
+          ],
+          "hasImageFill": false,
+          "imageFillNodeId": null,
+          "children": []
+        },
+        {
+          "id": "10:4",
+          "parentId": "10:1",
+          "name": "头像占位",
+          "type": "ELLIPSE",
+          "x": 147,
+          "y": 96,
+          "boardX": 147,
+          "boardY": 96,
+          "absoluteBoundingBox": {
+            "x": 147,
+            "y": 96,
+            "width": 80,
+            "height": 80
+          },
+          "rotation": 0,
+          "opacity": 1,
+          "visible": true,
+          "fills": [
+            {
+              "type": "SOLID",
+              "visible": true,
+              "opacity": 1,
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          ],
+          "strokes": [],
+          "effects": [],
+          "hasImageFill": false,
+          "imageFillNodeId": null,
+          "children": []
+        },
+        {
+          "id": "10:5",
+          "parentId": "10:1",
+          "name": "欢迎标题",
+          "type": "TEXT",
+          "x": 24,
+          "y": 200,
+          "boardX": 24,
+          "boardY": 200,
+          "absoluteBoundingBox": {
+            "x": 24,
+            "y": 200,
+            "width": 200,
+            "height": 36
+          },
+          "rotation": 0,
+          "opacity": 1,
+          "visible": true,
+          "fills": [
+            {
+              "type": "SOLID",
+              "visible": true,
+              "opacity": 1,
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          ],
+          "strokes": [],
+          "effects": [],
+          "hasImageFill": false,
+          "imageFillNodeId": null,
+          "children": [],
+          "characters": "欢迎回来",
+          "style": {
+            "fontFamily": "PingFang SC",
+            "fontPostScriptName": "Semibold",
+            "fontWeight": 600,
+            "fontSize": 28,
+            "lineHeightPx": 36,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "LEFT",
+            "textAlignVertical": "TOP",
+            "textCase": "ORIGINAL",
+            "textDecoration": "NONE"
+          }
+        },
+        {
+          "id": "10:6",
+          "parentId": "10:1",
+          "name": "封面图",
+          "type": "RECTANGLE",
+          "x": 24,
+          "y": 420,
+          "boardX": 24,
+          "boardY": 420,
+          "absoluteBoundingBox": {
+            "x": 24,
+            "y": 420,
+            "width": 327,
+            "height": 160
+          },
+          "rotation": 0,
+          "opacity": 1,
+          "visible": true,
+          "cornerRadius": 16,
+          "fills": [
+            {
+              "type": "IMAGE",
+              "visible": true,
+              "opacity": 1,
+              "scaleMode": "FILL",
+              "imageHash": "plugin-sample-image-hash"
+            }
+          ],
+          "strokes": [],
+          "effects": [],
+          "hasImageFill": true,
+          "imageFillNodeId": "10:6",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "10:20",
+      "parentId": null,
+      "name": "空状态",
+      "type": "FRAME",
+      "x": 420,
+      "y": 0,
+      "boardX": 0,
+      "boardY": 0,
+      "absoluteBoundingBox": {
+        "x": 420,
+        "y": 0,
+        "width": 320,
+        "height": 480
+      },
+      "rotation": 0,
+      "opacity": 1,
+      "visible": true,
+      "cornerRadius": 0,
+      "fills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 1
+          }
+        }
+      ],
+      "strokes": [],
+      "effects": [],
+      "hasImageFill": false,
+      "imageFillNodeId": null,
+      "children": [
+        {
+          "id": "10:21",
+          "parentId": "10:20",
+          "name": "空状态说明",
+          "type": "TEXT",
+          "x": 40,
+          "y": 200,
+          "boardX": 40,
+          "boardY": 200,
+          "absoluteBoundingBox": {
+            "x": 460,
+            "y": 200,
+            "width": 240,
+            "height": 24
+          },
+          "rotation": 0,
+          "opacity": 1,
+          "visible": true,
+          "fills": [
+            {
+              "type": "SOLID",
+              "visible": true,
+              "opacity": 1,
+              "color": {
+                "r": 0.42,
+                "g": 0.447,
+                "b": 0.502,
+                "a": 1
+              }
+            }
+          ],
+          "strokes": [],
+          "effects": [],
+          "hasImageFill": false,
+          "imageFillNodeId": null,
+          "children": [],
+          "characters": "还没有内容",
+          "style": {
+            "fontFamily": "PingFang SC",
+            "fontPostScriptName": "Regular",
+            "fontWeight": 400,
+            "fontSize": 16,
+            "lineHeightPx": 24,
+            "letterSpacing": 0,
+            "textAlignHorizontal": "CENTER",
+            "textAlignVertical": "TOP",
+            "textCase": "ORIGINAL",
+            "textDecoration": "NONE"
+          }
+        }
+      ]
+    }
+  ]
+}

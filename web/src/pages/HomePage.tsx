@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity } from '../api';
-import type { Identity, Member } from '../api';
-import { ChevronDown, Folder, Mail, Plus, Users } from '../components/icons';
+import type { Identity, ImportToken, Member } from '../api';
+import { ChevronDown, Folder, Layers, Mail, Plus, Users } from '../components/icons';
+import { useDialogs } from '../components/Dialogs';
 
 interface Team {
   id: string;
@@ -20,7 +21,18 @@ interface Project {
   cover: string | null;
 }
 
-type View = 'projects' | 'members';
+type View = 'projects' | 'members' | 'settings';
+
+/** 最近访问的团队：无 team 参数时优先用它，避免总落到列表第一个团队 */
+const LAST_TEAM_KEY = 'shejixiezuo:last-team';
+
+function readLastTeamId() {
+  try {
+    return localStorage.getItem(LAST_TEAM_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
 
 export default function HomePage() {
   const [searchParams] = useSearchParams();
@@ -28,16 +40,22 @@ export default function HomePage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') ?? ''); // '' = 尚未选定（加载后落到首个团队）
+  // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
+  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [teamName, setTeamName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
   const [identity, setIdentityState] = useState<Identity | null>(null);
-  const [projectName, setProjectName] = useState('');
   const [switchOpen, setSwitchOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // 团队导入令牌：newToken 只在生成后展示一次
+  const [tokens, setTokens] = useState<ImportToken[]>([]);
+  const [newToken, setNewToken] = useState('');
+  // 令牌作用范围：默认「全部团队」，插件里可先选团队再选项目
+  const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
   const navigate = useNavigate();
+  const dialogs = useDialogs();
 
   const loadTeams = useCallback(() => {
     api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
@@ -51,11 +69,48 @@ export default function HomePage() {
   }, [activeTeam]);
 
   useEffect(loadTeams, [loadTeams]);
-  // 只有当前团队：未指定团队或团队失效时，落到首个团队
+
+  // 团队上下文以 URL 的 ?team= 为准：URL → state 单向同步（前进/后退/直开链接都走这里）。
+  // 反向只在「用户主动切换团队 / 回退兜底」时由 switchTeam 显式 navigate，
+  // 避免两个 effect 互相回写导致 666 ↔ 11 反复横跳与请求风暴。
+  const urlTeam = searchParams.get('team') ?? '';
+  const switchTeam = useCallback(
+    (id: string, replace = false) => {
+      setActiveTeam(id);
+      navigate(`/projects?team=${encodeURIComponent(id)}`, { replace });
+    },
+    [navigate]
+  );
+
+  useEffect(() => {
+    if (urlTeam && urlTeam !== activeTeam) setActiveTeam(urlTeam);
+  }, [urlTeam, activeTeam]);
+
+  // 记住最近访问的团队，供无 ?team= 的旧链接兜底
+  useEffect(() => {
+    if (!activeTeam) return;
+    try {
+      localStorage.setItem(LAST_TEAM_KEY, activeTeam);
+    } catch {
+      // localStorage 不可用时忽略，仅影响「最近访问」记忆
+    }
+  }, [activeTeam]);
+
+  // 旧的无 ?team= 地址：确定当前团队后补上参数（replace，不留死链）
+  useEffect(() => {
+    if (!activeTeam || urlTeam) return;
+    navigate(`/projects?team=${encodeURIComponent(activeTeam)}`, { replace: true });
+  }, [activeTeam, urlTeam, navigate]);
+
+  // 未指定团队 / 团队已失效：优先最近访问，其次第一个团队，并把 URL 补齐（旧链接不留死链）
   useEffect(() => {
     if (!teams.length) return;
-    if (!teams.some((t) => t.id === activeTeam)) setActiveTeam(teams[0].id);
-  }, [teams, activeTeam]);
+    if (activeTeam && teams.some((t) => t.id === activeTeam)) return;
+    const stored = readLastTeamId();
+    const fallback = stored && teams.some((t) => t.id === stored) ? stored : teams[0].id;
+    switchTeam(fallback, true);
+  }, [teams, activeTeam, switchTeam]);
+
   useEffect(loadProjects, [loadProjects]);
 
   // 当前团队的成员列表 + 身份（协作者只读 / 管理员可编辑）
@@ -72,6 +127,63 @@ export default function HomePage() {
       .catch(() => setMembers([]));
   }, [activeTeam]);
 
+  const loadTokens = useCallback(() => {
+    if (!activeTeam) {
+      setTokens([]);
+      return;
+    }
+    api
+      .listImportTokens(activeTeam)
+      .then((rows) => setTokens(Array.isArray(rows) ? rows : []))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [activeTeam]);
+
+  useEffect(() => {
+    setNewToken('');
+    loadTokens();
+  }, [loadTokens]);
+
+  const createToken = async () => {
+    if (!activeTeam || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const created = await api.createImportToken(activeTeam, tokenScope);
+      setNewToken(created.token);
+      loadTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyToken = async () => {
+    try {
+      await navigator.clipboard.writeText(newToken);
+      setError('');
+    } catch {
+      setError('复制失败：请手动选中令牌文本复制');
+    }
+  };
+
+  const revokeToken = async (id: string) => {
+    if (!activeTeam) return;
+    const ok = await dialogs.confirm({
+      title: '撤销导入令牌',
+      message: '撤销后该记录会从列表删除且不可恢复，使用该令牌的 Figma 插件会立即失效（返回 401），需要重新填写新令牌。',
+      confirmText: '撤销并删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.revokeImportToken(activeTeam, id);
+      loadTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const createTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teamName.trim() || busy) return;
@@ -81,8 +193,8 @@ export default function HomePage() {
       const t = await api.createTeam(teamName.trim());
       setTeamName('');
       setSwitchOpen(false);
-      loadTeams();
-      setActiveTeam(t.id);
+      await loadTeams();
+      switchTeam(t.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -145,20 +257,23 @@ export default function HomePage() {
     }
   };
 
-  const createProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectName.trim() || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const p = await api.createProject(projectName.trim(), activeTeam || undefined);
-      setProjectName('');
-      navigate(`/projects/${p.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+  const openCreateProject = () => {
+    void dialogs.prompt({
+      title: '新建项目',
+      label: '项目名称',
+      placeholder: activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称',
+      maxLength: 60,
+      confirmText: '创建',
+      onSubmit: async (name) => {
+        try {
+          await api.createProject(name, activeTeam || undefined);
+          await loadProjects();
+          return null;
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err);
+        }
+      },
+    });
   };
 
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
@@ -182,7 +297,7 @@ export default function HomePage() {
                 key={t.id}
                 className={`team-switch-item ${activeTeam === t.id ? 'active' : ''}`}
                 onClick={() => {
-                  setActiveTeam(t.id);
+                  switchTeam(t.id);
                   setView('projects');
                   setSwitchOpen(false);
                 }}
@@ -249,6 +364,12 @@ export default function HomePage() {
           >
             <Users /> 团队成员
           </button>
+          <button
+            className={`side-nav-item ${view === 'settings' ? 'active' : ''}`}
+            onClick={() => setView('settings')}
+          >
+            <Layers /> 团队设置
+          </button>
         </nav>
       </aside>
 
@@ -258,19 +379,14 @@ export default function HomePage() {
           {view === 'projects' ? (
             <>
               <header className="view-header">
-                <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
+                <div className="view-header-row">
+                  <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
+                  <button type="button" className="new-project-btn" onClick={openCreateProject}>
+                    <Plus /> 新建项目
+                  </button>
+                </div>
                 <p>选择项目进入，查看设计稿、标注与规范</p>
               </header>
-
-              <form className="inline-form" onSubmit={createProject}>
-                <input
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder={activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称（可先在左上角选择团队）'}
-                  className="compact-input grow"
-                />
-                <button type="submit" disabled={busy || !projectName.trim()}><Plus /> 新建项目</button>
-              </form>
 
               <ul className="project-grid">
                 {projects.length === 0 && <p className="empty">暂无项目</p>}
@@ -295,6 +411,65 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
+            </>
+          ) : view === 'settings' && activeTeamName ? (
+            <>
+              <header className="view-header">
+                <h1>团队设置 · {activeTeamName}</h1>
+                <p>为 Figma 插件生成「导入令牌」，插件用它调用导入接口，不需要浏览器登录状态</p>
+              </header>
+
+              <section className="settings-section">
+                <div className="settings-head">
+                  <div>
+                    <h2>导入令牌</h2>
+                    <p className="dim small">
+                      令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销即删除记录，插件立即失效（401）。
+                    </p>
+                  </div>
+                  <div className="token-create">
+                    <select
+                      value={tokenScope}
+                      aria-label="令牌作用范围"
+                      onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
+                    >
+                      <option value="all">全部团队</option>
+                      <option value="team">仅 {activeTeamName}</option>
+                    </select>
+                    <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>
+                      <Plus /> 生成导入令牌
+                    </button>
+                  </div>
+                </div>
+
+                {newToken && (
+                  <div className="token-once">
+                    <div className="token-once-head">新令牌（只显示这一次）</div>
+                    <div className="token-once-body">
+                      <code>{newToken}</code>
+                      <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
+                    </div>
+                    <p className="dim small">粘贴到 Figma 插件的「导入令牌」输入框，之后无法再从网站查看明文。</p>
+                  </div>
+                )}
+
+                <ul className="token-list">
+                  {tokens.length === 0 && <p className="empty">还没有导入令牌，点击右上角生成</p>}
+                  {tokens.map((t) => (
+                    <li key={t.id} className="token-row">
+                      <code>{t.prefix}…</code>
+                      <span className={`role-badge ${t.scope === 'all' ? 'admin' : 'collaborator'}`}>
+                        {t.scope === 'all' ? '全部团队' : '单团队'}
+                      </span>
+                      <span className="dim small">创建于 {new Date(t.created_at).toLocaleString('zh-CN')}</span>
+                      <span className="dim small">
+                        {t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : '尚未使用'}
+                      </span>
+                      <button type="button" className="member-remove" onClick={() => void revokeToken(t.id)}>撤销</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </>
           ) : activeTeamName ? (
             <>
@@ -376,6 +551,7 @@ export default function HomePage() {
         </div>
       </main>
       </div>
+      {dialogs.element}
     </div>
   );
 }

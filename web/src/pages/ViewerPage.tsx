@@ -7,7 +7,7 @@ import PropertyPanel from '../viewer/PropertyPanel';
 import CommentDrawer from '../viewer/CommentDrawer';
 import { useDialogs } from '../components/Dialogs';
 import RowMenu from '../components/RowMenu';
-import { readUnit, saveUnit, type Unit } from '../unit';
+import { readUnit, saveUnit, unitForPlatform, type Unit } from '../unit';
 import {
   ArrowLeft,
   ChevronDown,
@@ -77,6 +77,12 @@ export default function ViewerPage() {
       .catch((e) => setError(e.message));
   }, [fileId, frameId]);
 
+  // 单位默认值跟随导入平台（iOS→pt / Android→dp / Web→px）；用户手动切换后优先用户选择
+  useEffect(() => {
+    if (!data || unitPickedRef.current) return;
+    setUnitState(unitForPlatform(data.frame.platform));
+  }, [data]);
+
   // Esc 取消选中 / 关闭右键菜单
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -100,9 +106,6 @@ export default function ViewerPage() {
   const [dragFrameId, setDragFrameId] = useState<string | null>(null);
   const [dropPageId, setDropPageId] = useState<string | null>(null);
   const [dropFrameHint, setDropFrameHint] = useState<{ frameId: string; position: 'before' | 'after' } | null>(null);
-  const [selectedFrames, setSelectedFrames] = useState<Set<string>>(new Set());
-  // 区间连选（Shift）的起点：上一次点击的画板
-  const selectionAnchorRef = useRef<string | null>(null);
   // 是否刚发生过拖拽：用于屏蔽拖拽结束后的双击打开
   const draggedRef = useRef(false);
   const [zipBusy, setZipBusy] = useState('');
@@ -110,7 +113,10 @@ export default function ViewerPage() {
   const navigate = useNavigate();
   // 单位切换：只影响数值后缀/标注，绝不改变画板尺寸与已存数据
   const [unit, setUnitState] = useState<Unit>(() => readUnit());
+  // 用户手动切过单位后，本次会话不再被平台默认值覆盖
+  const unitPickedRef = useRef(false);
   const pickUnit = (u: Unit) => {
+    unitPickedRef.current = true;
     setUnitState(u);
     saveUnit(u);
   };
@@ -209,8 +215,7 @@ export default function ViewerPage() {
     );
   }, [frames]);
   const filePageKey = (fid: string, pageId: string | null) => pageId ?? `__none:${fid}`;
-  const draggingIds = () =>
-    dragFrameId ? (selectedFrames.has(dragFrameId) ? [...selectedFrames] : [dragFrameId]) : [];
+  const draggingIds = () => (dragFrameId ? [dragFrameId] : []);
   const draggingIdsFor = (fid: string) =>
     draggingIds().filter((id) => frames.find((f) => f.id === id)?.file_id === fid);
   const clearDrag = () => {
@@ -241,8 +246,7 @@ export default function ViewerPage() {
     }
   };
 
-  const createGroupFromSelection = async (fid: string) => {
-    const ids = [...selectedFrames].filter((id) => frames.find((f) => f.id === id)?.file_id === fid);
+  const createGroupFromSelection = async (fid: string, ids: string[]) => {
     if (!ids.length) return;
     const name = await dialogs.prompt({
       title: `新建编组（${ids.length} 个画板）`,
@@ -255,7 +259,6 @@ export default function ViewerPage() {
     try {
       const pg = await api.createPage(fid, name);
       await api.moveFramesToPage(fid, ids, pg.id);
-      setSelectedFrames(new Set());
       await refreshPages();
       setOpenPages((s) => new Set(s).add(pg.id));
     } catch (e) {
@@ -302,10 +305,6 @@ export default function ViewerPage() {
     }
     try {
       await api.deletePage(pg.file_id, pg.id, mode as 'dissolve' | 'content');
-      setSelectedFrames((s) => {
-        const ids = new Set(list.map((f) => f.id));
-        return new Set([...s].filter((id) => !ids.has(id)));
-      });
       await refreshPages();
       // 解散后画板回到未分组：展开该段，避免看起来“画板消失”
       setOpenPages((s) => new Set(s).add(filePageKey(pg.file_id, null)));
@@ -348,7 +347,6 @@ export default function ViewerPage() {
     if (!ok) return;
     try {
       await api.deleteFrame(f.file_id, f.id);
-      setSelectedFrames((s) => new Set([...s].filter((id) => id !== f.id)));
       if (f.id === frameId) navigate(`/files/${f.file_id}`);
       await refreshPages();
     } catch (e) {
@@ -356,12 +354,10 @@ export default function ViewerPage() {
     }
   };
 
-  const moveSelection = async (fid: string, pageId: string | null) => {
-    const ids = [...selectedFrames].filter((id) => frames.find((f) => f.id === id)?.file_id === fid);
+  const moveSelection = async (fid: string, ids: string[], pageId: string | null) => {
     if (!ids.length) return;
     try {
       await api.moveFramesToPage(fid, ids, pageId);
-      setSelectedFrames(new Set());
       setOpenPages((s) => new Set(s).add(filePageKey(fid, pageId)));
       await refreshPages();
     } catch (e) {
@@ -454,50 +450,7 @@ export default function ViewerPage() {
     });
   };
 
-  // ---------- 侧栏多选：Ctrl/⌘ 切换、Shift 连选、普通点击单选 ----------
-  // macOS 上 Ctrl+点击 = 右键，所以 mac 只认 ⌘
-  const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
-  const hasToggleModifier = (e: { ctrlKey: boolean; metaKey: boolean }) =>
-    isMac ? e.metaKey : e.ctrlKey || e.metaKey;
-
-  /** 左侧列表的视觉顺序（所有编组按设计稿顺序，最后是全局未分组），Shift 连选按此顺序 */
-  const visibleFrameIds = () => {
-    const ids: string[] = [];
-    for (const fl of files) for (const pg of pagesOfFile(fl.id)) pageFrames(fl.id, pg.id).forEach((f) => ids.push(f.id));
-    globalUngrouped.forEach((f) => ids.push(f.id));
-    return ids;
-  };
-
-  const toggleSelect = (id: string) => {
-    selectionAnchorRef.current = id;
-    setSelectedFrames((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-  };
-
-  /** Shift：从锚点到当前项的区间（按可见顺序，可跨编组）；替换原有选择 */
-  const selectRangeTo = (id: string) => {
-    const order = visibleFrameIds();
-    const anchor = selectionAnchorRef.current;
-    const a = anchor ? order.indexOf(anchor) : -1;
-    const b = order.indexOf(id);
-    if (a < 0 || b < 0) {
-      setSelectedFrames(new Set([id]));
-      return;
-    }
-    const [from, to] = a <= b ? [a, b] : [b, a];
-    setSelectedFrames(new Set(order.slice(from, to + 1)));
-  };
-
-  /** 普通单击：只选中当前这张（清空其它），不打开画板 */
-  const plainSelect = (id: string) => {
-    selectionAnchorRef.current = id;
-    setSelectedFrames(new Set([id]));
-  };
-
+  // ---------- 侧栏只跟随当前画板：不做 Ctrl/⌘ 多选与 Shift 连选 ----------
   const togglePage = (key: string) =>
     setOpenPages((s) => {
       const n = new Set(s);
@@ -514,18 +467,13 @@ export default function ViewerPage() {
       return n;
     });
 
-  // ---------- 右键菜单：轻量编组入口（替代常驻工具条） ----------
+  // ---------- 右键菜单：轻量编组入口（只作用于右键的那一张画板） ----------
   const ctxFrame = ctxMenu ? frames.find((f) => f.id === ctxMenu.frameId) : undefined;
   const ctxFileId = ctxFrame?.file_id ?? '';
-  const ctxIds = () =>
-    ctxMenu ? (selectedFrames.has(ctxMenu.frameId) ? [...selectedFrames] : [ctxMenu.frameId]) : [];
-  const ctxSameFile = () =>
-    !!ctxFrame && ctxIds().every((id) => frames.find((f) => f.id === id)?.file_id === ctxFrame.file_id);
   const openCtxMenu = (f: ProjectFrameRow, e: React.MouseEvent) => {
     if (readOnly) return;
     e.preventDefault();
     e.stopPropagation();
-    if (!selectedFrames.has(f.id)) plainSelect(f.id);
     setCtxMenu({ x: e.clientX, y: e.clientY, frameId: f.id });
   };
   const closeCtxMenu = () => setCtxMenu(null);
@@ -582,7 +530,7 @@ export default function ViewerPage() {
     [refreshComments]
   );
 
-  if (error) return <div className="page-msg">错误：{error} <Link to="/">返回首页</Link></div>;
+  if (error) return <div className="page-msg">错误：{error} <Link to="/projects">返回项目列表</Link></div>;
   if (!data) return <div className="page-msg">加载中…</div>;
 
   const nodeById = new Map(data.nodes.map((n: LayerNode) => [n.node_id, n]));
@@ -600,46 +548,25 @@ export default function ViewerPage() {
       }
     : null;
 
-  // 页面（编组）内的画板列表：支持多选、拖拽排序、跨组移动
+  // 页面（编组）内的画板列表：只高亮当前打开的画板；不做多选，拖拽仍可排序/跨组移动
   const renderFrameList = (list: ProjectFrameRow[], showEmptyHint: boolean) => (
-    <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
+    <div className="page-frames" role={readOnly ? undefined : 'listbox'}>
       {list.map((f) => (
         <div
           key={f.id}
           role={readOnly ? undefined : 'option'}
-          aria-selected={readOnly ? undefined : selectedFrames.has(f.id)}
+          aria-selected={readOnly ? undefined : f.id === frameId}
           className={`frame-item ${f.id === frameId ? 'is-current' : ''} ${
-            selectedFrames.has(f.id) ? 'is-selected' : ''
-          } ${dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''}`}
-          title={`${f.name}（双击打开，Ctrl/⌘ 点击多选，Shift 连选，右键编组）`}
+            dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''
+          }`}
+          title={`${f.name}（单击打开，右键编组）`}
           draggable={!readOnly}
-          onClick={(e) => {
-            if (readOnly) {
-              navigate(`/files/${f.file_id}/frames/${f.id}`);
-              return;
-            }
-            if (e.shiftKey) {
-              selectRangeTo(f.id);
-              return;
-            }
-            if (hasToggleModifier(e)) {
-              toggleSelect(f.id);
-              return;
-            }
-            // 普通单击只选中，不跳转；打开由双击触发
-            plainSelect(f.id);
+          onClick={() => {
+            // 查看器内切换画板用 replace：不往历史里堆画板详情，浏览器后退可回项目页
+            if (draggedRef.current) return;
+            navigate(`/files/${f.file_id}/frames/${f.id}`, { replace: true });
           }}
           onContextMenu={(e) => openCtxMenu(f, e)}
-          onDoubleClick={(e) => {
-            if (readOnly) return;
-            // 修饰键点击、刚拖拽过都不算“双击打开”
-            if (e.shiftKey || hasToggleModifier(e) || draggedRef.current) {
-              e.preventDefault();
-              return;
-            }
-            e.preventDefault();
-            navigate(`/files/${f.file_id}/frames/${f.id}`);
-          }}
           onDragStart={(e) => {
             draggedRef.current = true;
             setDragFrameId(f.id);
@@ -692,20 +619,16 @@ export default function ViewerPage() {
     </div>
   );
 
-  // 返回上一页：历史栈为首个记录时回项目页，避免退回空白页
+  // 返回：固定回文件所属团队的项目列表，避免回到裸 / 后落到默认团队
   const goBack = () => {
-    const idx = (window.history.state as { idx?: number } | null)?.idx;
-    if (typeof idx !== 'number' || idx <= 0) {
-      navigate(file?.project_id ? `/projects/${file.project_id}` : '/', { replace: true });
-      return;
-    }
-    navigate(-1);
+    const teamId = file?.team_id;
+    navigate(teamId ? `/projects?team=${teamId}` : '/projects', { replace: true });
   };
 
   return (
     <div className="viewer">
       <header className="topbar">
-        <button className="icon-btn" onClick={goBack} title="返回上一页" aria-label="返回上一页">
+        <button className="icon-btn" onClick={goBack} title="返回项目画板列表" aria-label="返回项目画板列表">
           <ArrowLeft />
         </button>
         <h1><Folder /> {file?.name ?? '…'}</h1>
@@ -826,7 +749,7 @@ export default function ViewerPage() {
                         tabIndex={0}
                         aria-expanded={open}
                         onClick={() => {
-                          if (!readOnly && list.length) setSelectedFrames(new Set(list.map((f) => f.id)));
+                          togglePage(pg.id);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
@@ -892,9 +815,7 @@ export default function ViewerPage() {
                     tabIndex={0}
                     aria-expanded={openPages.has('__none:global')}
                     onClick={() => {
-                      if (!readOnly && globalUngrouped.length) {
-                        setSelectedFrames(new Set(globalUngrouped.map((f) => f.id)));
-                      }
+                      togglePage('__none:global');
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -976,23 +897,20 @@ export default function ViewerPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="ctx-title">已选 {ctxIds().length} 个画板</div>
-            {!ctxSameFile() && <div className="ctx-hint">跨设计稿选择不能编组或移动，请取消后重选</div>}
+            <div className="ctx-title">画板「{ctxFrame.name}」</div>
             <button
-              disabled={!ctxSameFile()}
               onClick={() => {
                 closeCtxMenu();
-                void createGroupFromSelection(ctxFileId);
+                void createGroupFromSelection(ctxFileId, [ctxFrame.id]);
               }}
             >
               新建编组…
             </button>
             {ctxFrame.page_id && (
               <button
-                disabled={!ctxSameFile()}
                 onClick={() => {
                   closeCtxMenu();
-                  void moveSelection(ctxFileId, null);
+                  void moveSelection(ctxFileId, [ctxFrame.id], null);
                 }}
               >
                 移出编组
@@ -1008,24 +926,14 @@ export default function ViewerPage() {
               .map((pg) => (
                 <button
                   key={pg.id}
-                  disabled={!ctxSameFile()}
                   onClick={() => {
                     closeCtxMenu();
-                    void moveSelection(ctxFileId, pg.id);
+                    void moveSelection(ctxFileId, [ctxFrame.id], pg.id);
                   }}
                 >
                   {pg.name}
                 </button>
               ))}
-            <div className="ctx-sep" />
-            <button
-              onClick={() => {
-                setSelectedFrames(new Set());
-                closeCtxMenu();
-              }}
-            >
-              取消选中
-            </button>
           </div>
         </>
       )}

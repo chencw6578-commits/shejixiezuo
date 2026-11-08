@@ -3,6 +3,11 @@ import { config } from './config.js';
 
 export const pool = new Pool({ connectionString: config.databaseUrl, max: 10 });
 
+// 空闲连接上的异步错误（如 PG 偶发 53200）不带走整个进程：记录并丢弃该连接
+pool.on('error', (err) => {
+  console.error('[db] idle client error (connection dropped):', err.message);
+});
+
 const SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -118,6 +123,29 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_comments_frame ON comments(frame_id);
+
+-- 平台与倍率：platform 决定逻辑单位（ios→pt / android→dp / web→px），scale 为位图倍率
+ALTER TABLE design_files ADD COLUMN IF NOT EXISTS platform TEXT;
+ALTER TABLE design_files ADD COLUMN IF NOT EXISTS scale REAL;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS platform TEXT;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS scale REAL;
+
+-- 团队级「导入令牌」：Figma 插件在无浏览器会话时用 Bearer 调用 /api/plugin/*
+-- 服务端只存 sha256 哈希，明文只在创建响应里返回一次
+CREATE TABLE IF NOT EXISTS import_tokens (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id      UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  hash         TEXT NOT NULL UNIQUE,
+  prefix       TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ,
+  revoked_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_import_tokens_team ON import_tokens(team_id);
+-- 令牌作用范围：team=仅创建时的团队；all=可访问全部团队（默认）
+ALTER TABLE import_tokens ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'team';
+-- 撤销已改为硬删除：启动时清理历史遗留的已撤销记录（幂等）
+DELETE FROM import_tokens WHERE revoked_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS assets (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

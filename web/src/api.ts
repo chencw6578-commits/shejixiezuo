@@ -14,6 +14,16 @@ export interface Identity {
   role: 'admin' | 'collaborator';
 }
 
+/** 导入令牌（明文只在创建响应里出现一次） */
+export interface ImportToken {
+  id: string;
+  prefix: string;
+  /** all=创建该令牌的账号下全部团队；team=仅创建时的团队 */
+  scope: 'all' | 'team';
+  created_at: string;
+  last_used_at: string | null;
+}
+
 // ---------- 身份（协作者只读 / 管理员可编辑可删除） ----------
 const IDENTITY_KEY = 'dh.identity';
 let activeTeamId = '';
@@ -80,11 +90,21 @@ export interface CommentItem {
 }
 
 export const api = {
-  importFile: (url: string, projectId?: string) =>
-    request<{ id: string; name: string }>('/api/files', {
+  /** 服务端是否配置了统一 Figma 令牌（只看 true/false，不含令牌本身） */
+  figmaImportStatus: () => request<{ configured: boolean }>('/api/import/figma/status'),
+
+  importFile: (url: string, projectId?: string, token?: string) =>
+    request<{ id: string; name: string; nodeId?: string | null; frameCount?: number }>('/api/files', {
       method: 'POST',
-      body: JSON.stringify({ url, projectId }),
+      body: JSON.stringify({ url, projectId, token: token?.trim() || undefined }),
     }),
+
+  /** 导入 Figma 插件导出的 JSON（服务端不调用 Figma REST，不受限流影响） */
+  importFigmaJson: (json: string | object, projectId?: string) =>
+    request<{ id: string; name: string; frameCount: number; nodeCount: number; skipped: number }>(
+      '/api/import/figma-json',
+      { method: 'POST', body: JSON.stringify({ json, projectId }) }
+    ),
 
   /** 上传 .sketch / .psd 文件导入（可指定所属项目） */
   uploadDesign: async (file: File, projectId?: string): Promise<{ id: string; name: string }> => {
@@ -242,6 +262,16 @@ export const api = {
     }),
   removeMember: (teamId: string, memberId: string) =>
     request<{ deleted: boolean }>(`/api/teams/${teamId}/members/${memberId}`, { method: 'DELETE' }),
+
+  // ---- 团队导入令牌（Figma 插件用，服务端只存哈希） ----
+  listImportTokens: (teamId: string) => request<ImportToken[]>(`/api/teams/${teamId}/import-tokens`),
+  createImportToken: (teamId: string, scope: ImportToken['scope'] = 'all') =>
+    request<ImportToken & { token: string }>(`/api/teams/${teamId}/import-tokens`, {
+      method: 'POST',
+      body: JSON.stringify({ scope }),
+    }),
+  revokeImportToken: (teamId: string, tokenId: string) =>
+    request<{ deleted: boolean }>(`/api/teams/${teamId}/import-tokens/${tokenId}`, { method: 'DELETE' }),
 
   // ---- 项目 ----
   listProjects: (teamId?: string) =>

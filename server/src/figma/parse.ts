@@ -57,6 +57,8 @@ export interface ParsedNodeProps {
   cornerRadius?: number;
   cornerRadii?: number[];
   blendMode?: string;
+  /** 旋转角度（Figma 插件导出才有；REST 节点通常不带） */
+  rotation?: number;
   text?: ParsedTextStyle & { content: string };
   exportPresets: ParsedExportPreset[];
   hasImageFill: boolean;
@@ -97,13 +99,32 @@ function toColor(c: { r: number; g: number; b: number }, a = 1): ParsedColor {
   return { hex, alpha, rgba: `rgba(${r}, ${g}, ${b}, ${alpha})` };
 }
 
-/** 由渐变 handle 位置计算 CSS linear-gradient 角度（相对节点包围盒）。 */
-function gradientAngle(handles: number[][] | undefined): number {
-  if (!handles || handles.length < 2) return 180;
-  const [sx, sy] = handles[0];
-  const [ex, ey] = handles[2] ?? handles[1];
-  const dx = ex - sx;
-  const dy = ey - sy;
+/**
+ * 由渐变 handle 位置计算 CSS linear-gradient 角度（相对节点包围盒）。
+ * 注意：Figma REST 返回的是 Vector 对象（{x, y}），历史上也有 [x, y] 数组形式，两种都要兼容。
+ */
+function toVector(h: unknown): { x: number; y: number } | null {
+  if (Array.isArray(h)) {
+    const x = Number(h[0]);
+    const y = Number(h[1]);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  }
+  if (h && typeof h === 'object') {
+    const { x, y } = h as { x?: unknown; y?: unknown };
+    const nx = Number(x);
+    const ny = Number(y);
+    return Number.isFinite(nx) && Number.isFinite(ny) ? { x: nx, y: ny } : null;
+  }
+  return null;
+}
+
+function gradientAngle(handles: unknown): number {
+  if (!Array.isArray(handles) || handles.length < 2) return 180;
+  const start = toVector(handles[0]);
+  const end = toVector(handles[2]) ?? toVector(handles[1]);
+  if (!start || !end) return 180;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
   if (dx === 0 && dy === 0) return 180;
   // CSS 渐变角度：0deg 指向上，顺时针。Figma handle 方向即渐变方向。
   const deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
@@ -118,7 +139,8 @@ interface RawPaint {
   opacity?: number;
   color?: { r: number; g: number; b: number; a?: number };
   gradientStops?: { position: number; color: { r: number; g: number; b: number; a?: number } }[];
-  gradientHandlePositions?: number[][];
+  /** REST 里是 Vector[]（{x,y}），旧数据可能是 number[][]，按 unknown 做防御解析 */
+  gradientHandlePositions?: unknown;
   scaleMode?: string;
 }
 
@@ -131,10 +153,13 @@ function parsePaint(paint: RawPaint): ParsedFill {
     const color = toColor(paint.color, (paint.color.a ?? 1) * opacity);
     return { ...base, type: 'solid', color, css: color.rgba };
   }
-  if (paint.type?.startsWith('GRADIENT_')) {
-    const stops = (paint.gradientStops ?? [])
+  if (typeof paint.type === 'string' && paint.type.startsWith('GRADIENT_')) {
+    const rawStops = Array.isArray(paint.gradientStops) ? paint.gradientStops : [];
+    const stops = rawStops
+      .filter((s) => s && typeof s === 'object' && s.color)
       .map((s) => `${toColor(s.color, s.color.a ?? 1).rgba} ${Math.round(s.position * 1000) / 10}%`)
       .join(', ');
+    if (!stops) return base;
     const kind = paint.type === 'GRADIENT_RADIAL' ? 'radial-gradient' : 'linear-gradient';
     const css =
       kind === 'radial-gradient'
@@ -148,9 +173,25 @@ function parsePaint(paint: RawPaint): ParsedFill {
   return base;
 }
 
-function parsePaints(fills: unknown): ParsedFill[] {
-  if (!Array.isArray(fills)) return [];
-  return (fills as RawPaint[]).map(parsePaint);
+function parsePaints(fills: unknown, nodeId = '?'): ParsedFill[] {
+  if (fills === undefined || fills === null) return [];
+  if (!Array.isArray(fills)) {
+    console.warn(`[parse] skip malformed fills on node ${nodeId}: not an array`);
+    return [];
+  }
+  const out: ParsedFill[] = [];
+  for (const paint of fills) {
+    // 单个畸形 fill 只跳过自身，不能让整个节点（进而整次导入）失败
+    try {
+      out.push(parsePaint(paint as RawPaint));
+    } catch (err) {
+      console.warn(
+        `[parse] skip malformed fill on node ${nodeId}:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+  return out;
 }
 
 interface RawEffect {
@@ -162,29 +203,45 @@ interface RawEffect {
   color?: { r: number; g: number; b: number; a?: number };
 }
 
-function parseEffects(effects: unknown): ParsedEffect[] {
-  if (!Array.isArray(effects)) return [];
-  return (effects as RawEffect[])
-    .filter((e) => e.visible !== false)
-    .map((e) => {
-      const out: ParsedEffect = { type: e.type };
+function parseEffects(effects: unknown, nodeId = '?'): ParsedEffect[] {
+  if (effects === undefined || effects === null) return [];
+  if (!Array.isArray(effects)) {
+    console.warn(`[parse] skip malformed effects on node ${nodeId}: not an array`);
+    return [];
+  }
+  const out: ParsedEffect[] = [];
+  for (const e of effects as RawEffect[]) {
+    try {
+      if (!e || typeof e !== 'object') {
+        console.warn(`[parse] skip malformed effect on node ${nodeId}: not an object`);
+        continue;
+      }
+      if (e.visible === false) continue;
+      const item: ParsedEffect = { type: e.type };
       if (e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW') {
         const color = toColor(e.color ?? { r: 0, g: 0, b: 0 }, e.color?.a ?? 0.25);
-        out.offsetX = round2(e.offset?.x ?? 0);
-        out.offsetY = round2(e.offset?.y ?? 0);
-        out.radius = round2(e.radius ?? 0);
-        out.spread = round2(e.spread ?? 0);
-        out.color = color;
-        out.css = `${e.type === 'INNER_SHADOW' ? 'inset ' : ''}${out.offsetX}px ${out.offsetY}px ${out.radius}px ${out.spread}px ${color.rgba}`;
+        item.offsetX = round2(e.offset?.x ?? 0);
+        item.offsetY = round2(e.offset?.y ?? 0);
+        item.radius = round2(e.radius ?? 0);
+        item.spread = round2(e.spread ?? 0);
+        item.color = color;
+        item.css = `${e.type === 'INNER_SHADOW' ? 'inset ' : ''}${item.offsetX}px ${item.offsetY}px ${item.radius}px ${item.spread}px ${color.rgba}`;
       }
-      return out;
-    });
+      out.push(item);
+    } catch (err) {
+      console.warn(
+        `[parse] skip malformed effect on node ${nodeId}:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+  return out;
 }
 
 function parseTextStyle(node: FigmaNode): ParsedTextStyle | undefined {
   if (node.type !== 'TEXT') return undefined;
   const s = (node.style ?? {}) as Record<string, number | string>;
-  const solid = parsePaints(node.fills).find((f) => f.type === 'solid' && f.visible);
+  const solid = parsePaints(node.fills, node.id).find((f) => f.type === 'solid' && f.visible);
   const style: ParsedTextStyle = {
     family: s.fontFamily as string,
     postScript: s.fontPostScriptName as string,
@@ -225,24 +282,52 @@ const SELECTABLE = new Set([
 /** 画板类型（页面直系子节点）。 */
 const ARTBOARD_TYPES = new Set(['FRAME', 'COMPONENT', 'INSTANCE', 'GROUP']);
 
+/** 是否画板类节点（供「按节点导入」筛选 id 使用）。 */
+export const isArtboardType = (type: string): boolean => ARTBOARD_TYPES.has(type);
+
 function bbox(node: FigmaNode): Rect | undefined {
-  return node.absoluteBoundingBox ?? undefined;
+  const box = node.absoluteBoundingBox as Rect | undefined;
+  if (!box || typeof box !== 'object') return undefined;
+  if (![box.x, box.y, box.width, box.height].every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    return undefined;
+  }
+  return box;
+}
+
+/** Figma 的 children 应为数组；类型不符时按空数组处理，避免 for...of 抛「not iterable」 */
+export function childrenOf(node: FigmaNode | null | undefined): FigmaNode[] {
+  if (!node) return [];
+  const kids = (node as { children?: unknown }).children;
+  return Array.isArray(kids) ? (kids as FigmaNode[]) : [];
+}
+
+/** 记录被跳过的畸形节点，方便定位是哪个 node id 触发的 */
+function skipNode(where: string, node: FigmaNode | null | undefined, err: unknown) {
+  const id = node?.id ?? '?';
+  const type = node?.type ?? '?';
+  console.warn(
+    `[parse] skip ${where} node ${id} (${type}):`,
+    err instanceof Error ? err.message : String(err)
+  );
 }
 
 function parseProps(node: FigmaNode): ParsedNodeProps {
   const text = parseTextStyle(node);
-  const fills = parsePaints(node.fills);
-  const radii = node.rectangleCornerRadii;
+  const fills = parsePaints(node.fills, node.id);
+  const radii = Array.isArray(node.rectangleCornerRadii)
+    ? (node.rectangleCornerRadii as number[]).filter((v) => typeof v === 'number')
+    : undefined;
   return {
     opacity: clamp01(node.opacity ?? 1),
     fills,
-    strokes: parsePaints(node.strokes),
+    strokes: parsePaints(node.strokes, node.id),
     strokeWeight: node.strokeWeight,
     strokeAlign: node.strokeAlign,
-    effects: parseEffects(node.effects),
+    effects: parseEffects(node.effects, node.id),
     cornerRadius: node.cornerRadius,
     cornerRadii: radii,
     blendMode: node.blendMode,
+    rotation: typeof node.rotation === 'number' && Number.isFinite(node.rotation) ? node.rotation : undefined,
     text: text ? { ...text, content: node.characters ?? '' } : undefined,
     exportPresets: parseExportPresets(node.exportSettings),
     hasImageFill: fills.some((f) => f.type === 'image' && f.visible),
@@ -257,24 +342,29 @@ function parseArtboard(node: FigmaNode, pageName: string, sortOrder: number): Pa
   const layers: ParsedLayer[] = [];
 
   const walk = (n: FigmaNode, parentId: string | null) => {
-    for (const child of n.children ?? []) {
+    for (const child of childrenOf(n)) {
       if (child.visible === false) continue;
       const cb = bbox(child);
       if (!cb) continue;
-      if (SELECTABLE.has(child.type)) {
-        layers.push({
-          nodeId: child.id,
-          parentId,
-          name: child.name,
-          type: child.type,
-          x: round2(cb.x - ox),
-          y: round2(cb.y - oy),
-          width: round2(cb.width),
-          height: round2(cb.height),
-          props: parseProps(child),
-        });
+      try {
+        if (SELECTABLE.has(child.type)) {
+          layers.push({
+            nodeId: child.id,
+            parentId,
+            name: child.name,
+            type: child.type,
+            x: round2(cb.x - ox),
+            y: round2(cb.y - oy),
+            width: round2(cb.width),
+            height: round2(cb.height),
+            props: parseProps(child),
+          });
+        }
+      } catch (err) {
+        // 单个畸形图层只跳过自身，其余图层照常导入
+        skipNode('layer', child, err);
       }
-      if (child.children?.length) walk(child, child.id);
+      if (childrenOf(child).length) walk(child, child.id);
     }
   };
 
@@ -290,27 +380,72 @@ function parseArtboard(node: FigmaNode, pageName: string, sortOrder: number): Pa
   };
 }
 
-/** 解析整个文件：页面直系子节点中找画板；SECTION 内的画板也纳入。 */
-export function parseFile(file: FileResponse): ParsedFrame[] {
+/** 收集一个页面（或容器节点）下的画板；SECTION 内的画板也纳入。 */
+function collectFrames(node: FigmaNode, pageName: string, startOrder = 0): ParsedFrame[] {
   const frames: ParsedFrame[] = [];
-  const pages = file.document?.children ?? [];
-
-  for (const page of pages) {
-    if (page.type !== 'PAGE') continue;
-    let sortOrder = 0;
-    const collect = (node: FigmaNode) => {
-      for (const child of node.children ?? []) {
-        if (child.visible === false) continue;
+  let sortOrder = startOrder;
+  const collect = (n: FigmaNode) => {
+    for (const child of childrenOf(n)) {
+      if (child.visible === false) continue;
+      try {
         if (child.type === 'SECTION') {
           collect(child); // SECTION 本身不是画板，继续找里面的
           continue;
         }
         if (ARTBOARD_TYPES.has(child.type) && bbox(child)) {
-          frames.push(parseArtboard(child, page.name, sortOrder++));
+          frames.push(parseArtboard(child, pageName, sortOrder++));
         }
+      } catch (err) {
+        // 畸形画板跳过，其余画板继续
+        skipNode('artboard', child, err);
       }
-    };
-    collect(page);
+    }
+  };
+  collect(node);
+  return frames;
+}
+
+/** 解析整个文件：页面直系子节点中找画板；SECTION 内的画板也纳入。 */
+export function parseFile(file: FileResponse): ParsedFrame[] {
+  const frames: ParsedFrame[] = [];
+  for (const page of childrenOf(file.document)) {
+    // Figma REST 里页面节点的 type 是 CANVAS（兼容历史数据里的 PAGE）
+    if (page.type !== 'PAGE' && page.type !== 'CANVAS') continue;
+    try {
+      frames.push(...collectFrames(page, page.name, frames.length));
+    } catch (err) {
+      skipNode('page', page, err);
+    }
+  }
+  return frames;
+}
+
+/**
+ * 解析「按节点导入」返回的子树：
+ * - PAGE / CANVAS：按页面解析其中的画板
+ * - SECTION：解析其中的画板
+ * - 画板类（FRAME/COMPONENT/INSTANCE/GROUP）：自身即一张画板
+ * - 其他（比如组件集）：把子节点里能当画板的收进来
+ */
+export function parseNodeSubtree(doc: FigmaNode, fallbackPageName: string): ParsedFrame[] {
+  if (doc.type === 'PAGE' || doc.type === 'CANVAS') {
+    return collectFrames(doc, doc.name || fallbackPageName);
+  }
+  if (doc.type === 'SECTION') {
+    return collectFrames(doc, fallbackPageName);
+  }
+  if (ARTBOARD_TYPES.has(doc.type) && bbox(doc)) {
+    return [parseArtboard(doc, fallbackPageName, 0)];
+  }
+  const frames: ParsedFrame[] = [];
+  for (const child of childrenOf(doc)) {
+    if (child.visible === false) continue;
+    if (!ARTBOARD_TYPES.has(child.type) || !bbox(child)) continue;
+    try {
+      frames.push(parseArtboard(child, fallbackPageName, frames.length));
+    } catch (err) {
+      skipNode('artboard', child, err);
+    }
   }
   return frames;
 }

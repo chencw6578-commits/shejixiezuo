@@ -9,6 +9,11 @@ export interface PromptOptions {
   confirmText?: string;
   /** 返回错误文案表示校验不通过；返回 null 表示通过 */
   validate?: (value: string) => string | null;
+  /**
+   * 异步提交：返回错误文案时弹窗保持打开并在弹窗内显示原因；
+   * 返回 null 表示成功，弹窗关闭（不传则关闭后由调用方自行处理）
+   */
+  onSubmit?: (value: string) => Promise<string | null>;
 }
 
 export interface ConfirmOptions {
@@ -60,6 +65,8 @@ function PromptDialog({
 }) {
   const [value, setValue] = useState(opts.initialValue ?? '');
   const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -78,25 +85,50 @@ function PromptDialog({
     error = opts.validate?.(trimmed) ?? null;
   }
 
-  const submit = () => {
+  const cancel = () => {
+    if (!busy) onClose(null);
+  };
+
+  // Esc 取消：挂到 window 上，避免提交后焦点落在 body 时按 Esc 无响应
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (!busy) onClose(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, onClose]);
+
+  const submit = async () => {
     setTouched(true);
-    if (error) return;
-    onClose(trimmed);
+    if (error || busy) return;
+    if (!opts.onSubmit) {
+      onClose(trimmed);
+      return;
+    }
+    setBusy(true);
+    setSubmitError(null);
+    try {
+      const message = await opts.onSubmit(trimmed);
+      if (message) {
+        setSubmitError(message);
+        setBusy(false);
+        inputRef.current?.focus();
+      } else {
+        onClose(trimmed);
+      }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+      inputRef.current?.focus();
+    }
   };
 
   return (
-    <Overlay onCancel={() => onClose(null)}>
-      <div
-        className="dlg"
-        role="dialog"
-        aria-modal="true"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            onClose(null);
-          }
-        }}
-      >
+    <Overlay onCancel={cancel}>
+      <div className="dlg" role="dialog" aria-modal="true">
         <h2 className="dlg-title">{opts.title}</h2>
         {opts.label && <label className="dlg-label">{opts.label}</label>}
         <input
@@ -104,17 +136,22 @@ function PromptDialog({
           className="dlg-input"
           value={value}
           placeholder={opts.placeholder}
-          aria-invalid={touched && !!error}
-          onChange={(e) => setValue(e.target.value)}
+          aria-invalid={!!error || !!submitError}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setSubmitError(null);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              submit();
+              void submit();
             }
           }}
         />
         <div className="dlg-meta">
-          {error ? (
+          {submitError ? (
+            <span className="dlg-error">{submitError}</span>
+          ) : error ? (
             <span className={`dlg-error ${touched ? '' : 'is-hint'}`}>{error}</span>
           ) : (
             <span className="dlg-hint">Enter 确认 · Esc 取消</span>
@@ -122,11 +159,16 @@ function PromptDialog({
           {opts.maxLength && <span className="dlg-count">{trimmed.length}/{opts.maxLength}</span>}
         </div>
         <div className="dlg-actions">
-          <button className="dlg-btn" onClick={() => onClose(null)}>
+          <button className="dlg-btn" disabled={busy} onClick={cancel}>
             取消
           </button>
-          <button className="dlg-btn is-primary" disabled={touched && !!error} onClick={submit}>
-            {opts.confirmText ?? '确定'}
+          <button
+            className="dlg-btn is-primary"
+            disabled={!trimmed || !!error || busy}
+            aria-busy={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? '提交中…' : opts.confirmText ?? '确定'}
           </button>
         </div>
       </div>

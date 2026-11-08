@@ -1,7 +1,16 @@
 import { Router } from 'express';
+import { createHash, randomBytes } from 'node:crypto';
 import { pool } from '../db.js';
+import { editGuard } from './authz.js';
 
 export const teamsRouter = Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 令牌只在服务端存 sha256，明文仅创建时返回一次 */
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 /** 创建团队 */
 teamsRouter.post('/', async (req, res) => {
@@ -87,4 +96,63 @@ teamsRouter.delete('/:id/members/:memberId', async (req, res) => {
     [req.params.memberId, req.params.id]
   );
   res.json({ deleted: rowCount === 1 });
+});
+
+// ---------- 团队级「导入令牌」（Figma 插件用） ----------
+
+/** 令牌列表：只返回前缀与时间，不返回明文/哈希 */
+teamsRouter.get('/:id/import-tokens', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的团队 ID' });
+  const denied = await editGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [req.params.id]);
+  if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
+  const { rows } = await pool.query(
+    `SELECT id, prefix, scope, created_at, last_used_at
+     FROM import_tokens WHERE team_id = $1 AND revoked_at IS NULL
+     ORDER BY created_at DESC LIMIT 50`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
+/** 生成令牌：明文只在这次响应里出现，之后服务端只有哈希 */
+teamsRouter.post('/:id/import-tokens', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的团队 ID' });
+  const denied = await editGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [req.params.id]);
+  if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
+  const scope = req.body?.scope === 'team' ? 'team' : 'all';
+  const active = await pool.query(
+    'SELECT count(*)::int AS n FROM import_tokens WHERE team_id = $1 AND revoked_at IS NULL',
+    [req.params.id]
+  );
+  if (active.rows[0].n >= 10) {
+    return res.status(400).json({ error: '该团队已有 10 个未撤销的导入令牌，请先撤销不用的再生成' });
+  }
+  const token = `imp_${randomBytes(24).toString('base64url')}`;
+  const { rows } = await pool.query(
+    `INSERT INTO import_tokens (team_id, hash, prefix, scope) VALUES ($1, $2, $3, $4)
+     RETURNING id, prefix, scope, created_at`,
+    [req.params.id, hashToken(token), token.slice(0, 12), scope]
+  );
+  res.status(201).json({ ...rows[0], token });
+});
+
+/** 撤销令牌：直接从数据库删除（不可恢复），插件再用会返回 401 */
+teamsRouter.delete('/:id/import-tokens/:tokenId', async (req, res) => {
+  if (!UUID_RE.test(req.params.id) || !UUID_RE.test(req.params.tokenId)) {
+    return res.status(400).json({ error: '非法的 ID 格式' });
+  }
+  const denied = await editGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  const { rows } = await pool.query(
+    `DELETE FROM import_tokens
+     WHERE id = $1 AND team_id = $2
+     RETURNING id`,
+    [req.params.tokenId, req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: '令牌不存在或已删除' });
+  res.json({ deleted: true, id: rows[0].id });
 });

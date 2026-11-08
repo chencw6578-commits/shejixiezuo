@@ -15,6 +15,9 @@ export interface FrameRow {
   height: number;
   thumb_url: string | null;
   sort_order: number;
+  /** 导入平台（插件导入时写入）：ios / android / web */
+  platform?: string | null;
+  scale?: number | null;
 }
 
 export interface FileDetail {
@@ -112,6 +115,8 @@ export interface FrameDetail {
     width: number;
     height: number;
     thumb_url: string | null;
+    platform?: string | null;
+    scale?: number | null;
   };
   nodes: LayerNode[];
 }
@@ -140,6 +145,8 @@ export interface ProjectFrameRow {
   /** 画布自由坐标（null = 尚未排布，首次进入时自动铺一次） */
   canvas_x?: number | null;
   canvas_y?: number | null;
+  platform?: string | null;
+  scale?: number | null;
 }
 
 /** 项目画板页里的编组（pages 表，属于某份设计稿） */

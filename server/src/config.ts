@@ -8,7 +8,7 @@ function req(name: string, fallback?: string): string {
 
 export const config = {
   port: Number(process.env.PORT ?? 4000),
-  figmaToken: req('FIGMA_TOKEN', ''),
+  figmaToken: req('FIGMA_TOKEN', '').trim(),
   databaseUrl: req(
     'DATABASE_URL',
     'postgres://postgres:postgres@localhost:5432/designhub'

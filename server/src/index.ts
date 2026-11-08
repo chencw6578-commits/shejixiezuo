@@ -2,7 +2,7 @@ import express from 'express';
 import compression from 'compression';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { config } from './config.js';
+import { config, isFigmaConfigured } from './config.js';
 import { initDb } from './db.js';
 import { filesRouter } from './routes/files.js';
 import { assetsRouter } from './routes/assets.js';
@@ -11,18 +11,38 @@ import { commentsRouter } from './routes/comments.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { projectsRouter } from './routes/projects.js';
 import { teamsRouter } from './routes/teams.js';
+import { importJsonRouter } from './routes/importJson.js';
+import { pluginRouter } from './routes/plugin.js';
 import { mcpRouter } from './routes/mcp.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
 
 setConcurrency(Number(process.env.IMPORT_CONCURRENCY ?? 2));
 
+// 兜底：Express 4 不捕获 async 路由的 rejection（如 PG 偶发 out of memory），
+// 记录日志、保住进程；该次请求失败，客户端重试即可恢复
+process.on('unhandledRejection', (err) => {
+  console.error('[server] unhandled rejection (request failed, process kept alive):', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[server] uncaught exception (process kept alive):', err);
+});
+
 const app = express();
 app.use(compression({ threshold: 512 }));
+// 插件 JSON 单条可能较大：该路由自带 20mb 解析器，必须挂在全局 1mb 之前
+app.use('/api/import', importJsonRouter);
+// 插件导入含位图：自带 40mb 解析器，同样必须在全局解析器之前
+app.use('/api/plugin', pluginRouter);
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, queue: queueDepth() });
+});
+
+// Figma 导入能力探测：只告诉前端服务端有没有统一令牌，绝不返回令牌内容
+app.get('/api/import/figma/status', (_req, res) => {
+  res.json({ configured: isFigmaConfigured() });
 });
 
 app.use('/api/files', filesRouter);
