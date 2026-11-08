@@ -274,7 +274,7 @@
           <label data-scale="2"><input type="radio" name="scale" value="2" /> 2x</label>
           <label data-scale="3"><input type="radio" name="scale" value="3" /> 3x</label>
         </div>
-        <label class="toggle" for="includeImage"><input type="checkbox" id="includeImage" checked /> 位图切图</label>
+        <label class="toggle" for="includeImage"><input type="checkbox" id="includeImage" /> 位图切图</label>
       </div>
       <div id="scaleHint" class="hint small"></div>
     </section>
@@ -354,7 +354,8 @@
     boards: [],
     platform: 'android',
     scale: 2,
-    includeImage: true,
+    // 位图切图默认关闭：只导结构最快，也不受大画板 exportAsync 阻塞影响
+    includeImage: false,
     baseUrl: 'http://localhost:4000',
     token: '',
     scope: '',
@@ -372,11 +373,15 @@
     busy: false,
     // 上传失败后重试时复用已导出的结果，避免重新遍历节点
     exportCache: {},
+    // 本次上传里已经成功入库的画板：重试时直接跳过
+    uploaded: {},
     boardKey: '',
     progressPct: 0,
   };
 
   var pending = new Map();
+  // 主线程把切图 base64 分成 256KB 片回传，按 requestId 拼装后再上传
+  var imageChunkBufs = new Map();
   var seq = 0;
 
   function $(id) { return document.getElementById(id); }
@@ -388,19 +393,27 @@
   function postToPlugin(message) {
     parent.postMessage({ pluginMessage: message }, '*');
   }
-  // 心跳超时：只有「连续 10 秒没收到主线程任何消息」才算无响应；
-  // 30 秒长任务只要主线程持续发 progress 心跳就不会被误判。
-  var HEARTBEAT_TIMEOUT_MS = 10000;
-  function ask(message) {
+  // 按阶段给不同「静默上限」：读节点 30 秒 / 单张切图 90 秒 / 单板上传 60 秒。
+  // 主线程 exportAsync 是同步阻塞的，这段时间一条消息都发不出来，用一个阈值会误杀。
+  var STAGE_TIMEOUT_MS = { nodes: 30000, images: 90000, upload: 60000 };
+  var HEARTBEAT_TIMEOUT_MS = STAGE_TIMEOUT_MS.nodes;
+  function timeoutText(ms) {
+    return '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：' +
+      '请点「重试」，仍不行再关闭插件重新打开';
+  }
+  function ask(message, timeoutMs) {
     var requestId = 'r' + (++seq);
     return new Promise(function (resolve, reject) {
       var entry = { resolve: resolve, reject: reject, timer: null };
-      entry.arm = function () {
+      entry.silenceMs = timeoutMs || HEARTBEAT_TIMEOUT_MS;
+      entry.arm = function (ms) {
+        if (typeof ms === 'number' && ms > 0) entry.silenceMs = ms;
         clearTimeout(entry.timer);
         entry.timer = setTimeout(function () {
           pending.delete(requestId);
-          reject(new Error('插件主线程 10 秒没有响应（Figma 可能正在处理大画板）：请点「重试」，仍不行再关闭插件重新打开'));
-        }, HEARTBEAT_TIMEOUT_MS);
+          imageChunkBufs.delete(requestId);
+          reject(new Error(timeoutText(entry.silenceMs)));
+        }, entry.silenceMs);
       };
       entry.arm();
       pending.set(requestId, entry);
@@ -415,11 +428,11 @@
     p.resolve(payload);
     return true;
   }
-  /** 收到主线程 progress 心跳：重置该请求的无响应计时 */
-  function heartbeat(requestId) {
+  /** 收到主线程 progress 心跳：重置该请求的无响应计时（按消息里带的阶段上限） */
+  function heartbeat(requestId, silenceMs) {
     var p = pending.get(requestId);
     if (!p || typeof p.arm !== 'function') return false;
-    p.arm();
+    p.arm(silenceMs);
     return true;
   }
   function rejectAll(message) {
@@ -428,6 +441,7 @@
       p.reject(new Error(message));
     });
     pending.clear();
+    imageChunkBufs.clear();
   }
 
   var retryHandler = null;
@@ -514,8 +528,8 @@
     $('baseUrl').value = state.baseUrl;
     $('token').value = state.token;
     $('scaleHint').textContent = state.includeImage
-      ? state.scale + 'x 导出 PNG 切图；单张超过 5MB 自动跳过图片。'
-      : '已关闭位图切图：只上传画板与节点结构，速度最快。';
+      ? '大画板导出切图较慢（单张最长 90 秒）；单张超过 5MB 自动跳过图片。'
+      : '位图切图已关闭（默认）：只上传画板与节点结构，最快。需要位图时再勾选。';
   }
 
   function pickPlatform(platform) {
@@ -640,14 +654,24 @@
     var headers = { Authorization: 'Bearer ' + state.token };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     var res;
+    // 单板上传最长 60 秒；超时后重试会复用已导出的结果，跳过已成功的画板
+    var timeoutMs = Number(options.timeoutMs) || 0;
+    var controller = timeoutMs && typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
     try {
       res = await fetch(baseUrl() + path, {
         method: options.method || 'GET',
         headers: headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller ? controller.signal : undefined,
       });
     } catch (err) {
+      if (controller && controller.signal.aborted) {
+        throw new Error('上传超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应：请点「重试」（会跳过已上传成功的画板）');
+      }
       throw new Error(describeConnectionError(baseUrl()));
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     var data = null;
     try { data = await res.json(); } catch (err) { /* 非 JSON 响应 */ }
@@ -877,6 +901,8 @@
     clearError();
     state.busy = true;
     state.progressPct = 0;
+    // 只有全新一次上传才清空「已成功画板」；重试保留，跳过已入库的
+    if (!isRetry) state.uploaded = {};
     updateUploadButton();
     $('successBox').classList.add('hidden');
     $('jsonBox').classList.add('hidden');
@@ -890,8 +916,17 @@
     try {
       for (var i = 0; i < total; i++) {
         var key = exportCacheKey(ids[i]);
-        var exported = state.exportCache[key];
         var name = (state.boards[i] && state.boards[i].name) || ids[i];
+        // 重试时跳过本次已经成功入库的画板
+        var doneKey = ids[i] + '|' + state.projectId + '|' + (state.groupId || '') + '|' + state.newGroupName.trim();
+        var prevDone = state.uploaded[doneKey];
+        if (prevDone) {
+          totals.frames += prevDone.frames;
+          totals.nodes += prevDone.nodes;
+          setProgress(i + 1, total, '已上传「' + name + '」，跳过');
+          continue;
+        }
+        var exported = state.exportCache[key];
 
         if (exported) {
           // 重试：直接复用已序列化的结果，不再重新遍历节点
@@ -905,7 +940,7 @@
             includeImage: state.includeImage,
             index: i,
             total: total,
-          });
+          }, STAGE_TIMEOUT_MS.nodes);
           if (!exported || !exported.ok) {
             throw new Error((exported && exported.message) || ('画板 ' + ids[i] + ' 导出失败'));
           }
@@ -920,6 +955,7 @@
           : [];
         var result = await api('/api/plugin/import', {
           method: 'POST',
+          timeoutMs: STAGE_TIMEOUT_MS.upload,
           body: {
             platform: state.platform,
             scale: state.scale,
@@ -937,6 +973,7 @@
         totals.nodes += Number(result.nodeCount || 0);
         if (Array.isArray(result.warnings)) totals.warnings = totals.warnings.concat(result.warnings);
         if (result.groupId && state.groupId === '__new__') state.groupId = result.groupId;
+        state.uploaded[doneKey] = { frames: Number(result.frameCount || 0), nodes: Number(result.nodeCount || 0) };
         setProgress(i + 1, total, '已导入「' + name + '」');
       }
 
@@ -959,7 +996,9 @@
       postToPlugin({ type: 'notify', message: '已导入 ' + totals.frames + ' 个画板 / ' + totals.nodes + ' 个节点' });
     } catch (err) {
       var failMsg = err && err.message ? err.message : String(err);
-      showProgressFail(failMsg + '\n重试会复用已读取的画板；未读取完成的画板会重新读取节点。');
+      var failHint = '\n重试会跳过本次已上传的画板，并复用已读取的画板数据。';
+      if (state.includeImage) failHint += '\n若切图一直失败，可在上方关闭「位图切图」，只导结构通常几秒完成。';
+      showProgressFail(failMsg + failHint);
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
       state.busy = false;
@@ -1175,8 +1214,8 @@
     }
     if (msg.type === 'boards') { applyBoards(msg); return; }
     if (msg.type === 'progress') {
-      // 心跳：收到任何 progress 都重置「无响应」计时
-      if (msg.requestId) heartbeat(msg.requestId);
+      // 心跳：收到任何 progress 都重置「无响应」计时（按消息里的阶段上限）
+      if (msg.requestId) heartbeat(msg.requestId, msg.silenceMs);
       if (msg.message) $('progressStage').textContent = msg.message;
       if (typeof msg.done === 'number' && typeof msg.total === 'number' && msg.total > 0) {
         var pct = Math.max(0, Math.min(100, Math.round((msg.done / msg.total) * 100)));
@@ -1188,7 +1227,37 @@
       }
       return;
     }
-    if (msg.type === 'board-exported') { settle(msg.requestId, msg); return; }
+    if (msg.type === 'image-chunk') {
+      // 分片 base64：拼装期间同样算心跳，避免 90 秒内误判无响应
+      if (msg.requestId) heartbeat(msg.requestId, STAGE_TIMEOUT_MS.images);
+      var buf = imageChunkBufs.get(msg.requestId);
+      if (!buf) {
+        buf = { total: msg.total, parts: [], received: 0 };
+        imageChunkBufs.set(msg.requestId, buf);
+      }
+      buf.total = msg.total;
+      buf.parts[msg.seq] = msg.data;
+      buf.received++;
+      return;
+    }
+    if (msg.type === 'board-exported') {
+      if (msg.imageChunks) {
+        var chunkBuf = imageChunkBufs.get(msg.requestId);
+        imageChunkBufs.delete(msg.requestId);
+        if (!chunkBuf || chunkBuf.received < chunkBuf.total) {
+          settle(msg.requestId, {
+            ok: false,
+            message: '切图分片回传不完整（' + (chunkBuf ? chunkBuf.received : 0) + '/' +
+              (chunkBuf ? chunkBuf.total : msg.imageChunks) + '），请重试',
+          });
+          return;
+        }
+        msg.image = chunkBuf.parts.join('');
+      }
+      if (msg.timings) console.log('[timing]', msg.name, msg.timings);
+      settle(msg.requestId, msg);
+      return;
+    }
     if (msg.type === 'json-result') { settle(msg.requestId, msg); return; }
     if (msg.type === 'error') {
       // 主线程已回传真实异常：按 requestId 结束对应请求，界面显示原因而不是「无响应」
@@ -1198,6 +1267,7 @@
         if (p) {
           clearTimeout(p.timer);
           pending.delete(msg.requestId);
+          imageChunkBufs.delete(msg.requestId);
           p.reject(new Error(errText));
         }
       } else {

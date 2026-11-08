@@ -3,12 +3,19 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.2';
+const PLUGIN_VERSION = '1.3.3';
 const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ARTBOARD_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
+
+// 不同阶段给 UI 不同的「静默上限」：读取节点 30 秒 / 单张切图 90 秒 / 单板上传 60 秒。
+// exportAsync 是主线程同步阻塞的，这段时间发不出任何消息，用一个统一阈值会误杀。
+const SILENCE_NODES_MS = 30000;
+const SILENCE_IMAGE_MS = 90000;
+// base64 分片：每片 256KB 源字节，取 3 的整数倍（262143）保证各片编码可直接拼接
+const IMAGE_CHUNK_BYTES = 262143;
 
 // 启动第一句就开窗：避免任何加载逻辑让用户觉得「点了没反应」
 try {
@@ -74,8 +81,13 @@ function nextTask() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-/** 进度心跳：UI 收到后就把「无响应」计时重置 */
-function postProgress(ctx, stage, done, message) {
+/** 时间戳（毫秒）：用于把每个阶段的真实耗时回传 UI */
+function nowMs() {
+  return Date.now();
+}
+
+/** 进度心跳：UI 收到后就把「无响应」计时重置为当前阶段的静默上限 */
+function postProgress(ctx, stage, done, message, silenceMs) {
   if (!ctx || !ctx.requestId) return;
   post({
     type: 'progress',
@@ -84,6 +96,7 @@ function postProgress(ctx, stage, done, message) {
     done: done,
     total: ctx.total || 1,
     message: message || '',
+    silenceMs: silenceMs || SILENCE_NODES_MS,
   });
 }
 
@@ -91,7 +104,7 @@ function postProgress(ctx, stage, done, message) {
 async function exportNodeAsync(node, parentId, ctx) {
   ctx.count = (ctx.count || 0) + 1;
   if (ctx.count % 300 === 0) {
-    postProgress(ctx, 'nodes', ctx.index, '读取节点…（已 ' + ctx.count + ' 个）');
+    postProgress(ctx, 'nodes', ctx.index, '读取节点…（已 ' + ctx.count + ' 个）', SILENCE_NODES_MS);
     await nextTask();
   }
 
@@ -215,42 +228,100 @@ function basePayload(artboards) {
   };
 }
 
+/**
+ * base64 分片回传：每片 256KB 源字节，片与片之间让出事件循环。
+ * 一次性 postMessage 整个 base64（一张 2x 切图常有数 MB）会把主线程和消息序列化一起卡住，
+ * 分片后每片只阻塞很短时间，心跳能持续发出。
+ */
+async function sendImageChunks(ctx, boardId, bytes, timings) {
+  const total = Math.max(1, Math.ceil(bytes.length / IMAGE_CHUNK_BYTES));
+  for (let seq = 0; seq < total; seq++) {
+    const start = seq * IMAGE_CHUNK_BYTES;
+    const end = Math.min(bytes.length, start + IMAGE_CHUNK_BYTES);
+    const slice = typeof bytes.subarray === 'function' ? bytes.subarray(start, end) : bytes.slice(start, end);
+    const t0 = nowMs();
+    const data = bytesToBase64(slice);
+    timings.base64Ms += nowMs() - t0;
+    const t1 = nowMs();
+    post({ type: 'image-chunk', requestId: ctx.requestId, boardId: boardId, seq: seq, total: total, data: data });
+    timings.postMs += nowMs() - t1;
+    await nextTask();
+  }
+  return total;
+}
+
 /** 导出单个画板（JSON + 可选 PNG），逐板发进度心跳，供向导逐个上传 */
 async function exportBoard(boardId, scale, includeImage, ctx) {
   const index = (ctx && ctx.index) || 0;
-  postProgress(ctx, 'nodes', index, '读取节点…');
+  const timings = { loadMs: 0, serializeMs: 0, exportMs: 0, base64Ms: 0, postMs: 0, totalMs: 0 };
+  const startedAt = nowMs();
+  postProgress(ctx, 'nodes', index, '读取节点…', SILENCE_NODES_MS);
+
+  const tLoad = nowMs();
   await ensurePageLoaded();
   const node = await getNodeById(boardId);
-  if (!node) return { ok: false, message: `找不到画板 ${boardId}，请重新打开插件刷新画板列表` };
-  if (!isArtboard(node)) return { ok: false, message: `「${node.name}」不是画板（${node.type}）` };
+  timings.loadMs = nowMs() - tLoad;
 
-  const artboard = await exportNodeAsync(node, null, ctx || { count: 0 });
+  if (!node) return { ok: false, message: `找不到画板 ${boardId}，请重新打开插件刷新画板列表`, timings };
+  if (!isArtboard(node)) return { ok: false, message: `「${node.name}」不是画板（${node.type}）`, timings };
+
+  const tSerialize = nowMs();
+  const artboard = await exportNodeAsync(node, null, Object.assign({}, ctx, { count: 0 }));
+  timings.serializeMs = nowMs() - tSerialize;
   const payload = basePayload([artboard]);
-  postProgress(ctx, 'nodes', index + 1, '已读取「' + node.name + '」');
+  postProgress(ctx, 'nodes', index + 1, '已读取「' + node.name + '」（' + timings.serializeMs + 'ms）', SILENCE_NODES_MS);
+  await nextTask();
 
   let image = null;
+  let imageChunks = 0;
   let imageBytes = 0;
   let imageSkipped = null;
   if (includeImage) {
-    postProgress(ctx, 'images', index, '导出 PNG「' + node.name + '」（' + scale + 'x）…');
+    const label = '第 ' + (index + 1) + ' / ' + (ctx.total || 1) + ' 张：' + node.name +
+      '（' + Math.round(node.width) + '×' + Math.round(node.height) + ' @' + scale + 'x）';
+    // 先在导出前发一条：UI 立刻显示「正在导出第 N 张（1229×883 @2x）…」
+    postProgress(ctx, 'images', index, '正在导出' + label + '…', SILENCE_IMAGE_MS);
+    await nextTask();
+
+    const tExport = nowMs();
     try {
       const bytes = await node.exportAsync({
         format: 'PNG',
         constraint: { type: 'SCALE', value: scale },
       });
+      timings.exportMs = nowMs() - tExport;
       imageBytes = bytes.length;
       if (bytes.length > MAX_IMAGE_BYTES) {
         imageSkipped = `位图 ${(bytes.length / 1024 / 1024).toFixed(1)}MB 超过 5MB，已跳过图片`;
       } else {
-        image = bytesToBase64(bytes);
+        postProgress(ctx, 'images', index, '切图已生成（' + timings.exportMs + 'ms，' +
+          (bytes.length / 1024).toFixed(0) + 'KB），正在分片回传…', SILENCE_IMAGE_MS);
+        imageChunks = await sendImageChunks(ctx, node.id, bytes, timings);
       }
     } catch (err) {
+      timings.exportMs = nowMs() - tExport;
       imageSkipped = `位图导出失败：${err instanceof Error ? err.message : String(err)}`;
     }
-    postProgress(ctx, 'images', index + 1, '图片已导出「' + node.name + '」');
+    postProgress(ctx, 'images', index + 1,
+      '已导出' + label + '（' + timings.exportMs + 'ms）', SILENCE_NODES_MS);
   }
 
-  return { ok: true, boardId: node.id, name: node.name, payload, image, imageBytes, imageSkipped };
+  timings.totalMs = nowMs() - startedAt;
+  console.log('[timing] board=' + node.name + ' ' + JSON.stringify(timings));
+  // 图片不再塞进这一条消息，改由 image-chunk 分片，UI 侧拼装
+  return {
+    ok: true,
+    boardId: node.id,
+    name: node.name,
+    width: Math.round(node.width * 100) / 100,
+    height: Math.round(node.height * 100) / 100,
+    payload,
+    image: null,
+    imageChunks,
+    imageBytes,
+    imageSkipped,
+    timings,
+  };
 }
 
 /** 仅导出 JSON（不上传）：合并多个画板为一份 payload，逐板发心跳 */
@@ -260,12 +331,12 @@ async function exportBoardsJson(boardIds, ctx) {
   const total = ids.length;
   const artboards = [];
   for (let i = 0; i < total; i++) {
-    postProgress(ctx, 'nodes', i, '读取第 ' + (i + 1) + ' / ' + total + ' 个画板…');
+    postProgress(ctx, 'nodes', i, '读取第 ' + (i + 1) + ' / ' + total + ' 个画板…', SILENCE_NODES_MS);
     const node = await getNodeById(ids[i]);
     if (node && isArtboard(node)) {
       artboards.push(await exportNodeAsync(node, null, Object.assign({}, ctx, { count: 0 })));
     }
-    postProgress(ctx, 'nodes', i + 1, '已读取第 ' + (i + 1) + ' 个画板');
+    postProgress(ctx, 'nodes', i + 1, '已读取第 ' + (i + 1) + ' 个画板', SILENCE_NODES_MS);
     await nextTask();
   }
   if (!artboards.length) return { ok: false, message: '没有可导出的画板' };
