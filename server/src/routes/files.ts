@@ -184,7 +184,7 @@ filesRouter.get('/:id', async (req, res) => {
   await ensurePages(req.params.id);
   const frames = (
     await pool.query(
-      `SELECT id, node_id, name, page_name, page_id, page_sort, width, height, thumb_url, sort_order
+      `SELECT id, node_id, name, page_name, page_id, page_sort, width, height, thumb_url, sort_order, platform, scale
        FROM frames WHERE file_id = $1 ORDER BY sort_order, name`,
       [req.params.id]
     )
@@ -465,7 +465,7 @@ filesRouter.get('/:id/frames/:frameId', async (req, res) => {
   if (badUuid(res, req.params.id, req.params.frameId)) return;
   const frame = (
     await pool.query(
-      `SELECT id, file_id, node_id, name, page_name, page_id, page_sort, width, height, thumb_url
+      `SELECT id, file_id, node_id, name, page_name, page_id, page_sort, width, height, thumb_url, platform, scale
        FROM frames WHERE id = $1 AND file_id = $2`,
       [req.params.frameId, req.params.id]
     )

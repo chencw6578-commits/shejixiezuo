@@ -1,208 +1,844 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      :root { color-scheme: light dark; }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        padding: 12px;
-        font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-        color: #111827;
-        background: #fff;
-      }
-      h1 { margin: 0 0 6px; font-size: 14px; }
-      #meta { margin-left: 6px; font-size: 11px; font-weight: 400; color: #6b7280; }
-      .tip { margin: 0 0 10px; color: #6b7280; }
-      button {
-        font: inherit;
-        padding: 6px 10px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        background: #f9fafb;
-        cursor: pointer;
-      }
-      button:hover:not(:disabled) { background: #f3f4f6; }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-      button.primary:hover:not(:disabled) { background: #1d4ed8; }
-      .row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-      .status { margin: 0 0 8px; min-height: 18px; color: #6b7280; }
-      .status.ok { color: #047857; }
-      .status.err { color: #b91c1c; }
-      textarea {
-        width: 100%;
-        height: 220px;
-        padding: 8px;
-        font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        resize: vertical;
-        background: #f9fafb;
-        color: #111827;
-      }
-      .divider { margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid #e5e7eb; }
-      .divider h2 { margin: 0 0 4px; font-size: 12px; }
-      input[type="text"] {
-        flex: 1;
-        min-width: 140px;
-        font: inherit;
-        padding: 6px 8px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-      }
-      .hint { margin: 6px 0 0; color: #6b7280; }
-    </style>
-  </head>
-  <body>
-    <h1>导出画板 JSON <span id="meta">v1.0.1</span></h1>
-    <p class="tip">优先导出当前选中的节点；没有选中时导出当前页顶层画板。图片只带 hash，不内嵌图片数据。</p>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设计协作 · 导出向导</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f7f8fa;
+    --border: #e3e6ec;
+    --text: #1b1d22;
+    --dim: #6b7280;
+    --accent: #6c4cf1;
+    --accent-weak: rgba(108, 76, 241, 0.1);
+    --err: #d92d20;
+    --ok: #067647;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+  button { font: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+  .dim { color: var(--dim); }
+  .small { font-size: 12px; }
 
+  header.head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
+  }
+  header.head h1 { margin: 0; font-size: 16px; }
+  .meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .link { border: none; background: transparent; color: var(--dim); padding: 4px; }
+  .link:hover { color: var(--text); }
+
+  .error {
+    margin: 10px 16px 0; padding: 10px 12px; border: 1px solid rgba(217, 45, 32, 0.35);
+    background: rgba(217, 45, 32, 0.06); border-radius: var(--radius); color: var(--err);
+    flex: 0 0 auto; white-space: pre-wrap; word-break: break-word;
+  }
+  .error .row { display: flex; align-items: flex-start; gap: 8px; }
+  .error .row > span { flex: 1; }
+  .error button { flex: 0 0 auto; }
+
+  nav.steps { display: flex; gap: 6px; padding: 12px 16px 0; flex: 0 0 auto; }
+  nav.steps button {
+    flex: 1; padding: 7px 8px; font-size: 12px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--dim);
+  }
+  nav.steps button.active { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+  nav.steps button.done { color: var(--ok); border-color: rgba(6, 118, 71, 0.3); }
+
+  main { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px 8px; }
+  .step h2 { margin: 0 0 4px; font-size: 14px; }
+  .step .lead { margin: 0 0 12px; color: var(--dim); font-size: 12px; }
+
+  .board-list { list-style: none; margin: 0; padding: 0; }
+  .board {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px;
+    background: var(--panel);
+  }
+  .board.sel { border-color: var(--accent); background: var(--accent-weak); }
+  .board input { margin-top: 2px; }
+  .board .body { flex: 1; min-width: 0; }
+  .board .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board .tag { font-size: 11px; color: var(--dim); }
+  .list-tools { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .list-tools .t { font-size: 12px; color: var(--dim); }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  input[type="text"], input[type="password"], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: #fff; color: var(--text); font: inherit; outline: none;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, select:focus { border-color: var(--accent); }
+
+  .segmented { display: flex; gap: 8px; }
+  .segmented button {
+    flex: 1; padding: 10px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--panel); color: var(--text);
+  }
+  .segmented button.active { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+  .segmented button .s { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .segmented button.active .s { color: var(--accent); }
+
+  .radios { display: flex; gap: 8px; }
+  .radios label {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--panel); cursor: pointer; font-weight: 500;
+  }
+  .radios label.on { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); }
+
+  .switch { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+  .switch input { margin-top: 2px; }
+  .switch .body { flex: 1; }
+
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .btn {
+    padding: 9px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: #fff; color: var(--text); font: inherit;
+  }
+  .btn:hover { border-color: #c9ced8; }
+  .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: #5a3ce0; }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .btn.text { border: none; background: transparent; color: var(--accent); padding: 4px; }
+  .btn.text:hover { text-decoration: underline; }
+
+  footer.foot {
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    border-top: 1px solid var(--border); flex: 0 0 auto;
+  }
+  footer.foot .grow { flex: 1; }
+
+  .progress { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+  .progress .bar { height: 6px; border-radius: 999px; background: #e6e8ee; overflow: hidden; margin: 8px 0; }
+  .progress .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
+  .progress .stage { font-size: 12px; color: var(--dim); }
+
+  .success { padding: 14px; border: 1px solid rgba(6, 118, 71, 0.35); background: rgba(6, 118, 71, 0.06); border-radius: var(--radius); }
+  .success h3 { margin: 0 0 6px; font-size: 15px; color: var(--ok); }
+  .success .num { font-size: 20px; font-weight: 700; }
+  .success .warn { margin-top: 10px; font-size: 12px; color: #b54708; white-space: pre-wrap; }
+  .success .open { display: inline-block; margin-top: 12px; padding: 8px 12px; border-radius: 6px; background: var(--ok); color: #fff; text-decoration: none; font-weight: 600; }
+  .success .url { font-size: 11px; color: var(--dim); word-break: break-all; margin-top: 6px; }
+
+  pre.json {
+    margin: 10px 0 0; padding: 10px; max-height: 220px; overflow: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+  <header class="head">
+    <div>
+      <h1>导出到设计协作</h1>
+      <div id="meta" class="meta">正在启动…</div>
+    </div>
+    <button id="close" class="link" type="button">关闭</button>
+  </header>
+
+  <div id="error" class="error hidden">
     <div class="row">
-      <button id="export" class="primary">重新导出</button>
-      <button id="copy" disabled>复制 JSON</button>
-      <button id="download" disabled>下载 JSON</button>
+      <span id="errorText"></span>
+      <button id="errorRetry" class="btn small hidden" type="button">重试</button>
     </div>
-    <p id="status" class="status">正在读取节点…</p>
+  </div>
 
-    <textarea id="output" readonly spellcheck="false" placeholder="导出结果会显示在这里"></textarea>
+  <nav class="steps">
+    <button type="button" data-step="1" class="active">1 选画板</button>
+    <button type="button" data-step="2">2 导出设置</button>
+    <button type="button" data-step="3">3 目标与上传</button>
+  </nav>
 
-    <div class="divider">
-      <h2>可选：直接发送到网站</h2>
-      <p class="tip">填网站后端地址，点击发送后由网站导入面板所在的接口落库；失败时请改用「复制 / 下载 JSON」。</p>
-      <div class="row">
-        <input id="endpoint" type="text" value="http://localhost:4000" spellcheck="false" />
-        <button id="send" disabled>发送</button>
+  <main>
+    <!-- 第一步 -->
+    <section id="step1" class="step">
+      <h2>选择要导出的画板</h2>
+      <p class="lead" id="pageInfo">当前页面的顶层画板，可多选。默认勾选你在 Figma 中选中的画板。</p>
+      <div class="list-tools">
+        <span class="t" id="boardCount">0 个画板</span>
+        <button id="toggleAll" class="btn text" type="button">全选 / 全不选</button>
       </div>
-      <p id="send-status" class="hint"></p>
-    </div>
+      <ul id="boardList" class="board-list"></ul>
+      <div style="margin-top: 14px; display: flex; align-items: center; gap: 10px;">
+        <button id="jsonOnly" class="btn text" type="button">仅导出 JSON（不上传）</button>
+        <span class="dim small">离线备份用；上传失败时也可以先导出备份。</span>
+      </div>
+      <div id="jsonBox" class="hidden">
+        <pre id="jsonText" class="json"></pre>
+        <div class="row" style="margin-top: 8px;">
+          <button id="copyJson" class="btn" type="button">复制 JSON</button>
+          <button id="downloadJson" class="btn" type="button">下载 JSON</button>
+        </div>
+      </div>
+    </section>
 
-    <script>
-      const output = document.getElementById('output');
-      const statusEl = document.getElementById('status');
-      const sendStatusEl = document.getElementById('send-status');
-      const metaEl = document.getElementById('meta');
-      const copyBtn = document.getElementById('copy');
-      const downloadBtn = document.getElementById('download');
-      const sendBtn = document.getElementById('send');
+    <!-- 第二步 -->
+    <section id="step2" class="step hidden">
+      <h2>导出设置</h2>
+      <p class="lead">平台决定查看器的逻辑单位，倍率决定位图清晰度。</p>
 
-      let payloadText = '';
-      let waitTimer = null;
+      <div class="field">
+        <label>目标平台</label>
+        <div class="segmented" id="platformGroup">
+          <button type="button" data-platform="android">Android<span class="s">单位 dp · 默认 2x</span></button>
+          <button type="button" data-platform="ios">iOS<span class="s">单位 pt · 默认 2x</span></button>
+          <button type="button" data-platform="web">Web<span class="s">单位 px · 默认 1x</span></button>
+        </div>
+      </div>
 
-      function setStatus(text, kind) {
-        statusEl.textContent = text;
-        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      <div class="field">
+        <label>位图倍率</label>
+        <div class="radios" id="scaleGroup">
+          <label data-scale="1"><input type="radio" name="scale" value="1" /> 1x</label>
+          <label data-scale="2"><input type="radio" name="scale" value="2" /> 2x</label>
+          <label data-scale="3"><input type="radio" name="scale" value="3" /> 3x</label>
+        </div>
+        <div class="hint" id="scaleHint">2x 适合主流安卓机型，位图较大；3x 更清晰但请求更慢。</div>
+      </div>
+
+      <div class="field">
+        <label>同时导出位图切图</label>
+        <div class="switch">
+          <input type="checkbox" id="includeImage" checked />
+          <div class="body">
+            <div style="font-weight: 600;">导出 PNG（按上面的倍率）</div>
+            <div class="dim small">图会作为画板缩略图与切图资源保存。关掉可显著加快上传；单张超过 5MB 会自动跳过图片。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第三步 -->
+    <section id="step3" class="step hidden">
+      <h2>选择目标项目与编组</h2>
+      <p class="lead">服务器地址与令牌只保存在本机 Figma 插件存储里，下次自动带出。</p>
+
+      <div class="field">
+        <label>服务器地址</label>
+        <input id="baseUrl" type="text" placeholder="http://localhost:4000" />
+        <div class="hint">本地开发默认 http://localhost:4000；部署后填你的网站地址。</div>
+      </div>
+
+      <div class="field">
+        <label>导入令牌</label>
+        <div class="row">
+          <input id="token" type="password" placeholder="imp_ 开头，网站「团队设置」生成" />
+          <button id="loadProjects" class="btn" type="button" style="flex: 0 0 auto;">刷新项目</button>
+        </div>
+        <div class="hint" id="teamHint">令牌只用于插件调用导入接口，撤销后立即失效。</div>
+      </div>
+
+      <div class="field">
+        <label>目标项目</label>
+        <select id="project"></select>
+      </div>
+
+      <div class="field">
+        <label>放入编组</label>
+        <select id="group"></select>
+        <input id="newGroupName" class="hidden" type="text" maxlength="50" placeholder="新编组名称，例如：首页 / 我的" style="margin-top: 8px;" />
+        <div class="hint">同一 Figma 画板重复导入时会原位更新，不会产生重复画板。</div>
+      </div>
+
+      <div id="progressBox" class="progress hidden">
+        <div style="display: flex; justify-content: space-between; gap: 8px;">
+          <strong id="progressTitle">准备上传…</strong>
+          <span class="dim small" id="progressCount"></span>
+        </div>
+        <div class="bar"><i id="progressBar"></i></div>
+        <div class="stage" id="progressStage"></div>
+      </div>
+
+      <div id="successBox" class="success hidden">
+        <h3>导入完成</h3>
+        <div><span class="num" id="successFrames">0</span> 个画板 · <span class="num" id="successNodes">0</span> 个节点</div>
+        <div id="successWarn" class="warn hidden"></div>
+        <a id="openSite" class="open" href="#" target="_blank" rel="noopener noreferrer">在网站中打开</a>
+        <div id="successUrl" class="url"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <button id="back" class="btn" type="button">上一步</button>
+    <div class="grow"></div>
+    <button id="next" class="btn primary" type="button">下一步</button>
+    <button id="upload" class="btn primary hidden" type="button">导出并上传</button>
+  </footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+  var state = {
+    step: 1,
+    boards: [],
+    selected: {},
+    platform: 'android',
+    scale: 2,
+    includeImage: true,
+    baseUrl: 'http://localhost:4000',
+    token: '',
+    projects: [],
+    projectId: '',
+    groups: [],
+    groupId: '',
+    newGroupName: '',
+    boot: {},
+    busy: false,
+    jsonPayload: null,
+  };
+
+  var pending = new Map();
+  var seq = 0;
+  var activeRequestId = null;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function postToPlugin(message) {
+    parent.postMessage({ pluginMessage: message }, '*');
+  }
+  function ask(message, timeoutMs) {
+    var requestId = 'r' + (++seq);
+    activeRequestId = requestId;
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () {
+        pending.delete(requestId);
+        reject(new Error('插件主线程 20 秒无响应：请重新打开插件再试'));
+      }, timeoutMs || 20000);
+      pending.set(requestId, { resolve: resolve, reject: reject, timer: timer });
+      postToPlugin(Object.assign({}, message, { requestId: requestId }));
+    });
+  }
+  function settle(requestId, payload) {
+    var p = pending.get(requestId);
+    if (!p) return false;
+    clearTimeout(p.timer);
+    pending.delete(requestId);
+    p.resolve(payload);
+    return true;
+  }
+  function rejectAll(message) {
+    pending.forEach(function (p) {
+      clearTimeout(p.timer);
+      p.reject(new Error(message));
+    });
+    pending.clear();
+  }
+
+  var retryHandler = null;
+  function showError(message, retry) {
+    var box = $('error');
+    $('errorText').textContent = String(message || '未知错误');
+    box.classList.remove('hidden');
+    retryHandler = typeof retry === 'function' ? retry : null;
+    $('errorRetry').classList.toggle('hidden', !retryHandler);
+  }
+  function clearError() {
+    $('error').classList.add('hidden');
+    $('errorText').textContent = '';
+    retryHandler = null;
+    $('errorRetry').classList.add('hidden');
+  }
+
+  // ---------- 步骤切换 ----------
+  function renderSteps() {
+    document.querySelectorAll('nav.steps button').forEach(function (b) {
+      var n = Number(b.dataset.step);
+      b.classList.toggle('active', n === state.step);
+      b.classList.toggle('done', n < state.step);
+    });
+    $('step1').classList.toggle('hidden', state.step !== 1);
+    $('step2').classList.toggle('hidden', state.step !== 2);
+    $('step3').classList.toggle('hidden', state.step !== 3);
+    $('back').classList.toggle('hidden', state.step === 1);
+    $('next').classList.toggle('hidden', state.step === 3);
+    $('upload').classList.toggle('hidden', state.step !== 3);
+    if (state.step === 2) $('next').textContent = '下一步：目标';
+    if (state.step === 1) $('next').textContent = '下一步：导出设置';
+  }
+
+  function gotoStep(step) {
+    if (step === 2) {
+      var picked = selectedIds();
+      if (!picked.length) { showError('请至少选择一个画板'); return; }
+    }
+    if (step === 3) {
+      if (!selectedIds().length) { showError('请至少选择一个画板'); return; }
+      maybeLoadProjects();
+    }
+    clearError();
+    state.step = step;
+    renderSteps();
+  }
+
+  // ---------- 第一步：画板 ----------
+  function selectedIds() {
+    return Object.keys(state.selected).filter(function (id) { return state.selected[id]; });
+  }
+
+  function renderBoards() {
+    var list = $('boardList');
+    list.innerHTML = state.boards.map(function (b) {
+      var on = !!state.selected[b.id];
+      return (
+        '<li class="board ' + (on ? 'sel' : '') + '" data-id="' + esc(b.id) + '">' +
+          '<input type="checkbox" ' + (on ? 'checked' : '') + ' data-check="' + esc(b.id) + '" />' +
+          '<div class="body">' +
+            '<div class="name">' + esc(b.name) + '</div>' +
+            '<div class="tag">' + esc(b.type) + ' · ' + esc(b.width) + ' × ' + esc(b.height) +
+              ' · ' + esc(b.nodeCount) + ' 层' + (b.selected ? ' · 当前选中' : '') + '</div>' +
+          '</div>' +
+        '</li>'
+      );
+    }).join('');
+    $('boardCount').textContent = selectedIds().length + ' / ' + state.boards.length + ' 个已选';
+    $('toggleAll').textContent = selectedIds().length === state.boards.length ? '全不选' : '全选';
+  }
+
+  function applyBoards(data) {
+    state.boards = Array.isArray(data.boards) ? data.boards : [];
+    state.pageInfo = data.pageName || '';
+    var anySelected = state.boards.some(function (b) { return b.selected; });
+    state.selected = {};
+    state.boards.forEach(function (b) {
+      state.selected[b.id] = anySelected ? !!b.selected : true;
+    });
+    $('pageInfo').textContent = '页面「' + (data.pageName || '当前页') + '」的顶层画板，共 ' + state.boards.length + ' 个。默认勾选你在 Figma 中选中的画板。';
+    renderBoards();
+    if (!state.boards.length) showError('当前页面没有顶层画板：请在 Figma 里先创建 Frame，或切换到有画板的页面');
+    renderSteps();
+  }
+
+  // ---------- 第二步：平台与倍率 ----------
+  function renderSettings() {
+    document.querySelectorAll('#platformGroup button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.platform === state.platform);
+    });
+    document.querySelectorAll('#scaleGroup label').forEach(function (l) {
+      l.classList.toggle('on', Number(l.dataset.scale) === state.scale);
+      var input = l.querySelector('input');
+      if (input) input.checked = Number(l.dataset.scale) === state.scale;
+    });
+    $('includeImage').checked = state.includeImage;
+    $('scaleHint').textContent = state.includeImage
+      ? state.scale + 'x 会导出 PNG 切图，画板越大请求越慢；3x 单张超过 5MB 会自动跳过图片。'
+      : '已关闭位图导出：只上传画板与节点结构，速度最快。';
+  }
+
+  function pickPlatform(platform) {
+    state.platform = platform;
+    // 平台切换时默认倍率随之切换（用户仍可在下一步手动改）
+    state.scale = platform === 'web' ? 1 : 2;
+    renderSettings();
+    persistPrefs();
+  }
+
+  // ---------- 第三步：项目 / 编组 ----------
+  function baseUrl() {
+    var v = state.baseUrl.trim().replace(/\/+$/, '');
+    return v || 'http://localhost:4000';
+  }
+
+  function renderProjects() {
+    var sel = $('project');
+    sel.innerHTML = state.projects.length
+      ? '<option value="">请选择项目…</option>' + state.projects.map(function (p) {
+          return '<option value="' + esc(p.id) + '"' + (p.id === state.projectId ? ' selected' : '') + '>' +
+            esc(p.name) + '（' + esc(p.frame_count) + ' 个画板）</option>';
+        }).join('')
+      : '<option value="">（还没有项目，请先在网站创建）</option>';
+  }
+
+  function renderGroups() {
+    var sel = $('group');
+    var options = ['<option value="">未分组</option>'];
+    state.groups.forEach(function (g) {
+      options.push('<option value="' + esc(g.id) + '"' + (g.id === state.groupId ? ' selected' : '') + '>' +
+        esc(g.name) + '（' + esc(g.frame_count) + ' 个画板）</option>');
+    });
+    options.push('<option value="__new__"' + (state.groupId === '__new__' ? ' selected' : '') + '>+ 新建编组…</option>');
+    sel.innerHTML = options.join('');
+    $('newGroupName').classList.toggle('hidden', state.groupId !== '__new__');
+    if (state.groupId === '__new__') $('newGroupName').value = state.newGroupName;
+  }
+
+  function renderStep3() {
+    $('baseUrl').value = state.baseUrl;
+    $('token').value = state.token;
+    renderProjects();
+    renderGroups();
+  }
+
+  async function api(path, options) {
+    options = options || {};
+    var url = baseUrl() + path;
+    var headers = { Authorization: 'Bearer ' + state.token };
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    var res;
+    try {
+      res = await fetch(url, {
+        method: options.method || 'GET',
+        headers: headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+    } catch (err) {
+      throw new Error('无法连接服务器 ' + baseUrl() + '（' + (err && err.message ? err.message : err) + '）。请确认网站已启动，或检查服务器地址。');
+    }
+    var data = null;
+    try { data = await res.json(); } catch (err) { /* 非 JSON 响应 */ }
+    if (!res.ok) {
+      throw new Error((data && data.error) || ('请求失败（HTTP ' + res.status + '）'));
+    }
+    return data;
+  }
+
+  async function loadProjects(auto) {
+    clearError();
+    if (!state.token || !/^imp_/.test(state.token)) {
+      showError('请填写网站「团队设置 → 导入令牌」生成的 imp_ 令牌');
+      return;
+    }
+    try {
+      var me = await api('/api/plugin/me');
+      $('teamHint').textContent = '已连接团队：' + me.teamName + '（令牌只用于插件导入，撤销后立即失效）';
+      state.projects = await api('/api/plugin/projects');
+      if (!state.projectId && state.projects.length === 1) state.projectId = state.projects[0].id;
+      renderProjects();
+      if (state.projectId) await loadGroups();
+      else renderGroups();
+      persistPrefs();
+    } catch (err) {
+      var loadMsg = (err && err.message) || String(err);
+      showError(loadMsg, function () { loadProjects(auto); });
+      postToPlugin({ type: 'notify', message: '拉取项目失败：' + loadMsg });
+      if (!auto) throw err;
+    }
+  }
+
+  async function loadGroups() {
+    state.groups = [];
+    state.groupId = '';
+    renderGroups();
+    if (!state.projectId) return;
+    var data = await api('/api/plugin/projects/' + state.projectId + '/groups');
+    state.groups = Array.isArray(data.groups) ? data.groups : [];
+    renderGroups();
+  }
+
+  function maybeLoadProjects() {
+    if (!state.token || !/^imp_/.test(state.token)) return;
+    if (state.projects.length) return;
+    loadProjects(true).catch(function () { /* 错误已展示 */ });
+  }
+
+  // ---------- 偏好 ----------
+  var prefsTimer = null;
+  function persistPrefs() {
+    clearTimeout(prefsTimer);
+    prefsTimer = setTimeout(function () {
+      postToPlugin({
+        type: 'save-prefs',
+        prefs: {
+          baseUrl: state.baseUrl,
+          token: state.token,
+          platform: state.platform,
+          scale: state.scale,
+          includeImage: state.includeImage,
+        },
+      });
+    }, 300);
+  }
+
+  function applyPrefs(prefs) {
+    if (!prefs || typeof prefs !== 'object') return;
+    if (typeof prefs.baseUrl === 'string' && prefs.baseUrl) state.baseUrl = prefs.baseUrl;
+    if (typeof prefs.token === 'string') state.token = prefs.token;
+    if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
+    if ([1, 2, 3].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
+    if (typeof prefs.includeImage === 'boolean') state.includeImage = prefs.includeImage;
+    renderSettings();
+    renderStep3();
+  }
+
+  // ---------- 上传 ----------
+  function setProgress(current, total, stage) {
+    $('progressBox').classList.remove('hidden');
+    $('progressTitle').textContent = '正在上传 ' + current + ' / ' + total;
+    $('progressCount').textContent = Math.round((current / total) * 100) + '%';
+    $('progressBar').style.width = Math.round((current / total) * 100) + '%';
+    $('progressStage').textContent = stage;
+  }
+
+  async function startUpload() {
+    if (state.busy) return;
+    var ids = selectedIds();
+    if (!ids.length) { showError('请至少选择一个画板'); return; }
+    if (!state.token || !/^imp_/.test(state.token)) {
+      showError('请填写有效的导入令牌（imp_ 开头）');
+      return;
+    }
+    if (!state.projectId) { showError('请选择目标项目'); return; }
+    if (state.groupId === '__new__' && !state.newGroupName.trim()) {
+      showError('请填写新编组名称，或把编组改为「未分组」');
+      return;
+    }
+
+    clearError();
+    state.busy = true;
+    $('upload').disabled = true;
+    $('successBox').classList.add('hidden');
+    $('progressBox').classList.remove('hidden');
+
+    var totals = { frames: 0, nodes: 0, warnings: [] };
+    persistPrefs();
+
+    try {
+      for (var i = 0; i < ids.length; i++) {
+        var done = i;
+        setProgress(done, ids.length, '读取节点…');
+        var exported = await ask({ type: 'export-board', boardId: ids[i], scale: state.scale, includeImage: state.includeImage });
+        if (!exported || !exported.ok) {
+          throw new Error((exported && exported.message) || ('画板 ' + ids[i] + ' 导出失败'));
+        }
+        if (exported.imageSkipped) totals.warnings.push('「' + exported.name + '」' + exported.imageSkipped);
+
+        setProgress(done, ids.length, state.includeImage ? '导出图片并上传…' : '上传画板与节点…');
+        var images = exported.image
+          ? [{ nodeId: ids[i], dataUrl: 'data:image/png;base64,' + exported.image }]
+          : [];
+        var result = await api('/api/plugin/import', {
+          method: 'POST',
+          body: {
+            platform: state.platform,
+            scale: state.scale,
+            projectId: state.projectId,
+            groupId: state.groupId && state.groupId !== '__new__' ? state.groupId : undefined,
+            newGroupName: state.groupId === '__new__' ? state.newGroupName.trim() : undefined,
+            pluginVersion: state.boot.pluginVersion,
+            exportedAt: exported.payload.exportedAt,
+            file: exported.payload.file,
+            boards: exported.payload.artboards,
+            images: images,
+          },
+        });
+        totals.frames += Number(result.frameCount || 0);
+        totals.nodes += Number(result.nodeCount || 0);
+        if (Array.isArray(result.warnings)) totals.warnings = totals.warnings.concat(result.warnings);
+        if (result.groupId && state.groupId === '__new__') state.groupId = result.groupId;
+        setProgress(i + 1, ids.length, '已导入「' + exported.name + '」');
       }
 
-      /** 主线程迟迟不返回时给出可排查提示，而不是一直显示「正在读取节点…」 */
-      function startWait() {
-        clearTimeout(waitTimer);
-        waitTimer = setTimeout(() => {
-          setStatus('主线程 12 秒未返回：请检查 Figma 控制台报错；修改代码后需重新导入 manifest 或重启 Figma。', 'err');
-        }, 12000);
+      await loadGroups();
+      $('progressBox').classList.add('hidden');
+      $('successBox').classList.remove('hidden');
+      $('successFrames').textContent = totals.frames;
+      $('successNodes').textContent = totals.nodes;
+      var warn = $('successWarn');
+      if (totals.warnings.length) {
+        warn.textContent = totals.warnings.join('\n');
+        warn.classList.remove('hidden');
+      } else {
+        warn.classList.add('hidden');
       }
+      var url = baseUrl() + '/projects/' + state.projectId;
+      $('openSite').href = url;
+      $('successUrl').textContent = url;
+      postToPlugin({ type: 'notify', message: '已导入 ' + totals.frames + ' 个画板 / ' + totals.nodes + ' 个节点' });
+    } catch (err) {
+      var failMsg = err && err.message ? err.message : String(err);
+      $('progressBox').classList.add('hidden');
+      showError(failMsg, function () { startUpload(); });
+      postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
+    } finally {
+      state.busy = false;
+      $('upload').disabled = false;
+    }
+  }
 
-      function applyResult(msg) {
-        clearTimeout(waitTimer);
-        if (!msg.ok) {
-          payloadText = '';
-          output.value = '';
-          copyBtn.disabled = true;
-          downloadBtn.disabled = true;
-          sendBtn.disabled = true;
-          setStatus(msg.message || '导出失败', 'err');
-          return;
-        }
-        payloadText = JSON.stringify(msg.payload, null, 2);
-        output.value = payloadText;
-        copyBtn.disabled = false;
-        downloadBtn.disabled = false;
-        sendBtn.disabled = false;
-        const stats = msg.stats || {};
-        setStatus('已导出 ' + (stats.artboards || 0) + ' 个画板、' + (stats.nodes || 0) + ' 个节点', 'ok');
-      }
+  // ---------- JSON 仅导出 ----------
+  var lastJson = '';
+  async function exportJsonOnly() {
+    var ids = selectedIds();
+    if (!ids.length) { showError('请至少选择一个画板'); return; }
+    clearError();
+    $('jsonOnly').disabled = true;
+    $('jsonOnly').textContent = '正在导出…';
+    try {
+      var result = await ask({ type: 'export-json', boardIds: ids }, 30000);
+      if (!result || !result.ok) throw new Error((result && result.message) || '导出失败');
+      lastJson = JSON.stringify(result.payload, null, 2);
+      $('jsonText').textContent = lastJson;
+      $('jsonBox').classList.remove('hidden');
+    } catch (err) {
+      showError(err && err.message ? err.message : String(err));
+    } finally {
+      $('jsonOnly').disabled = false;
+      $('jsonOnly').textContent = '仅导出 JSON（不上传）';
+    }
+  }
 
-      window.onmessage = (event) => {
-        const msg = event.data && event.data.pluginMessage;
-        if (!msg) return;
-        if (msg.type === 'boot') {
-          const parts = ['v' + (msg.version || '?')];
-          if (msg.buildDate) parts.push(msg.buildDate);
-          if (msg.apiVersion) parts.push('api ' + msg.apiVersion);
-          metaEl.textContent = parts.join(' · ');
-          return;
-        }
-        if (msg.type !== 'export-result') return;
-        applyResult(msg);
-      };
+  async function copyJson() {
+    try {
+      await navigator.clipboard.writeText(lastJson);
+      postToPlugin({ type: 'notify', message: 'JSON 已复制到剪贴板' });
+    } catch (err) {
+      showError('复制失败：请手动全选文本框内容复制');
+    }
+  }
 
-      // UI 自身脚本异常也要显示出来，而不是整个面板静止
-      window.onerror = (event) => {
-        const text = event && event.message ? event.message : String(event);
-        setStatus('面板脚本错误：' + text, 'err');
-      };
-      window.onunhandledrejection = (event) => {
-        const reason = event && event.reason;
-        setStatus('面板异步错误：' + (reason && reason.message ? reason.message : String(reason)), 'err');
-      };
+  function downloadJson() {
+    var blob = new Blob([lastJson], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'designhub-export.json';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
 
-      document.getElementById('export').onclick = () => {
-        setStatus('正在读取节点…');
-        startWait();
-        parent.postMessage({ pluginMessage: { type: 'export' } }, '*');
-      };
+  // ---------- 事件绑定 ----------
+  $('close').onclick = function () { postToPlugin({ type: 'close' }); };
+  $('errorRetry').onclick = function () {
+    var fn = retryHandler;
+    clearError();
+    if (fn) fn();
+  };
 
-      copyBtn.onclick = async () => {
-        try {
-          await navigator.clipboard.writeText(payloadText);
-          setStatus('已复制到剪贴板，可粘贴到网站的「Figma 插件导入」', 'ok');
-        } catch (err) {
-          output.select();
-          document.execCommand('copy');
-          setStatus('已复制（如失败请手动选中文本复制）', 'ok');
-        }
-      };
+  document.querySelectorAll('nav.steps button').forEach(function (b) {
+    b.onclick = function () { gotoStep(Number(b.dataset.step)); };
+  });
+  $('back').onclick = function () { gotoStep(Math.max(1, state.step - 1)); };
+  $('next').onclick = function () { gotoStep(Math.min(3, state.step + 1)); };
+  $('upload').onclick = function () { startUpload(); };
 
-      downloadBtn.onclick = () => {
-        const blob = new Blob([payloadText], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'figma-export-' + Date.now() + '.json';
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-      };
+  $('boardList').addEventListener('change', function (e) {
+    var target = e.target;
+    if (!target || !target.dataset || !target.dataset.check) return;
+    var id = target.dataset.check;
+    state.selected[id] = target.checked;
+    var li = target.closest('.board');
+    if (li) li.classList.toggle('sel', target.checked);
+    $('boardCount').textContent = selectedIds().length + ' / ' + state.boards.length + ' 个已选';
+    $('toggleAll').textContent = selectedIds().length === state.boards.length ? '全不选' : '全选';
+    clearError();
+  });
+  $('boardList').addEventListener('click', function (e) {
+    var li = e.target.closest ? e.target.closest('.board') : null;
+    if (!li) return;
+    var checkbox = li.querySelector('input[type="checkbox"]');
+    if (!checkbox || e.target === checkbox) return;
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  $('toggleAll').onclick = function () {
+    var all = selectedIds().length === state.boards.length;
+    state.boards.forEach(function (b) { state.selected[b.id] = !all; });
+    renderBoards();
+    clearError();
+  };
 
-      sendBtn.onclick = async () => {
-        if (!payloadText) return;
-        const base = document.getElementById('endpoint').value.trim().replace(/\/+$/, '');
-        if (!base) {
-          sendStatusEl.textContent = '请先填写网站地址，例如 http://localhost:4000';
-          return;
-        }
-        sendBtn.disabled = true;
-        sendStatusEl.textContent = '正在发送…';
-        try {
-          const res = await fetch(base + '/api/import/figma-json', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ json: JSON.parse(payloadText) }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || '请求失败 (' + res.status + ')');
-          sendStatusEl.textContent = '已发送：' + (data.name || '导入成功') + '（' + (data.frameCount || 0) + ' 个画板 / ' + (data.nodeCount || 0) + ' 个节点），可在网站中查看。';
-        } catch (err) {
-          sendStatusEl.textContent = '发送失败：' + (err && err.message ? err.message : String(err)) + '。请改用「复制 / 下载 JSON」，在网站导入面板粘贴或上传。';
-        } finally {
-          sendBtn.disabled = false;
-        }
-      };
+  document.querySelectorAll('#platformGroup button').forEach(function (b) {
+    b.onclick = function () { pickPlatform(b.dataset.platform); };
+  });
+  document.querySelectorAll('#scaleGroup label').forEach(function (l) {
+    l.onclick = function () {
+      state.scale = Number(l.dataset.scale);
+      renderSettings();
+      persistPrefs();
+    };
+  });
+  $('includeImage').onchange = function () {
+    state.includeImage = $('includeImage').checked;
+    renderSettings();
+    persistPrefs();
+  };
 
-      // UI 加载完成即请求一次导出（同时告知主线程可以开始）
-      setStatus('正在读取节点…');
-      startWait();
-      parent.postMessage({ pluginMessage: { type: 'ready' } }, '*');
-    </script>
-  </body>
+  $('baseUrl').oninput = function () { state.baseUrl = $('baseUrl').value; persistPrefs(); };
+  $('token').oninput = function () { state.token = $('token').value.trim(); persistPrefs(); };
+  $('loadProjects').onclick = function () { loadProjects(false).catch(function () { /* 已展示 */ }); };
+  $('project').onchange = function () {
+    state.projectId = $('project').value;
+    clearError();
+    loadGroups().catch(function (err) { showError(err.message); });
+  };
+  $('group').onchange = function () {
+    state.groupId = $('group').value;
+    $('newGroupName').classList.toggle('hidden', state.groupId !== '__new__');
+    if (state.groupId === '__new__') { state.newGroupName = $('newGroupName').value; $('newGroupName').focus(); }
+    clearError();
+  };
+  $('newGroupName').oninput = function () { state.newGroupName = $('newGroupName').value; };
+
+  $('jsonOnly').onclick = function () { exportJsonOnly(); };
+  $('copyJson').onclick = function () { copyJson(); };
+  $('downloadJson').onclick = downloadJson;
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') postToPlugin({ type: 'close' });
+  });
+
+  window.onerror = function (message) { showError('插件界面异常：' + message); };
+  window.onunhandledrejection = function (e) {
+    showError('操作失败：' + ((e.reason && e.reason.message) || e.reason));
+  };
+
+  // ---------- 主线程消息 ----------
+  window.onmessage = function (event) {
+    var msg = event.data && event.data.pluginMessage;
+    if (!msg) return;
+    if (msg.type === 'boot') {
+      state.boot = msg;
+      $('meta').textContent = 'v' + msg.pluginVersion + ' · ' + msg.buildDate + ' · ' + (msg.fileName || '') + ' / ' + (msg.pageName || '');
+      return;
+    }
+    if (msg.type === 'prefs') { applyPrefs(msg.prefs); return; }
+    if (msg.type === 'boards') { applyBoards(msg); return; }
+    if (msg.type === 'progress') {
+      if (msg.message) $('progressStage').textContent = msg.message;
+      return;
+    }
+    if (msg.type === 'board-exported') {
+      settle(msg.requestId, msg);
+      return;
+    }
+    if (msg.type === 'json-result') {
+      settle(msg.requestId, msg);
+      return;
+    }
+    if (msg.type === 'error') {
+      rejectAll(msg.message || '主线程操作失败');
+      showError(msg.message || '主线程操作失败');
+    }
+  };
+
+  renderSettings();
+  renderStep3();
+  renderSteps();
+  postToPlugin({ type: 'ready' });
+})();
+</script>
+</body>
 </html>

@@ -14,6 +14,15 @@ export interface Identity {
   role: 'admin' | 'collaborator';
 }
 
+/** 团队级导入令牌（明文只在创建响应里出现一次） */
+export interface ImportToken {
+  id: string;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
 // ---------- 身份（协作者只读 / 管理员可编辑可删除） ----------
 const IDENTITY_KEY = 'dh.identity';
 let activeTeamId = '';
@@ -252,6 +261,13 @@ export const api = {
     }),
   removeMember: (teamId: string, memberId: string) =>
     request<{ deleted: boolean }>(`/api/teams/${teamId}/members/${memberId}`, { method: 'DELETE' }),
+
+  // ---- 团队导入令牌（Figma 插件用，服务端只存哈希） ----
+  listImportTokens: (teamId: string) => request<ImportToken[]>(`/api/teams/${teamId}/import-tokens`),
+  createImportToken: (teamId: string) =>
+    request<ImportToken & { token: string }>(`/api/teams/${teamId}/import-tokens`, { method: 'POST' }),
+  revokeImportToken: (teamId: string, tokenId: string) =>
+    request<{ revoked: boolean }>(`/api/teams/${teamId}/import-tokens/${tokenId}`, { method: 'DELETE' }),
 
   // ---- 项目 ----
   listProjects: (teamId?: string) =>

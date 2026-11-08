@@ -825,6 +825,37 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .member-row .small { margin-left: auto; font-size: 12px; }
 .member-remove { padding: 4px 10px; font-size: 12px; color: var(--err); background: transparent; }
 .member-remove:hover { border-color: var(--err); background: rgba(242, 72, 34, 0.08); }
+/* 团队设置：导入令牌 */
+.settings-section {
+  max-width: 720px; padding: 18px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.settings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.settings-head h2 { margin: 0 0 4px; font-size: 15px; }
+.settings-head p { margin: 0; max-width: 460px; }
+.settings-head .new-project-btn { flex: 0 0 auto; }
+.token-once {
+  margin-top: 14px; padding: 12px; border: 1px solid rgba(108, 76, 241, 0.35);
+  border-radius: 10px; background: rgba(108, 76, 241, 0.06);
+}
+.token-once-head { font-weight: 600; margin-bottom: 8px; color: var(--accent); }
+.token-once-body { display: flex; align-items: center; gap: 10px; }
+.token-once-body code {
+  flex: 1; min-width: 0; padding: 7px 10px; overflow-x: auto; white-space: nowrap;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.token-once p { margin: 8px 0 0; }
+.token-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.token-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+}
+.token-row code { font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.token-row .small { margin-left: auto; }
+.token-row .role-badge { flex: 0 0 auto; }
+.token-row .member-remove { flex: 0 0 auto; }
+
 .members-empty { text-align: center; margin-top: 80px; }
 .members-empty p { font-size: 15px; }
 .members-empty .dim { margin-top: 8px; }

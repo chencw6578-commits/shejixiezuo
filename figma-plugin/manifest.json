@@ -1,5 +1,5 @@
 {
-  "name": "设计协作 · 导出画板 JSON",
+  "name": "设计协作 · 导出向导",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
@@ -8,6 +8,6 @@
   "networkAccess": {
     "allowedDomains": ["*"],
     "devAllowedDomains": ["http://localhost:4000"],
-    "reasoning": "把导出的节点 JSON 直接发送到用户自己部署的协作网站（默认本地开发地址 http://localhost:4000），也允许填写自建域名。"
+    "reasoning": "导出向导需要把画板 JSON 与 PNG 位图直接上传到用户自己部署的协作网站（默认本地开发地址 http://localhost:4000），也允许填写自建域名。"
   }
 }

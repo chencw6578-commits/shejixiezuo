@@ -119,6 +119,25 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 CREATE INDEX IF NOT EXISTS idx_comments_frame ON comments(frame_id);
 
+-- 平台与倍率：platform 决定逻辑单位（ios→pt / android→dp / web→px），scale 为位图倍率
+ALTER TABLE design_files ADD COLUMN IF NOT EXISTS platform TEXT;
+ALTER TABLE design_files ADD COLUMN IF NOT EXISTS scale REAL;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS platform TEXT;
+ALTER TABLE frames ADD COLUMN IF NOT EXISTS scale REAL;
+
+-- 团队级「导入令牌」：Figma 插件在无浏览器会话时用 Bearer 调用 /api/plugin/*
+-- 服务端只存 sha256 哈希，明文只在创建响应里返回一次
+CREATE TABLE IF NOT EXISTS import_tokens (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id      UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  hash         TEXT NOT NULL UNIQUE,
+  prefix       TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ,
+  revoked_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_import_tokens_team ON import_tokens(team_id);
+
 CREATE TABLE IF NOT EXISTS assets (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   file_id     UUID NOT NULL REFERENCES design_files(id) ON DELETE CASCADE,

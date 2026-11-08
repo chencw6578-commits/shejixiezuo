@@ -7,7 +7,7 @@ import PropertyPanel from '../viewer/PropertyPanel';
 import CommentDrawer from '../viewer/CommentDrawer';
 import { useDialogs } from '../components/Dialogs';
 import RowMenu from '../components/RowMenu';
-import { readUnit, saveUnit, type Unit } from '../unit';
+import { readUnit, saveUnit, unitForPlatform, type Unit } from '../unit';
 import {
   ArrowLeft,
   ChevronDown,
@@ -77,6 +77,12 @@ export default function ViewerPage() {
       .catch((e) => setError(e.message));
   }, [fileId, frameId]);
 
+  // 单位默认值跟随导入平台（iOS→pt / Android→dp / Web→px）；用户手动切换后优先用户选择
+  useEffect(() => {
+    if (!data || unitPickedRef.current) return;
+    setUnitState(unitForPlatform(data.frame.platform));
+  }, [data]);
+
   // Esc 取消选中 / 关闭右键菜单
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -110,7 +116,10 @@ export default function ViewerPage() {
   const navigate = useNavigate();
   // 单位切换：只影响数值后缀/标注，绝不改变画板尺寸与已存数据
   const [unit, setUnitState] = useState<Unit>(() => readUnit());
+  // 用户手动切过单位后，本次会话不再被平台默认值覆盖
+  const unitPickedRef = useRef(false);
   const pickUnit = (u: Unit) => {
+    unitPickedRef.current = true;
     setUnitState(u);
     saveUnit(u);
   };

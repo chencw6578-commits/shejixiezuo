@@ -58,7 +58,8 @@ projectsRouter.get('/:id/frames', async (req, res) => {
   const frames = (
     await pool.query(
       `SELECT fr.id, fr.file_id, fr.name, fr.page_name, fr.page_id, fr.page_sort, fr.sort_order,
-              fr.width, fr.height, fr.thumb_url, fr.canvas_x, fr.canvas_y, df.name AS file_name, df.source
+              fr.width, fr.height, fr.thumb_url, fr.canvas_x, fr.canvas_y, fr.platform, fr.scale,
+              df.name AS file_name, df.source
        FROM frames fr
        JOIN design_files df ON df.id = fr.file_id
        WHERE df.project_id = $1 AND df.status = 'ready'

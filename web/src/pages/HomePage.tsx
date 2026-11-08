@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity } from '../api';
-import type { Identity, Member } from '../api';
-import { ChevronDown, Folder, Mail, Plus, Users } from '../components/icons';
+import type { Identity, ImportToken, Member } from '../api';
+import { ChevronDown, Folder, Layers, Mail, Plus, Users } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 
 interface Team {
@@ -21,7 +21,7 @@ interface Project {
   cover: string | null;
 }
 
-type View = 'projects' | 'members';
+type View = 'projects' | 'members' | 'settings';
 
 export default function HomePage() {
   const [searchParams] = useSearchParams();
@@ -37,6 +37,9 @@ export default function HomePage() {
   const [switchOpen, setSwitchOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // 团队导入令牌：newToken 只在生成后展示一次
+  const [tokens, setTokens] = useState<ImportToken[]>([]);
+  const [newToken, setNewToken] = useState('');
   const navigate = useNavigate();
   const dialogs = useDialogs();
 
@@ -72,6 +75,63 @@ export default function HomePage() {
       .then((rows) => setMembers(Array.isArray(rows) ? rows : []))
       .catch(() => setMembers([]));
   }, [activeTeam]);
+
+  const loadTokens = useCallback(() => {
+    if (!activeTeam) {
+      setTokens([]);
+      return;
+    }
+    api
+      .listImportTokens(activeTeam)
+      .then((rows) => setTokens(Array.isArray(rows) ? rows : []))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [activeTeam]);
+
+  useEffect(() => {
+    setNewToken('');
+    loadTokens();
+  }, [loadTokens]);
+
+  const createToken = async () => {
+    if (!activeTeam || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const created = await api.createImportToken(activeTeam);
+      setNewToken(created.token);
+      loadTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyToken = async () => {
+    try {
+      await navigator.clipboard.writeText(newToken);
+      setError('');
+    } catch {
+      setError('复制失败：请手动选中令牌文本复制');
+    }
+  };
+
+  const revokeToken = async (id: string) => {
+    if (!activeTeam) return;
+    const ok = await dialogs.confirm({
+      title: '撤销导入令牌',
+      message: '撤销后使用该令牌的 Figma 插件会立即失效（返回 401），需要重新填写新令牌。',
+      confirmText: '撤销',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.revokeImportToken(activeTeam, id);
+      loadTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const createTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -253,6 +313,12 @@ export default function HomePage() {
           >
             <Users /> 团队成员
           </button>
+          <button
+            className={`side-nav-item ${view === 'settings' ? 'active' : ''}`}
+            onClick={() => setView('settings')}
+          >
+            <Layers /> 团队设置
+          </button>
         </nav>
       </aside>
 
@@ -294,6 +360,56 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
+            </>
+          ) : view === 'settings' && activeTeamName ? (
+            <>
+              <header className="view-header">
+                <h1>团队设置 · {activeTeamName}</h1>
+                <p>为 Figma 插件生成「导入令牌」，插件用它调用导入接口，不需要浏览器登录状态</p>
+              </header>
+
+              <section className="settings-section">
+                <div className="settings-head">
+                  <div>
+                    <h2>导入令牌</h2>
+                    <p className="dim small">
+                      令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后插件立即失效（401）。
+                    </p>
+                  </div>
+                  <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>
+                    <Plus /> 生成导入令牌
+                  </button>
+                </div>
+
+                {newToken && (
+                  <div className="token-once">
+                    <div className="token-once-head">新令牌（只显示这一次）</div>
+                    <div className="token-once-body">
+                      <code>{newToken}</code>
+                      <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
+                    </div>
+                    <p className="dim small">粘贴到 Figma 插件第 3 步「导入令牌」，之后无法再从网站查看明文。</p>
+                  </div>
+                )}
+
+                <ul className="token-list">
+                  {tokens.length === 0 && <p className="empty">还没有导入令牌，点击右上角生成</p>}
+                  {tokens.map((t) => (
+                    <li key={t.id} className="token-row">
+                      <code>{t.prefix}…</code>
+                      <span className="dim small">创建于 {new Date(t.created_at).toLocaleString('zh-CN')}</span>
+                      <span className="dim small">
+                        {t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : '尚未使用'}
+                      </span>
+                      {t.revoked_at ? (
+                        <span className="role-badge collaborator">已撤销</span>
+                      ) : (
+                        <button type="button" className="member-remove" onClick={() => void revokeToken(t.id)}>撤销</button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </>
           ) : activeTeamName ? (
             <>
