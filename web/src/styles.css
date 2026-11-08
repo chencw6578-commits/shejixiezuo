@@ -260,6 +260,35 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
 }
 
+/* 导入面板：两种方式切换（Figma 链接 / Figma 插件 JSON） */
+.import-mode-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.import-mode-tabs button {
+  flex: 1; padding: 6px 8px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text-dim);
+}
+.import-mode-tabs button.is-active {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(108, 76, 241, 0.08); font-weight: 600;
+}
+.import-panel .import-json-box { flex-direction: column; align-items: stretch; }
+.import-json-text {
+  width: 100%; min-height: 110px; max-height: 220px; padding: 8px 10px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--text); background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 6px; resize: vertical;
+}
+.import-json-actions { display: flex; gap: 8px; align-items: stretch; }
+.import-json-actions .upload-btn {
+  flex: 1; width: auto; padding: 8px 10px; font-size: 12px;
+  background: transparent; border: 1.5px dashed var(--border-strong); color: var(--text-dim);
+}
+.import-json-actions button[type="submit"] {
+  padding: 0 18px; font-weight: 600; border-radius: var(--radius);
+  background: var(--accent); border: 1px solid var(--accent); color: #fff;
+}
+.import-json-actions button[type="submit"]:disabled { opacity: 0.55; }
+
 .import-box { display: flex; gap: 8px; }
 .import-box input { flex: 1; padding: 12px 14px; font-size: 14px; }
 .import-box button { padding: 0 24px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }

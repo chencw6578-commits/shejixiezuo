@@ -192,6 +192,31 @@ async function processImport(fileId: string, figmaKey: string, opts: ImportOptio
   }
 }
 
+/**
+ * Figma 插件 JSON 导入：数据已由插件在本地导出，这里只落库，
+ * 不调用任何 Figma REST 接口（因此不受账号级限流影响）。
+ */
+export async function importPluginJson(
+  fileId: string,
+  data: PrefetchedImport
+): Promise<{ frameCount: number; nodeCount: number }> {
+  try {
+    await updateStatus(fileId, 'processing');
+    await writeFrames(fileId, data);
+    await updateStatus(fileId, 'ready');
+    return {
+      frameCount: data.frames.length,
+      nodeCount: data.frames.reduce((sum, frame) => sum + frame.layers.length, 0),
+    };
+  } catch (err) {
+    const errId = newErrorId();
+    const message = userFacingFailure(errId);
+    console.error(`[plugin-import] file ${fileId} failed: ${message}`, err);
+    await updateStatus(fileId, 'failed', message).catch(() => {});
+    throw err;
+  }
+}
+
 /** 把解析结果写入 frames/nodes（事务内替换该文件的画板与节点，失败整体回滚） */
 export async function writeFrames(
   fileId: string,

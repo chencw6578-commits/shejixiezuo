@@ -31,7 +31,7 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   failed: { text: '失败', cls: 'status-err' },
 };
 
-const SOURCE_TAG: Record<string, string> = { sketch: 'Sketch', psd: 'PSD', figma: 'Figma' };
+const SOURCE_TAG: Record<string, string> = { sketch: 'Sketch', psd: 'PSD', figma: 'Figma', plugin: 'Figma 插件' };
 
 /**
  * 用户可见的错误文案：后端已给出可操作文案时原样展示；
@@ -192,6 +192,12 @@ export default function ProjectCanvasPage() {
     return () => window.clearInterval(timer);
   }, [busy]);
   const [uploading, setUploading] = useState('');
+  // 第二种导入方式：Figma 插件导出的 JSON（粘贴文本或选择 .json 文件）
+  const [importMode, setImportMode] = useState<'url' | 'json'>('url');
+  const [jsonText, setJsonText] = useState('');
+  const [jsonFileName, setJsonFileName] = useState('');
+  const [jsonBusy, setJsonBusy] = useState(false);
+  const jsonFileRef = useRef<HTMLInputElement>(null);
   // 服务端统一 Figma 令牌是否就绪（null = 探测中/探测失败）
   const [figmaConfigured, setFigmaConfigured] = useState<boolean | null>(null);
   // 高级选项：用户个人令牌（仅本次导入使用，不落库、不写 localStorage）
@@ -1760,6 +1766,46 @@ export default function ProjectCanvasPage() {
     }
   };
 
+  /** 导入 Figma 插件导出的 JSON：粘贴文本与选择 .json 文件共用同一后端接口 */
+  const submitJson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!jsonText.trim() || jsonBusy || !projectId) return;
+    if (jsonText.length > 20 * 1024 * 1024) {
+      setError('JSON 过大（超过 20MB）：请减少画板数量后重新导出');
+      return;
+    }
+    setJsonBusy(true);
+    setError('');
+    try {
+      const { id } = await api.importFigmaJson(jsonText, projectId);
+      setJsonText('');
+      setJsonFileName('');
+      setImportOpen(false);
+      navigate(`/files/${id}`);
+    } catch (err) {
+      setError(readableError(err, '导入失败：发生未知错误，请稍后重试或反馈给我们'));
+    } finally {
+      setJsonBusy(false);
+    }
+  };
+
+  const onJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!/\.json$/i.test(f.name)) {
+      setError('请选择 Figma 插件导出的 .json 文件');
+      return;
+    }
+    setError('');
+    try {
+      setJsonText(await f.text());
+      setJsonFileName(f.name);
+    } catch {
+      setError('读取文件失败：请重新选择 .json 文件，或改用粘贴 JSON');
+    }
+  };
+
   const parsing = files.filter((f) => f.status === 'pending' || f.status === 'processing').length;
 
   /** 侧栏画板行：编组内与全局未分组共用 */
@@ -1847,6 +1893,27 @@ export default function ProjectCanvasPage() {
           <details className="export-menu" open={importOpen} onToggle={(e) => setImportOpen((e.target as HTMLDetailsElement).open)}>
             <summary className="primary-link"><Plus /> 导入设计稿</summary>
           <div className="export-menu-pop import-panel">
+            <div className="import-mode-tabs" role="tablist" aria-label="导入方式">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={importMode === 'url'}
+                className={importMode === 'url' ? 'is-active' : ''}
+                onClick={() => { setImportMode('url'); setError(''); }}
+              >
+                Figma 链接
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={importMode === 'json'}
+                className={importMode === 'json' ? 'is-active' : ''}
+                onClick={() => { setImportMode('json'); setError(''); }}
+              >
+                Figma 插件 JSON
+              </button>
+            </div>
+            {importMode === 'url' && (
             <form className="import-box" onSubmit={submit}>
               <input
                 value={url}
@@ -1889,6 +1956,42 @@ export default function ProjectCanvasPage() {
               </details>
               {error && <p className="import-error">{error}</p>}
             </form>
+            )}
+            {importMode === 'json' && (
+            <form className="import-box import-json-box" onSubmit={submitJson}>
+              <textarea
+                className="import-json-text"
+                value={jsonText}
+                onChange={(e) => { setJsonText(e.target.value); setJsonFileName(''); }}
+                placeholder="粘贴 Figma 插件导出的 JSON（不调用 Figma 接口，不受限流影响）"
+                spellCheck={false}
+                aria-label="Figma 插件导出的 JSON"
+              />
+              <div className="import-json-actions">
+                <input
+                  ref={jsonFileRef}
+                  type="file"
+                  accept=".json,application/json"
+                  hidden
+                  onChange={onJsonFile}
+                />
+                <button
+                  type="button"
+                  className="upload-btn"
+                  disabled={jsonBusy}
+                  onClick={() => jsonFileRef.current?.click()}
+                >
+                  <Upload /> 选择 .json 文件
+                </button>
+                <button type="submit" disabled={jsonBusy || !jsonText.trim()}>
+                  {jsonBusy ? '导入中…' : '导入 JSON'}
+                </button>
+              </div>
+              {jsonFileName && <p className="import-hint">已读取文件：{jsonFileName}</p>}
+              {jsonBusy && <p className="import-progress">正在解析并写入节点…</p>}
+              {error && <p className="import-error">{error}</p>}
+            </form>
+            )}
             <input ref={fileInputRef} type="file" accept=".sketch,.psd" hidden onChange={onUpload} />
             <button className="upload-btn" disabled={!!uploading} onClick={() => fileInputRef.current?.click()}>
               {uploading ? uploading : (<><Upload /> 上传 Sketch / PSD 文件</>)}

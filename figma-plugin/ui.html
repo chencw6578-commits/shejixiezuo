@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 12px;
+        font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #111827;
+        background: #fff;
+      }
+      h1 { margin: 0 0 6px; font-size: 14px; }
+      .tip { margin: 0 0 10px; color: #6b7280; }
+      button {
+        font: inherit;
+        padding: 6px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        background: #f9fafb;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { background: #f3f4f6; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+      button.primary:hover:not(:disabled) { background: #1d4ed8; }
+      .row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+      .status { margin: 0 0 8px; min-height: 18px; color: #6b7280; }
+      .status.ok { color: #047857; }
+      .status.err { color: #b91c1c; }
+      textarea {
+        width: 100%;
+        height: 220px;
+        padding: 8px;
+        font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        resize: vertical;
+        background: #f9fafb;
+        color: #111827;
+      }
+      .divider { margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid #e5e7eb; }
+      .divider h2 { margin: 0 0 4px; font-size: 12px; }
+      input[type="text"] {
+        flex: 1;
+        min-width: 140px;
+        font: inherit;
+        padding: 6px 8px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+      }
+      .hint { margin: 6px 0 0; color: #6b7280; }
+    </style>
+  </head>
+  <body>
+    <h1>导出画板 JSON</h1>
+    <p class="tip">优先导出当前选中的节点；没有选中时导出当前页顶层画板。图片只带 hash，不内嵌图片数据。</p>
+
+    <div class="row">
+      <button id="export" class="primary">重新导出</button>
+      <button id="copy" disabled>复制 JSON</button>
+      <button id="download" disabled>下载 JSON</button>
+    </div>
+    <p id="status" class="status">正在读取节点…</p>
+
+    <textarea id="output" readonly spellcheck="false" placeholder="导出结果会显示在这里"></textarea>
+
+    <div class="divider">
+      <h2>可选：直接发送到网站</h2>
+      <p class="tip">填网站后端地址，点击发送后由网站导入面板所在的接口落库；失败时请改用「复制 / 下载 JSON」。</p>
+      <div class="row">
+        <input id="endpoint" type="text" value="http://localhost:4000" spellcheck="false" />
+        <button id="send" disabled>发送</button>
+      </div>
+      <p id="send-status" class="hint"></p>
+    </div>
+
+    <script>
+      const output = document.getElementById('output');
+      const statusEl = document.getElementById('status');
+      const sendStatusEl = document.getElementById('send-status');
+      const copyBtn = document.getElementById('copy');
+      const downloadBtn = document.getElementById('download');
+      const sendBtn = document.getElementById('send');
+
+      let payloadText = '';
+
+      function setStatus(text, kind) {
+        statusEl.textContent = text;
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function applyResult(msg) {
+        if (!msg.ok) {
+          payloadText = '';
+          output.value = '';
+          copyBtn.disabled = true;
+          downloadBtn.disabled = true;
+          sendBtn.disabled = true;
+          setStatus(msg.message || '导出失败', 'err');
+          return;
+        }
+        payloadText = JSON.stringify(msg.payload, null, 2);
+        output.value = payloadText;
+        copyBtn.disabled = false;
+        downloadBtn.disabled = false;
+        sendBtn.disabled = false;
+        const stats = msg.stats || {};
+        setStatus('已导出 ' + (stats.artboards || 0) + ' 个画板、' + (stats.nodes || 0) + ' 个节点', 'ok');
+      }
+
+      window.onmessage = (event) => {
+        const msg = event.data && event.data.pluginMessage;
+        if (!msg || msg.type !== 'export-result') return;
+        applyResult(msg);
+      };
+
+      document.getElementById('export').onclick = () => {
+        setStatus('正在读取节点…');
+        parent.postMessage({ pluginMessage: { type: 'export' } }, '*');
+      };
+
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(payloadText);
+          setStatus('已复制到剪贴板，可粘贴到网站的「Figma 插件导入」', 'ok');
+        } catch (err) {
+          output.select();
+          document.execCommand('copy');
+          setStatus('已复制（如失败请手动选中文本复制）', 'ok');
+        }
+      };
+
+      downloadBtn.onclick = () => {
+        const blob = new Blob([payloadText], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'figma-export-' + Date.now() + '.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      };
+
+      sendBtn.onclick = async () => {
+        if (!payloadText) return;
+        const base = document.getElementById('endpoint').value.trim().replace(/\/+$/, '');
+        if (!base) {
+          sendStatusEl.textContent = '请先填写网站地址，例如 http://localhost:4000';
+          return;
+        }
+        sendBtn.disabled = true;
+        sendStatusEl.textContent = '正在发送…';
+        try {
+          const res = await fetch(base + '/api/import/figma-json', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ json: JSON.parse(payloadText) }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || '请求失败 (' + res.status + ')');
+          sendStatusEl.textContent = '已发送：' + (data.name || '导入成功') + '（' + (data.frameCount || 0) + ' 个画板 / ' + (data.nodeCount || 0) + ' 个节点），可在网站中查看。';
+        } catch (err) {
+          sendStatusEl.textContent = '发送失败：' + (err && err.message ? err.message : String(err)) + '。请改用「复制 / 下载 JSON」，在网站导入面板粘贴或上传。';
+        } finally {
+          sendBtn.disabled = false;
+        }
+      };
+
+      // UI 加载完成即请求一次导出（同时告知主线程可以开始）
+      setStatus('正在读取节点…');
+      parent.postMessage({ pluginMessage: { type: 'ready' } }, '*');
+    </script>
+  </body>
+</html>

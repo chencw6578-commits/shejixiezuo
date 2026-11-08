@@ -11,6 +11,7 @@ import { commentsRouter } from './routes/comments.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { projectsRouter } from './routes/projects.js';
 import { teamsRouter } from './routes/teams.js';
+import { importJsonRouter } from './routes/importJson.js';
 import { mcpRouter } from './routes/mcp.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
@@ -19,6 +20,8 @@ setConcurrency(Number(process.env.IMPORT_CONCURRENCY ?? 2));
 
 const app = express();
 app.use(compression({ threshold: 512 }));
+// 插件 JSON 单条可能较大：该路由自带 20mb 解析器，必须挂在全局 1mb 之前
+app.use('/api/import', importJsonRouter);
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {

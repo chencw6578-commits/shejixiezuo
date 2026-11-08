@@ -57,6 +57,8 @@ export interface ParsedNodeProps {
   cornerRadius?: number;
   cornerRadii?: number[];
   blendMode?: string;
+  /** 旋转角度（Figma 插件导出才有；REST 节点通常不带） */
+  rotation?: number;
   text?: ParsedTextStyle & { content: string };
   exportPresets: ParsedExportPreset[];
   hasImageFill: boolean;
@@ -325,6 +327,7 @@ function parseProps(node: FigmaNode): ParsedNodeProps {
     cornerRadius: node.cornerRadius,
     cornerRadii: radii,
     blendMode: node.blendMode,
+    rotation: typeof node.rotation === 'number' && Number.isFinite(node.rotation) ? node.rotation : undefined,
     text: text ? { ...text, content: node.characters ?? '' } : undefined,
     exportPresets: parseExportPresets(node.exportSettings),
     hasImageFill: fills.some((f) => f.type === 'image' && f.visible),

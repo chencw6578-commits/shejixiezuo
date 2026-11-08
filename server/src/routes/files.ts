@@ -57,7 +57,7 @@ function respondFigmaError(res: Response, err: unknown) {
               ? `Figma 接口限流（约 ${wait} 秒后恢复）`
               : 'Figma 接口限流';
         return res.status(429).json({
-          error: `${hint}：请稍后重试；如需立刻导入，可展开「高级选项」填入你自己的个人令牌`,
+          error: `${hint}：请稍后重试；如需立刻导入，可展开「高级选项」填入你自己的个人令牌，或使用 Figma 插件导入`,
         });
       }
       case 504:

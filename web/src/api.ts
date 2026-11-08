@@ -89,6 +89,13 @@ export const api = {
       body: JSON.stringify({ url, projectId, token: token?.trim() || undefined }),
     }),
 
+  /** 导入 Figma 插件导出的 JSON（服务端不调用 Figma REST，不受限流影响） */
+  importFigmaJson: (json: string | object, projectId?: string) =>
+    request<{ id: string; name: string; frameCount: number; nodeCount: number; skipped: number }>(
+      '/api/import/figma-json',
+      { method: 'POST', body: JSON.stringify({ json, projectId }) }
+    ),
+
   /** 上传 .sketch / .psd 文件导入（可指定所属项目） */
   uploadDesign: async (file: File, projectId?: string): Promise<{ id: string; name: string }> => {
     const fd = new FormData();
