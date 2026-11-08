@@ -812,7 +812,7 @@
         postToPlugin({ type: 'notify', message: '导入令牌已失效，请重新粘贴' });
       } else {
         // 网络失败/超时/CORS/5xx：保留已存令牌，给重试
-        showError(((err && err.message) || String(err)), function () { retryConnect(); });
+        showError('连接失败，令牌已保留：' + ((err && err.message) || String(err)), function () { retryConnect(); });
       }
     }
   }
@@ -826,7 +826,7 @@
         persistPrefs();
         showGate('令牌已失效或已撤销：' + err.message);
       } else {
-        showError(((err && err.message) || String(err)), retryConnect);
+        showError('连接失败，令牌已保留：' + ((err && err.message) || String(err)), retryConnect);
       }
     });
   }
