@@ -42,6 +42,9 @@
       ],
       "strokes": [],
       "effects": [],
+      "exportSettings": [
+        { "format": "SVG", "suffix": "", "constraint": { "type": "SCALE", "value": 1 } }
+      ],
       "hasImageFill": false,
       "imageFillNodeId": null,
       "children": [
@@ -112,6 +115,10 @@
           ],
           "strokes": [],
           "effects": [],
+          "exportSettings": [
+            { "format": "PNG", "suffix": "@2x", "constraint": { "type": "SCALE", "value": 2 } },
+            { "format": "SVG", "suffix": "", "constraint": { "type": "SCALE", "value": 1 } }
+          ],
           "hasImageFill": false,
           "imageFillNodeId": null,
           "children": []

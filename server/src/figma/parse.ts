@@ -341,6 +341,31 @@ function parseArtboard(node: FigmaNode, pageName: string, sortOrder: number): Pa
   const oy = box.y;
   const layers: ParsedLayer[] = [];
 
+  // 画板自身标记了导出预设（Figma 中选中画板 → Export 面板）：生成一个与画板同名的
+  // 全幅虚拟图层承载预设，放数组最前（画布热区按数组序渲染，z 最低不拦截内部图层点击，
+  // 点击画板空白处即可选中它）。画板级切图与图层切图共用同一套导出链路。
+  const boardPresets = parseExportPresets(node.exportSettings);
+  if (boardPresets.length) {
+    layers.push({
+      nodeId: node.id,
+      parentId: null,
+      name: node.name,
+      type: node.type,
+      x: 0,
+      y: 0,
+      width: round2(box.width),
+      height: round2(box.height),
+      props: {
+        opacity: 1,
+        fills: [],
+        strokes: [],
+        effects: [],
+        exportPresets: boardPresets,
+        hasImageFill: false,
+      },
+    });
+  }
+
   const walk = (n: FigmaNode, parentId: string | null) => {
     for (const child of childrenOf(n)) {
       if (child.visible === false) continue;

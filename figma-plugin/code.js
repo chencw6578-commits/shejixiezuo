@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.4';
+const PLUGIN_VERSION = '1.3.5';
 const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -122,6 +122,12 @@ async function exportNodeAsync(node, parentId, ctx) {
     height: node.height,
   };
   copyVisual(node, out);
+
+  // 切图标记：图层在 Figma 里的 Export 预设。网站端解析与 REST 导入同款
+  // （parseExportPresets 读 exportSettings 字段），漏掉这一项就会「无法识别切图」。
+  if (Array.isArray(node.exportSettings) && node.exportSettings.length) {
+    out.exportSettings = safe(node.exportSettings);
+  }
 
   if ('characters' in node) {
     out.characters = node.characters;
