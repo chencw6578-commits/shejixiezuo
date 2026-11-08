@@ -3,10 +3,8 @@
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
+  "documentAccess": "dynamic-page",
   "editorType": ["figma"],
-  "menu": [
-    { "name": "导出选中画板 / 当前页画板", "command": "export" }
-  ],
   "networkAccess": {
     "allowedDomains": ["*"],
     "devAllowedDomains": ["http://localhost:4000"],

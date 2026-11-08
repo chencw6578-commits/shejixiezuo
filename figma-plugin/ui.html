@@ -13,6 +13,7 @@
         background: #fff;
       }
       h1 { margin: 0 0 6px; font-size: 14px; }
+      #meta { margin-left: 6px; font-size: 11px; font-weight: 400; color: #6b7280; }
       .tip { margin: 0 0 10px; color: #6b7280; }
       button {
         font: inherit;
@@ -55,7 +56,7 @@
     </style>
   </head>
   <body>
-    <h1>导出画板 JSON</h1>
+    <h1>导出画板 JSON <span id="meta">v1.0.1</span></h1>
     <p class="tip">优先导出当前选中的节点；没有选中时导出当前页顶层画板。图片只带 hash，不内嵌图片数据。</p>
 
     <div class="row">
@@ -81,18 +82,29 @@
       const output = document.getElementById('output');
       const statusEl = document.getElementById('status');
       const sendStatusEl = document.getElementById('send-status');
+      const metaEl = document.getElementById('meta');
       const copyBtn = document.getElementById('copy');
       const downloadBtn = document.getElementById('download');
       const sendBtn = document.getElementById('send');
 
       let payloadText = '';
+      let waitTimer = null;
 
       function setStatus(text, kind) {
         statusEl.textContent = text;
         statusEl.className = 'status' + (kind ? ' ' + kind : '');
       }
 
+      /** 主线程迟迟不返回时给出可排查提示，而不是一直显示「正在读取节点…」 */
+      function startWait() {
+        clearTimeout(waitTimer);
+        waitTimer = setTimeout(() => {
+          setStatus('主线程 12 秒未返回：请检查 Figma 控制台报错；修改代码后需重新导入 manifest 或重启 Figma。', 'err');
+        }, 12000);
+      }
+
       function applyResult(msg) {
+        clearTimeout(waitTimer);
         if (!msg.ok) {
           payloadText = '';
           output.value = '';
@@ -113,12 +125,31 @@
 
       window.onmessage = (event) => {
         const msg = event.data && event.data.pluginMessage;
-        if (!msg || msg.type !== 'export-result') return;
+        if (!msg) return;
+        if (msg.type === 'boot') {
+          const parts = ['v' + (msg.version || '?')];
+          if (msg.buildDate) parts.push(msg.buildDate);
+          if (msg.apiVersion) parts.push('api ' + msg.apiVersion);
+          metaEl.textContent = parts.join(' · ');
+          return;
+        }
+        if (msg.type !== 'export-result') return;
         applyResult(msg);
+      };
+
+      // UI 自身脚本异常也要显示出来，而不是整个面板静止
+      window.onerror = (event) => {
+        const text = event && event.message ? event.message : String(event);
+        setStatus('面板脚本错误：' + text, 'err');
+      };
+      window.onunhandledrejection = (event) => {
+        const reason = event && event.reason;
+        setStatus('面板异步错误：' + (reason && reason.message ? reason.message : String(reason)), 'err');
       };
 
       document.getElementById('export').onclick = () => {
         setStatus('正在读取节点…');
+        startWait();
         parent.postMessage({ pluginMessage: { type: 'export' } }, '*');
       };
 
@@ -170,6 +201,7 @@
 
       // UI 加载完成即请求一次导出（同时告知主线程可以开始）
       setStatus('正在读取节点…');
+      startWait();
       parent.postMessage({ pluginMessage: { type: 'ready' } }, '*');
     </script>
   </body>

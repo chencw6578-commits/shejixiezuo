@@ -6,14 +6,35 @@
  * - 与 UI iframe 通信只走 figma.ui.postMessage / figma.ui.onmessage；
  * - 网络请求（可选「直接发送到网站」）由 ui.html 里的 fetch 发起。
  *
+ * 启动顺序（避免「点击插件没反应」）：
+ * 1. 第一句就 figma.showUI(__html__)，窗口固定 UI 立刻可见，不等任何节点数据；
+ * 2. 再注册 figma.ui.onmessage；
+ * 3. 收到 UI 的 ready/export 后再异步读取节点，失败一律 postMessage 到窗口 + figma.notify。
+ *
  * 导出结构：schemaVersion 1，artboards 里每个节点采用接近 Figma REST 的形状
  * （absoluteBoundingBox / children / fills / strokes / effects / style / characters），
  * 网站后端复用同一套解析逻辑；图片填充只带 imageHash 与 node id，不内嵌 base64。
  */
+const PLUGIN_VERSION = '1.0.1';
+const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const ARTBOARD_TYPES = ['FRAME', 'COMPONENT', 'INSTANCE'];
 
-figma.showUI(__html__, { width: 420, height: 560, title: '设计协作 · 导出画板 JSON' });
+function errorText(err) {
+  if (!err) return '未知错误';
+  if (typeof err === 'string') return err;
+  if (err.message) return String(err.message);
+  return String(err);
+}
+
+// ---------- 1) 启动即显示窗口（固定 UI，不依赖节点数据） ----------
+try {
+  figma.showUI(__html__, { width: 420, height: 620, title: '设计协作 · 导出画板 JSON' });
+} catch (err) {
+  // showUI 都失败时窗口无法出现，只能靠 Figma 通知提示（不静默吞掉）
+  figma.notify('插件窗口创建失败：' + errorText(err), { error: true, timeout: 8000 });
+  throw err;
+}
 
 function round(v) {
   return typeof v === 'number' && isFinite(v) ? Math.round(v * 100) / 100 : 0;
@@ -232,6 +253,7 @@ function buildExport() {
   const payload = {
     schemaVersion: SCHEMA_VERSION,
     generator: 'shejixiezuo-figma-plugin',
+    pluginVersion: PLUGIN_VERSION,
     exportedAt: new Date().toISOString(),
     file: {
       name: figma.root && typeof figma.root.name === 'string' ? figma.root.name : undefined,
@@ -248,21 +270,58 @@ function buildExport() {
   };
 }
 
-figma.ui.onmessage = (msg) => {
-  if (!msg || typeof msg !== 'object') return;
-  if (msg.type === 'export' || msg.type === 'ready') {
-    try {
-      figma.ui.postMessage(Object.assign({ type: 'export-result' }, buildExport()));
-    } catch (err) {
-      figma.ui.postMessage({
-        type: 'export-result',
-        ok: false,
-        message: '导出失败：' + (err && err.message ? err.message : String(err)),
-      });
-    }
+/**
+ * manifest 声明了 documentAccess: "dynamic-page"，页面内容默认未加载：
+ * 直接读 figma.currentPage.children 会抛「Cannot access children on a page that has not been explicitly loaded」。
+ * 只导出当前页，优先 PageNode.loadAsync()（比 loadAllPagesAsync 轻），失败再退化为 loadAllPagesAsync。
+ */
+async function ensureCurrentPageLoaded() {
+  const page = figma.currentPage;
+  if (page && typeof page.loadAsync === 'function') {
+    await page.loadAsync();
     return;
   }
-  if (msg.type === 'close') {
-    figma.closePlugin();
+  if (typeof figma.loadAllPagesAsync === 'function') {
+    await figma.loadAllPagesAsync();
+  }
+}
+
+/** 读取并回传导出结果；任何异常都转成可读文案显示在窗口里 */
+async function runExport() {
+  await ensureCurrentPageLoaded();
+  const result = buildExport();
+  figma.ui.postMessage(Object.assign({ type: 'export-result', version: PLUGIN_VERSION }, result));
+  if (!result.ok) {
+    figma.notify(result.message, { error: true, timeout: 6000 });
+  }
+  return result;
+}
+
+// ---------- 2) UI 消息：固定 UI 就绪后再异步填充数据 ----------
+figma.ui.onmessage = async (msg) => {
+  if (!msg || typeof msg !== 'object') return;
+  try {
+    if (msg.type === 'ready') {
+      figma.ui.postMessage({
+        type: 'boot',
+        version: PLUGIN_VERSION,
+        buildDate: BUILD_DATE,
+        apiVersion: typeof figma.apiVersion === 'string' ? figma.apiVersion : '1.0.0',
+      });
+      await runExport();
+      return;
+    }
+    if (msg.type === 'export') {
+      await runExport();
+      return;
+    }
+    if (msg.type === 'close') {
+      figma.notify('已关闭导出插件（版本 ' + PLUGIN_VERSION + '）');
+      figma.closePlugin();
+    }
+  } catch (err) {
+    const message = '导出失败：' + errorText(err);
+    figma.ui.postMessage({ type: 'export-result', ok: false, message, version: PLUGIN_VERSION });
+    figma.notify(message, { error: true, timeout: 8000 });
   }
 };
