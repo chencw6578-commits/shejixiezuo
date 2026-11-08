@@ -10,6 +10,7 @@ import './styles.css';
 
 const router = createBrowserRouter([
   { path: '/', element: <HomePage /> },
+  { path: '/projects', element: <HomePage /> },
   { path: '/projects/:projectId', element: <ProjectCanvasPage /> },
   { path: '/files/:fileId', element: <FilePage /> },
   { path: '/files/:fileId/spec', element: <SpecPage /> },

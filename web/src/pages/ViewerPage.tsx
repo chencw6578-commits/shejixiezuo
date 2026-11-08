@@ -530,7 +530,7 @@ export default function ViewerPage() {
     [refreshComments]
   );
 
-  if (error) return <div className="page-msg">错误：{error} <Link to="/">返回首页</Link></div>;
+  if (error) return <div className="page-msg">错误：{error} <Link to="/projects">返回项目列表</Link></div>;
   if (!data) return <div className="page-msg">加载中…</div>;
 
   const nodeById = new Map(data.nodes.map((n: LayerNode) => [n.node_id, n]));
@@ -619,14 +619,10 @@ export default function ViewerPage() {
     </div>
   );
 
-  // 返回：固定回当前项目的画板列表页，不走历史栈（历史里可能是一串画板详情）
+  // 返回：固定回文件所属团队的项目列表，避免回到裸 / 后落到默认团队
   const goBack = () => {
-    const projectId = file?.project_id;
-    if (!projectId) {
-      navigate('/', { replace: true });
-      return;
-    }
-    navigate(`/projects/${projectId}`, { replace: true });
+    const teamId = file?.team_id;
+    navigate(teamId ? `/projects?team=${teamId}` : '/projects', { replace: true });
   };
 
   return (

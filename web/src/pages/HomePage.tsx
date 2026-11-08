@@ -23,13 +23,25 @@ interface Project {
 
 type View = 'projects' | 'members' | 'settings';
 
+/** 最近访问的团队：无 team 参数时优先用它，避免总落到列表第一个团队 */
+const LAST_TEAM_KEY = 'shejixiezuo:last-team';
+
+function readLastTeamId() {
+  try {
+    return localStorage.getItem(LAST_TEAM_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export default function HomePage() {
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<View>('projects');
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') ?? ''); // '' = 尚未选定（加载后落到首个团队）
+  // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
+  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [teamName, setTeamName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
@@ -57,11 +69,48 @@ export default function HomePage() {
   }, [activeTeam]);
 
   useEffect(loadTeams, [loadTeams]);
-  // 只有当前团队：未指定团队或团队失效时，落到首个团队
+
+  // 团队上下文以 URL 的 ?team= 为准：URL → state 单向同步（前进/后退/直开链接都走这里）。
+  // 反向只在「用户主动切换团队 / 回退兜底」时由 switchTeam 显式 navigate，
+  // 避免两个 effect 互相回写导致 666 ↔ 11 反复横跳与请求风暴。
+  const urlTeam = searchParams.get('team') ?? '';
+  const switchTeam = useCallback(
+    (id: string, replace = false) => {
+      setActiveTeam(id);
+      navigate(`/projects?team=${encodeURIComponent(id)}`, { replace });
+    },
+    [navigate]
+  );
+
+  useEffect(() => {
+    if (urlTeam && urlTeam !== activeTeam) setActiveTeam(urlTeam);
+  }, [urlTeam, activeTeam]);
+
+  // 记住最近访问的团队，供无 ?team= 的旧链接兜底
+  useEffect(() => {
+    if (!activeTeam) return;
+    try {
+      localStorage.setItem(LAST_TEAM_KEY, activeTeam);
+    } catch {
+      // localStorage 不可用时忽略，仅影响「最近访问」记忆
+    }
+  }, [activeTeam]);
+
+  // 旧的无 ?team= 地址：确定当前团队后补上参数（replace，不留死链）
+  useEffect(() => {
+    if (!activeTeam || urlTeam) return;
+    navigate(`/projects?team=${encodeURIComponent(activeTeam)}`, { replace: true });
+  }, [activeTeam, urlTeam, navigate]);
+
+  // 未指定团队 / 团队已失效：优先最近访问，其次第一个团队，并把 URL 补齐（旧链接不留死链）
   useEffect(() => {
     if (!teams.length) return;
-    if (!teams.some((t) => t.id === activeTeam)) setActiveTeam(teams[0].id);
-  }, [teams, activeTeam]);
+    if (activeTeam && teams.some((t) => t.id === activeTeam)) return;
+    const stored = readLastTeamId();
+    const fallback = stored && teams.some((t) => t.id === stored) ? stored : teams[0].id;
+    switchTeam(fallback, true);
+  }, [teams, activeTeam, switchTeam]);
+
   useEffect(loadProjects, [loadProjects]);
 
   // 当前团队的成员列表 + 身份（协作者只读 / 管理员可编辑）
@@ -122,8 +171,8 @@ export default function HomePage() {
     if (!activeTeam) return;
     const ok = await dialogs.confirm({
       title: '撤销导入令牌',
-      message: '撤销后使用该令牌的 Figma 插件会立即失效（返回 401），需要重新填写新令牌。',
-      confirmText: '撤销',
+      message: '撤销后该记录会从列表删除且不可恢复，使用该令牌的 Figma 插件会立即失效（返回 401），需要重新填写新令牌。',
+      confirmText: '撤销并删除',
       danger: true,
     });
     if (!ok) return;
@@ -144,8 +193,8 @@ export default function HomePage() {
       const t = await api.createTeam(teamName.trim());
       setTeamName('');
       setSwitchOpen(false);
-      loadTeams();
-      setActiveTeam(t.id);
+      await loadTeams();
+      switchTeam(t.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -248,7 +297,7 @@ export default function HomePage() {
                 key={t.id}
                 className={`team-switch-item ${activeTeam === t.id ? 'active' : ''}`}
                 onClick={() => {
-                  setActiveTeam(t.id);
+                  switchTeam(t.id);
                   setView('projects');
                   setSwitchOpen(false);
                 }}
@@ -375,7 +424,7 @@ export default function HomePage() {
                   <div>
                     <h2>导入令牌</h2>
                     <p className="dim small">
-                      令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后插件立即失效（401）。
+                      令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销即删除记录，插件立即失效（401）。
                     </p>
                   </div>
                   <div className="token-create">
@@ -416,11 +465,7 @@ export default function HomePage() {
                       <span className="dim small">
                         {t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : '尚未使用'}
                       </span>
-                      {t.revoked_at ? (
-                        <span className="role-badge collaborator">已撤销</span>
-                      ) : (
-                        <button type="button" className="member-remove" onClick={() => void revokeToken(t.id)}>撤销</button>
-                      )}
+                      <button type="button" className="member-remove" onClick={() => void revokeToken(t.id)}>撤销</button>
                     </li>
                   ))}
                 </ul>

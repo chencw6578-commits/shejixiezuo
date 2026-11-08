@@ -1857,14 +1857,10 @@ export default function ProjectCanvasPage() {
     </div>
   );
 
-  // 返回上一页：历史栈为首个记录时回首页，避免退回空白页
+  // 返回：固定回项目所属团队的项目列表，不再回裸的 /（避免落到默认第一个团队）
   const goBack = () => {
-    const idx = (window.history.state as { idx?: number } | null)?.idx;
-    if (typeof idx !== 'number' || idx <= 0) {
-      navigate('/', { replace: true });
-      return;
-    }
-    navigate(-1);
+    const teamId = project?.team_id;
+    navigate(teamId ? `/projects?team=${teamId}` : '/projects', { replace: true });
   };
 
   return (
@@ -1875,7 +1871,7 @@ export default function ProjectCanvasPage() {
         </button>
         <h1><Folder /> {project?.name ?? '…'}</h1>
         {project?.team_name && (
-          <Link to={`/?team=${project.team_id}`} className="team-crumb"><Users /> {project.team_name}</Link>
+          <Link to={`/projects?team=${project.team_id}`} className="team-crumb"><Users /> {project.team_name}</Link>
         )}
         <span className="crumb">{frames.length} 个画板</span>
         {parsing > 0 && <span className="status status-wait status-pulse">解析中 {parsing}</span>}

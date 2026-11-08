@@ -33,7 +33,7 @@ export default function FilePage() {
     return () => clearInterval(t);
   }, [file, load]);
 
-  if (error) return <div className="page-msg">错误：{error} <Link to="/">返回</Link></div>;
+  if (error) return <div className="page-msg">错误：{error} <Link to="/projects">返回</Link></div>;
   if (!file) return <div className="page-msg">加载中…</div>;
 
   const frames = file.frames ?? [];
