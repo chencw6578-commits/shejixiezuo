@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity } from '../api';
 import type { Identity, Member } from '../api';
 import { ChevronDown, Folder, Mail, Plus, Users } from '../components/icons';
+import { useDialogs } from '../components/Dialogs';
 
 interface Team {
   id: string;
@@ -33,11 +34,11 @@ export default function HomePage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
   const [identity, setIdentityState] = useState<Identity | null>(null);
-  const [projectName, setProjectName] = useState('');
   const [switchOpen, setSwitchOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const dialogs = useDialogs();
 
   const loadTeams = useCallback(() => {
     api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
@@ -145,20 +146,23 @@ export default function HomePage() {
     }
   };
 
-  const createProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectName.trim() || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const p = await api.createProject(projectName.trim(), activeTeam || undefined);
-      setProjectName('');
-      navigate(`/projects/${p.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+  const openCreateProject = () => {
+    void dialogs.prompt({
+      title: '新建项目',
+      label: '项目名称',
+      placeholder: activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称',
+      maxLength: 60,
+      confirmText: '创建',
+      onSubmit: async (name) => {
+        try {
+          await api.createProject(name, activeTeam || undefined);
+          await loadProjects();
+          return null;
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err);
+        }
+      },
+    });
   };
 
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
@@ -258,19 +262,14 @@ export default function HomePage() {
           {view === 'projects' ? (
             <>
               <header className="view-header">
-                <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
+                <div className="view-header-row">
+                  <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
+                  <button type="button" className="new-project-btn" onClick={openCreateProject}>
+                    <Plus /> 新建项目
+                  </button>
+                </div>
                 <p>选择项目进入，查看设计稿、标注与规范</p>
               </header>
-
-              <form className="inline-form" onSubmit={createProject}>
-                <input
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder={activeTeamName ? `在「${activeTeamName}」中新建项目` : '输入项目名称（可先在左上角选择团队）'}
-                  className="compact-input grow"
-                />
-                <button type="submit" disabled={busy || !projectName.trim()}><Plus /> 新建项目</button>
-              </form>
 
               <ul className="project-grid">
                 {projects.length === 0 && <p className="empty">暂无项目</p>}
@@ -376,6 +375,7 @@ export default function HomePage() {
         </div>
       </main>
       </div>
+      {dialogs.element}
     </div>
   );
 }

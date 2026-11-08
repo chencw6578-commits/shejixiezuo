@@ -160,9 +160,20 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
 .home-main { flex: 1; overflow-y: auto; }
 .home-main-inner { max-width: 1040px; margin: 0 auto; padding: 40px 36px 60px; }
-.view-header { margin-bottom: 22px; }
+.view-header { margin-bottom: 20px; }
 .view-header h1 { font-size: 22px; }
 .view-header p { color: var(--text-dim); margin-top: 6px; }
+/* 标题行：标题与「新建项目」按钮同一行，按钮与标题文字垂直居中、右边缘贴内容区右边界 */
+.view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.view-header-row h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new-project-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; white-space: nowrap;
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+}
+.new-project-btn:hover { background: var(--accent-hover); }
+/* 覆盖 .home-shell button:hover（优先级更高，否则悬停变成浅灰底、白字不可见） */
+.home-shell .new-project-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
 .team-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
 .team-card .file-name { margin-bottom: 6px; }
 
@@ -623,12 +634,15 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   }
   .frame-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; }
   .home-shell { flex-direction: column; }
+  .home-body { flex-direction: column; }
   .home-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 14px; border-right: none; border-bottom: 1px solid var(--border); }
   .home-brand { padding: 0 10px 0 0; }
   .home-brand p { display: none; }
   .side-nav { flex-direction: row; gap: 6px; }
   .side-nav-item { width: auto; padding: 7px 12px; }
   .home-main-inner { padding: 24px 16px 40px; }
+  .view-header-row { gap: 8px; }
+  .new-project-btn { padding: 5px 10px; font-size: 12px; }
 
   /* 触屏上热区点击已足够，禁掉画布的 grab 光标和拖拽选中干扰 */
   .canvas-container { cursor: default; }
