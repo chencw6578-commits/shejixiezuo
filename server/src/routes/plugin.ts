@@ -9,6 +9,20 @@ import { batchInsert } from '../util/batchInsert.js';
 export const pluginRouter = Router();
 
 /**
+ * 插件侧报「上传失败」时，第一件事要能判断请求有没有到服务端：
+ * 这里给 /api/plugin/* 打访问日志（方法、路径、状态码、耗时、Origin、请求体字节数）。
+ */
+pluginRouter.use((req: Request, res: Response, next: NextFunction) => {
+  const started = Date.now();
+  const origin = req.headers.origin ?? '-';
+  res.on('finish', () => {
+    const len = req.headers['content-length'] ?? '-';
+    console.log(`[plugin] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${Date.now() - started}ms origin=${origin} bytes=${len}`);
+  });
+  next();
+});
+
+/**
  * Figma 插件 UI 运行在沙箱 iframe，Origin 通常是 null（也可能是 figma.com）。
  * 没有跨域头时浏览器会直接报 Failed to fetch，因此这里显式允许 figma.com、null 与本地开发来源。
  */

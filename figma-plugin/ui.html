@@ -327,6 +327,7 @@
       <div id="successWarn" class="warn hidden"></div>
       <a id="openSite" class="open" href="#" target="_blank" rel="noopener noreferrer">在网站中打开</a>
       <div id="successUrl" class="url"></div>
+      <div id="netInfo" class="url"></div>
     </div>
 
     <div id="jsonBox" class="hidden">
@@ -349,6 +350,8 @@
   'use strict';
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+  // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
+  var UI_VERSION = '1.3.4';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -649,36 +652,66 @@
     return '无法访问 ' + url + '：该域名未在插件 manifest 中授权（networkAccess），请同步修改 manifest.json 后重新导入插件';
   }
 
+  /** 网络打点：URL、请求体字节数、状态码/错误、耗时，成功失败都显示并打到插件控制台 */
+  function recordNet(entry) {
+    state.lastNet = entry;
+    var line = '[net] ' + entry.method + ' ' + entry.url +
+      ' | body=' + entry.bodyBytes + 'B | ' +
+      (entry.error ? 'ERR ' + entry.error : 'HTTP ' + entry.status) +
+      ' | ' + entry.ms + 'ms';
+    state.lastNetLine = line;
+    console.log(line);
+    return line;
+  }
+
+  /** 上传超时/失败文案必须指向「请求」，不能再说「主线程无响应」 */
   async function api(path, options) {
     options = options || {};
     var headers = { Authorization: 'Bearer ' + state.token };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    var url = baseUrl() + path;
+    var method = options.method || 'GET';
+    var bodyText = options.body === undefined ? undefined : JSON.stringify(options.body);
+    var bodyBytes = bodyText ? bodyText.length : 0;
     var res;
-    // 单板上传最长 60 秒；超时后重试会复用已导出的结果，跳过已成功的画板
+    // 请求级超时（单板上传 60 秒）：AbortController 只管请求，不看主线程是否静默
     var timeoutMs = Number(options.timeoutMs) || 0;
     var controller = timeoutMs && typeof AbortController === 'function' ? new AbortController() : null;
     var timer = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
+    var startedAt = Date.now();
     try {
-      res = await fetch(baseUrl() + path, {
-        method: options.method || 'GET',
+      res = await fetch(url, {
+        method: method,
         headers: headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body: bodyText,
         signal: controller ? controller.signal : undefined,
       });
     } catch (err) {
+      var ms = Date.now() - startedAt;
       if (controller && controller.signal.aborted) {
-        throw new Error('上传超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有响应：请点「重试」（会跳过已上传成功的画板）');
+        var timeoutNet = recordNet({ method: method, url: url, bodyBytes: bodyBytes, ms: ms, error: 'timeout(' + Math.round(timeoutMs / 1000) + 's)' });
+        var timeoutErr = new Error('上传请求超时（' + Math.round(timeoutMs / 1000) + 's），服务器无响应');
+        timeoutErr.net = timeoutNet;
+        throw timeoutErr;
       }
-      throw new Error(describeConnectionError(baseUrl()));
+      var raw = (err && err.message) || String(err);
+      var netLine = recordNet({ method: method, url: url, bodyBytes: bodyBytes, ms: ms, error: raw });
+      var connErr = new Error(describeConnectionError(baseUrl()) + '（' + method + ' ' + path + '，' + ms + 'ms，' + raw + '）');
+      connErr.net = netLine;
+      throw connErr;
     } finally {
       if (timer) clearTimeout(timer);
     }
+    var ms2 = Date.now() - startedAt;
     var data = null;
     try { data = await res.json(); } catch (err) { /* 非 JSON 响应 */ }
+    recordNet({ method: method, url: url, bodyBytes: bodyBytes, ms: ms2, status: res.status });
     if (!res.ok) {
-      var e = new Error((data && data.error) || ('请求失败（HTTP ' + res.status + '）'));
-      e.status = res.status;
-      throw e;
+      var serverText = (data && data.error) ? String(data.error) : '(服务端未返回 error 文本)';
+      var httpErr = new Error('服务器返回 HTTP ' + res.status + '：' + serverText);
+      httpErr.status = res.status;
+      httpErr.net = state.lastNet && state.lastNet;
+      throw httpErr;
     }
     return data;
   }
@@ -952,7 +985,7 @@
         name = exported.name || name;
         if (exported.imageSkipped) totals.warnings.push('「' + name + '」' + exported.imageSkipped);
 
-        setProgress(i, total, '上传「' + name + '」…');
+        setProgress(i, total, '上传「' + name + '」…（POST /api/plugin/import）');
         var images = exported.image
           ? [{ nodeId: ids[i], dataUrl: 'data:image/png;base64,' + exported.image }]
           : [];
@@ -996,12 +1029,14 @@
       var url = baseUrl() + '/projects/' + state.projectId;
       $('openSite').href = url;
       $('successUrl').textContent = url;
+      $('netInfo').textContent = state.lastNetLine || '';
       postToPlugin({ type: 'notify', message: '已导入 ' + totals.frames + ' 个画板 / ' + totals.nodes + ' 个节点' });
     } catch (err) {
       var failMsg = err && err.message ? err.message : String(err);
+      var netLine = (err && err.net) || state.lastNetLine || '';
       var failHint = '\n重试会跳过本次已上传的画板，并复用已读取的画板数据。';
       if (state.includeImage) failHint += '\n若切图一直失败，可在上方关闭「位图切图」，只导结构通常几秒完成。';
-      showProgressFail(failMsg + failHint);
+      showProgressFail(failMsg + failHint + (netLine ? '\n诊断：' + netLine : ''));
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
       state.busy = false;
@@ -1208,6 +1243,14 @@
     if (msg.type === 'boot') {
       state.boot = msg;
       $('meta').textContent = 'v' + msg.pluginVersion + ' · ' + msg.buildDate + ' · ' + (msg.fileName || '') + ' / ' + (msg.pageName || '');
+      // Figma 会缓存旧 ui.html：界面版本与主线程不一致时，必须提示重启 Figma，否则跑的是旧逻辑
+      if (msg.pluginVersion && msg.pluginVersion !== UI_VERSION) {
+        console.warn('[version] UI=' + UI_VERSION + ' main=' + msg.pluginVersion);
+        postToPlugin({
+          type: 'notify',
+          message: '插件界面是旧缓存（UI ' + UI_VERSION + ' / 主线程 ' + msg.pluginVersion + '）：请完全退出 Figma 再打开，或删除该开发插件后重新 Import manifest',
+        });
+      }
       return;
     }
     if (msg.type === 'prefs') {
