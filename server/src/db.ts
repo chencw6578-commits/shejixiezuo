@@ -52,6 +52,15 @@ CREATE TABLE IF NOT EXISTS team_members (
 );
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id);
 
+-- 登录账号（邮箱注册）
+CREATE TABLE IF NOT EXISTS users (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email         TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 成员邀请（邮箱）与角色：admin=可编辑可删除，collaborator=只读
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';

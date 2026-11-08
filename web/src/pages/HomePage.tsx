@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, getIdentity, setIdentity } from '../api';
+import { api, getIdentity, setIdentity, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member } from '../api';
 import { ChevronDown, Folder, Layers, Mail, Plus, Users } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
@@ -46,6 +46,8 @@ export default function HomePage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
   const [identity, setIdentityState] = useState<Identity | null>(null);
+  // 登录账号（邮箱注册登录），顶栏头像展示与退出
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [switchOpen, setSwitchOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -56,6 +58,19 @@ export default function HomePage() {
   const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
   const navigate = useNavigate();
   const dialogs = useDialogs();
+
+  // 当前登录账号（守卫保证已登录，这里只取展示数据）
+  useEffect(() => {
+    api.me().then(setAuthUser).catch(() => undefined);
+  }, []);
+
+  const doLogout = async () => {
+    try {
+      await api.logout();
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
 
   const loadTeams = useCallback(() => {
     api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
@@ -319,15 +334,15 @@ export default function HomePage() {
         </details>
         <details className="avatar-menu">
           <summary title="当前身份">
-            <span className="avatar-dot">{identity ? identity.email.slice(0, 1).toUpperCase() : '主'}</span>
-            <span className="avatar-name">{identity ? identity.email : '所有者'}</span>
+            <span className="avatar-dot">{(authUser?.email ?? identity?.email ?? '主').slice(0, 1).toUpperCase()}</span>
+            <span className="avatar-name">{authUser?.email ?? (identity ? identity.email : '所有者')}</span>
             <span className="caret"><ChevronDown /></span>
           </summary>
           <div className="avatar-pop">
             <div className="avatar-pop-head">
-              <span className="avatar-dot big">{identity ? identity.email.slice(0, 1).toUpperCase() : '主'}</span>
+              <span className="avatar-dot big">{(authUser?.email ?? identity?.email ?? '主').slice(0, 1).toUpperCase()}</span>
               <div className="avatar-pop-info">
-                <b>{identity ? identity.email : '所有者'}</b>
+                <b>{authUser?.email ?? (identity ? identity.email : '所有者')}</b>
                 <div>
                   {identity ? (
                     <span className={`role-badge ${identity.role}`}>
@@ -339,6 +354,11 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+            {authUser && (
+              <button className="ghost-btn auth-logout-btn" onClick={() => void doLogout()}>
+                退出登录
+              </button>
+            )}
             {identity && activeTeam ? (
               <button className="ghost-btn" onClick={exitIdentity}>退出身份（回到所有者）</button>
             ) : (
