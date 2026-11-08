@@ -108,8 +108,9 @@ teamsRouter.get('/:id/import-tokens', async (req, res) => {
   const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [req.params.id]);
   if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
   const { rows } = await pool.query(
-    `SELECT id, prefix, scope, created_at, last_used_at, revoked_at
-     FROM import_tokens WHERE team_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    `SELECT id, prefix, scope, created_at, last_used_at
+     FROM import_tokens WHERE team_id = $1 AND revoked_at IS NULL
+     ORDER BY created_at DESC LIMIT 50`,
     [req.params.id]
   );
   res.json(rows);
@@ -139,7 +140,7 @@ teamsRouter.post('/:id/import-tokens', async (req, res) => {
   res.status(201).json({ ...rows[0], token });
 });
 
-/** 撤销令牌（立即生效，插件再用会返回 401） */
+/** 撤销令牌：直接从数据库删除（不可恢复），插件再用会返回 401 */
 teamsRouter.delete('/:id/import-tokens/:tokenId', async (req, res) => {
   if (!UUID_RE.test(req.params.id) || !UUID_RE.test(req.params.tokenId)) {
     return res.status(400).json({ error: '非法的 ID 格式' });
@@ -147,11 +148,11 @@ teamsRouter.delete('/:id/import-tokens/:tokenId', async (req, res) => {
   const denied = await editGuard(req.params.id, req);
   if (denied) return res.status(403).json({ error: denied });
   const { rows } = await pool.query(
-    `UPDATE import_tokens SET revoked_at = now()
-     WHERE id = $1 AND team_id = $2 AND revoked_at IS NULL
-     RETURNING id, revoked_at`,
+    `DELETE FROM import_tokens
+     WHERE id = $1 AND team_id = $2
+     RETURNING id`,
     [req.params.tokenId, req.params.id]
   );
-  if (!rows[0]) return res.status(404).json({ error: '令牌不存在或已撤销' });
-  res.json({ revoked: true, id: rows[0].id, revoked_at: rows[0].revoked_at });
+  if (!rows[0]) return res.status(404).json({ error: '令牌不存在或已删除' });
+  res.json({ deleted: true, id: rows[0].id });
 });

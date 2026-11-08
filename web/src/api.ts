@@ -22,7 +22,6 @@ export interface ImportToken {
   scope: 'all' | 'team';
   created_at: string;
   last_used_at: string | null;
-  revoked_at: string | null;
 }
 
 // ---------- 身份（协作者只读 / 管理员可编辑可删除） ----------
@@ -272,7 +271,7 @@ export const api = {
       body: JSON.stringify({ scope }),
     }),
   revokeImportToken: (teamId: string, tokenId: string) =>
-    request<{ revoked: boolean }>(`/api/teams/${teamId}/import-tokens/${tokenId}`, { method: 'DELETE' }),
+    request<{ deleted: boolean }>(`/api/teams/${teamId}/import-tokens/${tokenId}`, { method: 'DELETE' }),
 
   // ---- 项目 ----
   listProjects: (teamId?: string) =>
