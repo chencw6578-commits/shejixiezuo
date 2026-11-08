@@ -33,6 +33,17 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
 
 const SOURCE_TAG: Record<string, string> = { sketch: 'Sketch', psd: 'PSD', figma: 'Figma' };
 
+/**
+ * 用户可见的错误文案：后端已给出可操作文案时原样展示；
+ * JS 原生运行时错误（TypeError 等）只显示可读兜底，不把堆栈细节抛给用户。
+ */
+function readableError(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (!raw) return fallback;
+  const nativeRuntime = /is not iterable|cannot read propert|reading '|undefined is not|is not a function|Symbol\(Symbol\.iterator\)|Cannot destructure|of undefined|of null/i;
+  return nativeRuntime.test(raw) ? fallback : raw;
+}
+
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -169,6 +180,17 @@ export default function ProjectCanvasPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  // 导入等待秒数：让「正在读取节点…」有可见进度，而不是干等到超时才发现
+  const [busySec, setBusySec] = useState(0);
+  useEffect(() => {
+    if (!busy) {
+      setBusySec(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setBusySec(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [busy]);
   const [uploading, setUploading] = useState('');
   // 服务端统一 Figma 令牌是否就绪（null = 探测中/探测失败）
   const [figmaConfigured, setFigmaConfigured] = useState<boolean | null>(null);
@@ -1022,7 +1044,7 @@ export default function ProjectCanvasPage() {
           );
           load();
         } catch (err) {
-          showToast('err', err instanceof Error ? err.message : '导入失败');
+          showToast('err', readableError(err, '导入失败：发生未知错误，请稍后重试或反馈给我们'));
         }
         return;
       }
@@ -1055,7 +1077,7 @@ export default function ProjectCanvasPage() {
         showToast('ok', `已导入「${r.name}」`);
         load();
       } catch (err) {
-        showToast('err', err instanceof Error ? err.message : '导入失败');
+        showToast('err', readableError(err, '导入失败：发生未知错误，请稍后重试或反馈给我们'));
       } finally {
         setBusy(false);
       }
@@ -1715,7 +1737,7 @@ export default function ProjectCanvasPage() {
       setImportOpen(false);
       navigate(`/files/${id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(readableError(err, '导入失败：发生未知错误，请稍后重试或反馈给我们'));
     } finally {
       setBusy(false);
     }
@@ -1734,7 +1756,7 @@ export default function ProjectCanvasPage() {
       navigate(`/files/${id}`);
     } catch (err) {
       setUploading('');
-      setError(err instanceof Error ? err.message : String(err));
+      setError(readableError(err, '导入失败：发生未知错误，请稍后重试或反馈给我们'));
     }
   };
 
@@ -1837,6 +1859,12 @@ export default function ProjectCanvasPage() {
               >
                 {busy ? '导入中…' : '导入'}
               </button>
+              {busy && (
+                <p className="import-progress">
+                  正在读取 Figma 节点…已等待 {busySec}s
+                  {busySec >= 20 ? '（大文件节点较多，仍在请求中）' : ''}
+                </p>
+              )}
               {figmaConfigured === false && !personalToken.trim() && (
                 <p className="import-hint">
                   服务端未配置统一令牌：请展开「高级选项」填入你的个人 Figma 令牌后再导入。

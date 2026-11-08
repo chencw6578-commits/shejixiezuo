@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { pool } from '../db.js';
 import { isFigmaConfigured } from '../config.js';
 import { FigmaApiError, getFileMeta, parseFigmaUrl } from '../figma/client.js';
-import { enqueueImport, fetchImportData } from '../jobs/importFile.js';
+import { enqueueImport, fetchImportData, newErrorId, userFacingFailure } from '../jobs/importFile.js';
 import { editGuard, fileTeamId } from './authz.js';
 
 export const filesRouter = Router();
@@ -48,18 +48,36 @@ function respondFigmaError(res: Response, err: unknown) {
           error:
             '找不到该 Figma 文件或指定画板（404）：请确认链接完整正确，并确认 Figma 分享设置为「任何知道链接的人可查看」',
         });
-      case 429:
-        return res.status(429).json({ error: 'Figma 接口限流（429），请稍后重试' });
+      case 429: {
+        const wait = err.retryAfterSeconds;
+        const hint =
+          wait >= 3600
+            ? `Figma 账号级限流已触发（约 ${Math.ceil(wait / 3600)} 小时后恢复）`
+            : wait > 0
+              ? `Figma 接口限流（约 ${wait} 秒后恢复）`
+              : 'Figma 接口限流';
+        return res.status(429).json({
+          error: `${hint}：请稍后重试；如需立刻导入，可展开「高级选项」填入你自己的个人令牌`,
+        });
+      }
+      case 504:
+        return res.status(504).json({
+          error: `${err.message}：大文件可改用带 node-id 的单画板链接减少数据量，或稍后重试`,
+        });
       default:
         return res.status(502).json({ error: `Figma 接口请求失败（${err.status}），请稍后重试` });
     }
   }
   const name = (err as { name?: string } | null)?.name;
   if (name === 'TimeoutError' || name === 'AbortError') {
-    return res.status(504).json({ error: '请求 Figma 超时（20s），请检查网络后重试' });
+    return res.status(504).json({
+      error: '读取 Figma 数据超时：大文件可改用带 node-id 的单画板链接，或稍后重试',
+    });
   }
-  const message = err instanceof Error ? err.message : String(err);
-  return res.status(502).json({ error: `导入失败：${message}` });
+  // 未知异常（TypeError 等）：不把 JS 原生文案抛给用户，只给错误编号，完整堆栈进后端日志
+  const errId = newErrorId();
+  console.error(`[import] unexpected error ${errId}:`, err);
+  return res.status(502).json({ error: userFacingFailure(errId) });
 }
 
 /**

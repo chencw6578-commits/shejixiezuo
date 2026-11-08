@@ -1,7 +1,10 @@
 import { config } from '../config.js';
 
 const API = 'https://api.figma.com/v1';
-const TIMEOUT_MS = 20_000;
+/** 元数据类请求（文件信息、浅层页面结构）：响应小，20s 足够 */
+const META_TIMEOUT_MS = 20_000;
+/** 节点子树 / 渲染导出：大画板可能很慢，单独给 60s */
+const NODE_TIMEOUT_MS = 60_000;
 
 export interface FigmaColor {
   r: number; g: number; b: number; a: number;
@@ -65,12 +68,21 @@ export class FigmaApiError extends Error {
   status: number;
   /** Figma 返回的具体原因（用于区分「令牌无效 / 权限不足 / 文件不可见」） */
   detail: string;
-  constructor(status: number, message: string, detail = '') {
+  /** 429 时 Figma 给出的建议等待秒数（可能很大） */
+  retryAfterSeconds: number;
+  constructor(status: number, message: string, detail = '', retryAfterSeconds = 0) {
     super(message);
     this.name = 'FigmaApiError';
     this.status = status;
     this.detail = detail;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+/** 是否为 AbortSignal.timeout 触发的超时（Node 18+ 抛 DOMException/TimeoutError） */
+function isTimeoutError(err: unknown): boolean {
+  const e = err as { name?: string } | null;
+  return e?.name === 'TimeoutError' || e?.name === 'AbortError';
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -82,19 +94,39 @@ function resolveToken(token?: string): string {
   return t;
 }
 
-async function figmaFetch<T>(path: string, token?: string, retries = 1): Promise<T> {
+interface FetchOptions {
+  timeoutMs?: number;
+  retries?: number;
+}
+
+async function figmaFetch<T>(path: string, token?: string, opts: FetchOptions = {}): Promise<T> {
   const auth = resolveToken(token);
+  const timeoutMs = opts.timeoutMs ?? META_TIMEOUT_MS;
+  const retries = opts.retries ?? 1;
+  const shortPath = path.length > 140 ? `${path.slice(0, 140)}…` : path;
   let lastErr: FigmaApiError | null = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(`${API}${path}`, {
-      headers: { 'X-Figma-Token': auth },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    // 5xx / 429 重试一次（20s 超时由 AbortSignal 控制）
+    const startedAt = Date.now();
+    let res: globalThis.Response;
+    try {
+      res = await fetch(`${API}${path}`, {
+        headers: { 'X-Figma-Token': auth },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        console.warn(`[figma] GET ${shortPath} timeout=${timeoutMs}ms elapsed=${Date.now() - startedAt}ms`);
+        throw new FigmaApiError(504, `Figma 响应超时（${Math.round(timeoutMs / 1000)}s）`);
+      }
+      throw err;
+    }
+    // 只记录端点/状态码/耗时，从不记录令牌或响应体
+    console.log(`[figma] GET ${shortPath} status=${res.status} elapsed=${Date.now() - startedAt}ms attempt=${attempt + 1}`);
+    const retryAfter = Number(res.headers.get('retry-after') ?? 0);
+    // 5xx / 429 重试一次（单次请求受 timeoutMs 控制）
     if (res.status === 429 || res.status >= 500) {
-      lastErr = new FigmaApiError(res.status, `Figma API ${res.status}`);
+      lastErr = new FigmaApiError(res.status, `Figma API ${res.status}`, '', retryAfter);
       if (attempt < retries) {
-        const retryAfter = Number(res.headers.get('retry-after') ?? 0);
         const delay = retryAfter > 0 ? retryAfter * 1000 : 1500 * (attempt + 1);
         await sleep(Math.min(delay, 5000));
         continue;
@@ -113,7 +145,7 @@ async function figmaFetch<T>(path: string, token?: string, retries = 1): Promise
       } catch {
         /* ignore */
       }
-      throw new FigmaApiError(errorStatus, `Figma API ${errorStatus}`, detail);
+      throw new FigmaApiError(errorStatus, `Figma API ${errorStatus}`, detail, retryAfter);
     }
     return (await res.json()) as T;
   }
@@ -141,7 +173,8 @@ export function getNodes(key: string, ids: string[], token?: string): Promise<No
   if (!unique.length) throw new FigmaApiError(400, '缺少节点 id');
   return figmaFetch<NodesResponse>(
     `/files/${key}/nodes?ids=${encodeURIComponent(unique.join(','))}`,
-    token
+    token,
+    { timeoutMs: NODE_TIMEOUT_MS }
   );
 }
 
@@ -156,7 +189,8 @@ export function getImages(
   const unique = [...new Set(ids)];
   return figmaFetch<ImagesResponse>(
     `/images/${key}?ids=${encodeURIComponent(unique.join(','))}&format=${format}&scale=${scale}`,
-    token
+    token,
+    { timeoutMs: NODE_TIMEOUT_MS }
   );
 }
 
@@ -190,7 +224,7 @@ export function parseFigmaUrl(url: string): ParsedFigmaUrl | null {
 
 /** 下载图片字节。 */
 export async function downloadImage(url: string): Promise<Buffer> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await fetch(url, { signal: AbortSignal.timeout(NODE_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`下载切图失败 ${res.status}: ${url}`);
   return Buffer.from(await res.arrayBuffer());
 }

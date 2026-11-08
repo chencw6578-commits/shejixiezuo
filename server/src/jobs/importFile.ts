@@ -10,7 +10,14 @@ import {
   FigmaApiError,
   type FigmaNode,
 } from '../figma/client.js';
-import { isArtboardType, parseFile, parseNodeSubtree, thumbScale, type ParsedFrame } from '../figma/parse.js';
+import {
+  childrenOf,
+  isArtboardType,
+  parseFile,
+  parseNodeSubtree,
+  thumbScale,
+  type ParsedFrame,
+} from '../figma/parse.js';
 import { config } from '../config.js';
 import { getStorage } from '../storage/index.js';
 import { batchInsert } from '../util/batchInsert.js';
@@ -21,6 +28,9 @@ const CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   pdf: 'application/pdf',
 };
+
+/** /nodes 单次请求最多带多少个节点 id（几百个画板的大文件必须分批） */
+const NODE_BATCH = 30;
 
 /** 一次导入所需的上下文：可选节点（链接里的 node-id）与用户个人令牌 */
 export interface ImportOptions {
@@ -47,6 +57,21 @@ function sanitize(message: string, userToken?: string): string {
     if (t && t.length >= 8) out = out.split(t).join('***');
   }
   return out;
+}
+
+/** 生成可反馈给用户的错误编号：只用于文案与日志关联，不含堆栈 */
+export function newErrorId(): string {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+/** 未知错误的统一可读文案（原生 TypeError 等不直接展示给用户） */
+export function userFacingFailure(errId: string): string {
+  return `导入失败，已记录错误编号 ${errId}，请稍后重试或把这个编号反馈给我们`;
+}
+
+/** 已知的 Figma 错误自带可操作文案，其余一律编号化 */
+function isKnownError(err: unknown): boolean {
+  return err instanceof FigmaApiError || (err as { name?: string } | null)?.name === 'TimeoutError';
 }
 
 async function updateStatus(fileId: string, status: string, error?: string) {
@@ -91,12 +116,12 @@ export async function fetchImportData(
     shallow = await getFile(figmaKey, token);
   }
 
-  const pages = (shallow.document?.children ?? []).filter(
+  const pages = childrenOf(shallow.document).filter(
     (p) => p.type === 'PAGE' || p.type === 'CANVAS'
   );
   const ids: string[] = [];
   for (const page of pages) {
-    for (const child of page.children ?? []) {
+    for (const child of childrenOf(page)) {
       if (child.visible === false) continue;
       // SECTION 自身不是画板，但它的子树里可能有画板，整段取回后代解析
       if (child.type === 'SECTION' || isArtboardType(child.type)) ids.push(child.id);
@@ -114,12 +139,18 @@ export async function fetchImportData(
     };
   }
 
-  const subtree = await getNodes(figmaKey, ids, token);
+  // 大文件按 node id 分批拉取：一次请求太多画板容易超过响应时间
+  const merged: Record<string, { document: FigmaNode } | null> = {};
+  for (let i = 0; i < ids.length; i += NODE_BATCH) {
+    const chunk = ids.slice(i, i + NODE_BATCH);
+    const part = await getNodes(figmaKey, chunk, token);
+    Object.assign(merged, part.nodes ?? {});
+  }
   const document: FigmaNode = {
     ...shallow.document,
     children: pages.map((page) => ({
       ...page,
-      children: (page.children ?? []).map((child) => subtree.nodes?.[child.id]?.document ?? child),
+      children: childrenOf(page).map((child) => merged[child.id]?.document ?? child),
     })),
   };
   const synthesized = {
@@ -146,8 +177,16 @@ async function processImport(fileId: string, figmaKey: string, opts: ImportOptio
     await generateNodeRenders(fileId, figmaKey, data.frames, opts.token);
     await updateStatus(fileId, 'ready');
   } catch (err) {
-    const message = sanitize(err instanceof Error ? err.message : String(err), opts.token);
-    console.error(`[import] file ${fileId} failed:`, message);
+    const known = isKnownError(err);
+    const message = known
+      ? sanitize(err instanceof Error ? err.message : String(err), opts.token)
+      : userFacingFailure(newErrorId());
+    // 完整堆栈只进后端日志（令牌已脱敏），数据库只存可读文案
+    if (known) {
+      console.error(`[import] file ${fileId} figma=${figmaKey} failed: ${message}`);
+    } else {
+      console.error(`[import] file ${fileId} figma=${figmaKey} failed: ${message}`, err);
+    }
     await updateStatus(fileId, 'failed', message).catch(() => {});
     throw err;
   }
@@ -263,13 +302,16 @@ async function generateThumbnails(
   }
 }
 
-/** 提交导入任务。 */
+/** 提交导入任务。失败已在 processImport 里落库并记日志，这里吞掉 rejection 避免未捕获异常杀进程。 */
 export function enqueueImport(
   fileId: string,
   figmaKey: string,
   opts: ImportOptions = {}
 ): Promise<void> {
-  return enqueue(() => processImport(fileId, figmaKey, opts));
+  return enqueue(() => processImport(fileId, figmaKey, opts)).then(
+    () => undefined,
+    () => undefined
+  );
 }
 
 /** 需要 SVG 渲染的矢量类节点：CSS 无法表达形状本身。 */

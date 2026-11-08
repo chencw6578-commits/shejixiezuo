@@ -255,6 +255,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   color: #b42318; background: #fef3f2; border: 1px solid #fda29b; border-radius: 6px;
   word-break: break-word;
 }
+.import-progress {
+  flex: 1 0 100%; margin: 0; padding: 6px 8px; font-size: 11px; line-height: 1.5;
+  color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
+}
 
 .import-box { display: flex; gap: 8px; }
 .import-box input { flex: 1; padding: 12px 14px; font-size: 14px; }
