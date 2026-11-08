@@ -782,6 +782,7 @@
       postToPlugin({
         type: 'save-prefs',
         prefs: {
+          version: 3,
           baseUrl: state.baseUrl,
           token: state.token,
           platform: state.platform,
@@ -802,7 +803,9 @@
     if (typeof prefs.token === 'string') state.token = prefs.token;
     if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
     if ([1, 2, 3].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
-    if (typeof prefs.includeImage === 'boolean') state.includeImage = prefs.includeImage;
+    // 旧版本默认打开位图切图，大画板会长时间阻塞主线程：升级到 v1.3.3 时一次性重置为关闭
+    if (!(Number(prefs.version) >= 3)) state.includeImage = false;
+    else if (typeof prefs.includeImage === 'boolean') state.includeImage = prefs.includeImage;
     if (typeof prefs.teamId === 'string') state.teamId = prefs.teamId;
     if (typeof prefs.projectId === 'string') state.projectId = prefs.projectId;
     if (typeof prefs.groupId === 'string') state.groupId = prefs.groupId;
