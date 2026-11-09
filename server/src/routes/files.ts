@@ -4,6 +4,7 @@ import { isFigmaConfigured } from '../config.js';
 import { FigmaApiError, getFileMeta, parseFigmaUrl } from '../figma/client.js';
 import { enqueueImport, fetchImportData, newErrorId, userFacingFailure } from '../jobs/importFile.js';
 import { editGuard, fileTeamId } from './authz.js';
+import { attachPresetAncestors } from '../export/preset.js';
 
 export const filesRouter = Router();
 
@@ -478,7 +479,9 @@ filesRouter.get('/:id/frames/:frameId', async (req, res) => {
       [req.params.frameId]
     )
   ).rows;
-  res.json({ frame, nodes });
+  // 图标内部子路径没有导出标记，但父级容器有：把该父级的 Figma 预设带给前端，
+  // 让「导出切图」的默认格式/倍率与设计标记一致，而不是一律 2x。
+  res.json({ frame, nodes: attachPresetAncestors(nodes) });
 });
 
 /** 手动同步：版本有变化才重新导入 */
@@ -592,6 +595,31 @@ filesRouter.patch('/:id/frames/:frameId', async (req, res) => {
   );
   if (!rows[0]) return res.status(404).json({ error: '画板不存在' });
   res.json(rows[0]);
+});
+
+/**
+ * 批量删除同一设计稿内的多个画板（nodes / comments 由外键级联删除）。
+ * 只用 file_id 归属约束，跨设计稿的 id 会被静默忽略，不会误删别人的画板。
+ */
+filesRouter.delete('/:id/frames', async (req, res) => {
+  if (badUuid(res, req.params.id)) return;
+  const ids = (req.body as { ids?: unknown } | undefined)?.ids;
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.length > 200 ||
+    ids.some((x) => typeof x !== 'string' || !ROUTE_UUID_RE.test(x))
+  ) {
+    return res.status(400).json({ error: 'ids 必须是 1~200 个合法 UUID' });
+  }
+  const denied = await editGuard(await fileTeamId(req.params.id), req);
+  if (denied) return res.status(403).json({ error: denied });
+  const unique = [...new Set(ids as string[])];
+  const { rowCount } = await pool.query(
+    'DELETE FROM frames WHERE file_id = $1::uuid AND id = ANY($2::uuid[])',
+    [req.params.id, unique]
+  );
+  res.json({ ok: true, deleted: rowCount ?? 0 });
 });
 
 /** 删除画板（nodes / comments 由外键级联删除） */

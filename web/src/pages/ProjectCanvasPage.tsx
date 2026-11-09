@@ -15,10 +15,12 @@ import {
   ChevronRight,
   Folder,
   FolderMinus,
+  FileText,
   Maximize,
   Menu,
   Minus,
   Plus,
+  Trash2,
   Upload,
   Users,
   X,
@@ -363,23 +365,45 @@ export default function ProjectCanvasPage() {
       void dialogs.alert(e instanceof Error ? e.message : '重命名失败');
     }
   };
-  /** 删除画板（不可恢复；图层与评论随外键级联） */
-  const removeFrame = async (f: ProjectFrameRow) => {
+  /**
+   * 删除选中画板：单个、框选批量、跨设计稿统一走这一条链路。
+   * 按 file_id 分组调用批量接口（跨稿也支持），全部成功后才清选中并刷新。
+   */
+  const removeFrames = async (ids: string[]) => {
+    if (readOnlyRef.current) return;
+    const byId = new Map(frames.map((f) => [f.id, f]));
+    const unique = [...new Set(ids)].filter((id) => byId.has(id));
+    if (!unique.length) return;
+    const byFile = new Map<string, string[]>();
+    for (const id of unique) {
+      const fileId = byId.get(id)!.file_id;
+      byFile.set(fileId, [...(byFile.get(fileId) ?? []), id]);
+    }
+    const names = unique.map((id) => byId.get(id)!.name);
+    const one = unique.length === 1;
     const ok = await dialogs.confirm({
-      title: `删除画板「${f.name}」`,
-      message: '该画板及其图层、评论将被删除，且不可恢复。',
-      confirmText: '确认删除',
+      title: one ? `删除画板「${names[0]}」` : `删除选中的 ${unique.length} 个画板`,
+      message: one
+        ? '该画板及其图层、评论将被删除，且不可恢复。'
+        : `${names.slice(0, 3).join('、')}${names.length > 3 ? ' 等' : ''} 及其图层、评论将被删除，且不可恢复。${
+            byFile.size > 1 ? `（跨 ${byFile.size} 个设计稿）` : ''
+          }`,
+      confirmText: one ? '确认删除' : `删除 ${unique.length} 个画板`,
       danger: true,
     });
     if (!ok) return;
     try {
-      await api.deleteFrame(f.file_id, f.id);
-      setSelectedFrames((s) => new Set([...s].filter((id) => id !== f.id)));
+      await Promise.all([...byFile].map(([fileId, group]) => api.deleteFrames(fileId, group)));
+      setSelectedFrames((s) => new Set([...s].filter((id) => !unique.includes(id))));
+      setCtxMenu(null);
       load();
     } catch (e) {
       void dialogs.alert(e instanceof Error ? e.message : '删除失败');
     }
   };
+
+  /** 删除单个画板（侧栏右键菜单沿用，委托给统一链路） */
+  const removeFrame = async (f: ProjectFrameRow) => removeFrames([f.id]);
 
   // ---------- 编组（页面）语义：与查看器 ViewerPage 一致 ----------
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
@@ -1558,6 +1582,13 @@ export default function ProjectCanvasPage() {
         setSelectedFrames(new Set());
         return;
       }
+      // 框选 / 多选后按 Delete 或 Backspace 批量删除，统一走确认弹窗
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!selectedFrames.size || readOnlyRef.current) return;
+        e.preventDefault();
+        void removeFrames([...selectedFrames]);
+        return;
+      }
       const arrow =
         e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown';
       if (arrow) {
@@ -1603,7 +1634,7 @@ export default function ProjectCanvasPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoomCenter, ctxMenu, selectedFrames, updatePositions, savePositions, recordPositions, doUndo, doRedo]);
+  }, [zoomCenter, ctxMenu, selectedFrames, removeFrames, updatePositions, savePositions, recordPositions, doUndo, doRedo]);
 
   // 指针交互：拖动画板 / 框选 / 平移（空格或中键），按 zoom 换算世界位移
   useEffect(() => {
@@ -2112,6 +2143,7 @@ export default function ProjectCanvasPage() {
                           }
                         }}
                       >
+                        <FileText className="page-group-icon" size={13} />
                         {g.name}
                       </span>
                       <span className="page-count">{g.items.length}</span>
@@ -2194,6 +2226,7 @@ export default function ProjectCanvasPage() {
                         }
                       }}
                     >
+                      <FileText className="page-group-icon" size={13} />
                       未分组
                     </span>
                     <span className="page-count">{ungrouped.length}</span>
@@ -2227,6 +2260,14 @@ export default function ProjectCanvasPage() {
               return;
             }
             if (e.button === 0) beginMarquee(e);
+          }}
+          onContextMenu={(e) => {
+            // 画板自身已 stopPropagation；这里只处理「框选后在空白处右键」，
+            // 让批量删除不必再精确右键到某一个画板上
+            if (readOnly || !selectedFrames.size) return;
+            e.preventDefault();
+            const firstId = [...selectedFrames][0];
+            setCtxMenu({ x: e.clientX, y: e.clientY, frameId: firstId });
           }}
           onDragOver={(e) => {
             if (!readOnly && dragFrameIdRef.current) e.preventDefault();
@@ -2352,7 +2393,7 @@ export default function ProjectCanvasPage() {
                   width: f.width * zoom,
                   height: f.height * zoom,
                 }}
-                title={`${f.file_name} / ${f.name}（拖动可任意摆放，双击打开，Ctrl/⌘ 多选，方向键微调）`}
+                title={`${f.file_name} / ${f.name}（拖动可任意摆放，双击打开，Ctrl/⌘ 多选，方向键微调，框选后按 Delete 删除）`}
                 onPointerDown={(e) => beginFrameDrag(f, e)}
                 onClick={(e) => onFrameClick(f, e)}
                 onContextMenu={(e) => openCtxMenu(f, e)}
@@ -2368,40 +2409,6 @@ export default function ProjectCanvasPage() {
                     {f.name}
                   </div>
                 )}
-                <span className="pcanvas-label" title={`${f.file_name} / ${f.name}`}>
-                  {zoom >= 0.4 && (
-                    <>
-                      <span
-                        className={`pcanvas-label-part ${readOnly ? '' : 'is-editable'}`}
-                        title={readOnly ? f.file_name : '点击修改设计稿名称'}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (dragMovedRef.current || readOnly) return;
-                          void renameFile(f.file_id, f.file_name);
-                        }}
-                        onDoubleClick={stopFrameAction}
-                      >
-                        {f.file_name}
-                      </span>
-                      <span className="pcanvas-label-sep">/</span>
-                    </>
-                  )}
-                  <span
-                    className={`pcanvas-label-part is-name ${readOnly ? '' : 'is-editable'}`}
-                    title={readOnly ? f.name : '点击修改画板名称'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (dragMovedRef.current || readOnly) return;
-                      void renameFrame(f);
-                    }}
-                    onDoubleClick={stopFrameAction}
-                  >
-                    {f.name}
-                  </span>
-                  {zoom >= 0.4 && (
-                    <em className="pcanvas-label-size">{Math.round(f.width)}×{Math.round(f.height)}</em>
-                  )}
-                </span>
               </div>
             ))}
           </div>
@@ -2504,6 +2511,12 @@ export default function ProjectCanvasPage() {
             </div>
             <div className="ctx-sep" />
             <button onClick={() => { setSelectedFrames(new Set()); closeCtxMenu(); }}><X /> 取消选中</button>
+            <button
+              className="is-danger"
+              onClick={() => { closeCtxMenu(); void removeFrames(ctxIds()); }}
+            >
+              <Trash2 /> {ctxIds().length > 1 ? `删除选中的 ${ctxIds().length} 个画板` : '删除画板'}
+            </button>
           </div>
         </>
       )}

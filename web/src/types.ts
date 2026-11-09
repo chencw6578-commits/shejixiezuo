@@ -102,6 +102,11 @@ export interface LayerNode {
   height: number;
   props: ParsedNodeProps;
   render_url?: string | null;  // 渲染资产（矢量 SVG / 位图），有则优先替代 CSS 近似
+  /** 最近的、带 Figma Export 预设的父级图标容器（自身有预设时为 null） */
+  exportPresetAncestor?: {
+    node_id: string; name: string; format: string; scale: number; suffix: string;
+    width: number; height: number;
+  } | null;
   children?: LayerNode[];
 }
 
@@ -127,6 +132,9 @@ export interface ExportResult {
   format: string;
   scale: number;
   size: number;
+  source?: string;
+  /** 非 null 表示用户点的是图标内部路径，实际按父级 Figma 标记导出 */
+  resolvedFrom?: { node_id: string; name: string; format: string; scale: number } | null;
 }
 
 export interface ProjectFrameRow {

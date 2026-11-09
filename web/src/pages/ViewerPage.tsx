@@ -13,10 +13,9 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileText,
   Folder,
-  Menu,
   MessageSquare,
-  PanelRight,
   Plus,
 } from '../components/icons';
 
@@ -109,6 +108,9 @@ export default function ViewerPage() {
   // 是否刚发生过拖拽：用于屏蔽拖拽结束后的双击打开
   const draggedRef = useRef(false);
   const [zipBusy, setZipBusy] = useState('');
+  // 批量「全部图层」模式：自选格式与倍率（按设计标记模式仍用 Figma 里的预设）
+  const [zipFormat, setZipFormat] = useState('PNG');
+  const [zipScale, setZipScale] = useState('2');
   const dialogs = useDialogs();
   const navigate = useNavigate();
   // 单位切换：只影响数值后缀/标注，绝不改变画板尺寸与已存数据
@@ -478,10 +480,15 @@ export default function ViewerPage() {
   };
   const closeCtxMenu = () => setCtxMenu(null);
 
-  const doExportZip = async () => {
-    setZipBusy('presets');
+  const doExportZip = async (mode: 'presets' | 'all') => {
+    setZipBusy(mode);
     try {
-      await api.exportZip({ fileId, frameId, mode: 'presets' });
+      await api.exportZip({
+        fileId,
+        frameId,
+        mode,
+        ...(mode === 'all' ? { format: zipFormat, scale: Number(zipScale) } : {}),
+      });
     } catch (e) {
       fail(e);
     } finally {
@@ -619,8 +626,12 @@ export default function ViewerPage() {
     </div>
   );
 
-  // 返回：固定回文件所属团队的项目列表，避免回到裸 / 后落到默认团队
+  // 返回：上一级是本项目画布页（/projects/:projectId）；缺失 project_id 时才退回团队项目列表
   const goBack = () => {
+    if (file?.project_id) {
+      navigate(`/projects/${file.project_id}`);
+      return;
+    }
     const teamId = file?.team_id;
     navigate(teamId ? `/projects?team=${teamId}` : '/projects', { replace: true });
   };
@@ -628,21 +639,13 @@ export default function ViewerPage() {
   return (
     <div className="viewer">
       <header className="topbar">
-        <button className="icon-btn" onClick={goBack} title="返回项目画板列表" aria-label="返回项目画板列表">
+        <button className="icon-btn" onClick={goBack} title="返回画布" aria-label="返回画布">
           <ArrowLeft />
         </button>
         <h1><Folder /> {file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
-        <button
-          className="icon-btn mobile-only"
-          onClick={() => setDrawer(drawer === 'left' ? 'none' : 'left')}
-          title="页面列表"
-          aria-label="页面列表"
-        >
-          <Menu />
-        </button>
         <button
           className={`comment-toggle ${commentMode ? 'is-active' : ''}`}
           onClick={() => {
@@ -658,12 +661,28 @@ export default function ViewerPage() {
         <details className="export-menu">
           <summary className="primary-link"><Download /> 批量切图</summary>
           <div className="export-menu-pop">
-            <button disabled={!!zipBusy} onClick={() => void doExportZip()}>
-              {zipBusy ? '导出中…' : '按设计标记导出切图 zip'}
+            <button disabled={!!zipBusy} onClick={() => void doExportZip('presets')}>
+              {zipBusy === 'presets' ? '导出中…' : '按设计标记导出 zip'}
+            </button>
+            <div className="export-scale">
+              <span>格式</span>
+              <select value={zipFormat} onChange={(e) => setZipFormat(e.target.value)}>
+                <option>PNG</option><option>SVG</option><option>JPG</option>
+              </select>
+            </div>
+            <div className="export-scale">
+              <span>倍率</span>
+              <select value={zipScale} onChange={(e) => setZipScale(e.target.value)}>
+                <option value="0.5">0.5x</option><option value="1">1x</option>
+                <option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
+              </select>
+            </div>
+            <button disabled={!!zipBusy} onClick={() => void doExportZip('all')}>
+              {zipBusy === 'all' ? '导出中…' : '导出全部图层 zip'}
             </button>
             <p className="dim small">
-              仅导出在 Figma 中标记了导出预设（Export）的图层，各自按标记的格式与倍数导出；打包 zip 下载（上限 600 项）。
-              未标记图层仅可查看尺寸、坐标与文本属性。
+              「按设计标记」按 Figma 里设置的格式与倍率逐个导出；「全部图层」按上方所选格式 / 倍率导出当前画板所有图层。
+              两者均打包 zip 下载（上限 600 项）。服务端渲染，复杂图形 / 渐变可能失真。
             </p>
           </div>
         </details>
@@ -677,14 +696,6 @@ export default function ViewerPage() {
           <option value="pt">单位：pt（iOS）</option>
           <option value="dp">单位：dp（Android）</option>
         </select>
-        <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
-        <button
-          className="icon-btn mobile-only"
-          onClick={() => setDrawer(drawer === 'right' ? 'none' : 'right')}
-          title="属性与切图"
-        >
-          <PanelRight />
-        </button>
       </header>
 
       <div className="viewer-body">
@@ -759,6 +770,7 @@ export default function ViewerPage() {
                           }
                         }}
                       >
+                        <FileText className="page-group-icon" size={13} />
                         {pg.name}
                       </span>
                       <span className="page-count">{list.length}</span>
@@ -825,6 +837,7 @@ export default function ViewerPage() {
                       }
                     }}
                   >
+                    <FileText className="page-group-icon" size={13} />
                     未分组
                   </span>
                   <span className="page-count">{globalUngrouped.length}</span>

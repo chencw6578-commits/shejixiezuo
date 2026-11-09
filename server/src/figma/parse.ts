@@ -44,7 +44,11 @@ export interface ParsedTextStyle {
 export interface ParsedExportPreset {
   format: 'PNG' | 'SVG' | 'PDF' | 'JPG';
   suffix: string;
+  /** 等效倍率：SCALE 直接用 value；WIDTH/HEIGHT 按节点尺寸换算 */
   scale: number;
+  /** Figma 里设置的固定导出宽/高（仅 WIDTH/HEIGHT 约束有值） */
+  targetWidth?: number;
+  targetHeight?: number;
 }
 
 export interface ParsedNodeProps {
@@ -238,17 +242,43 @@ function parseEffects(effects: unknown, nodeId = '?'): ParsedEffect[] {
   return out;
 }
 
+/**
+ * 文本度量统一成 px 数字。Figma REST 给 number；插件早期把原始
+ * {unit:'PIXELS'|'PERCENT', value} 对象直接写进 style。PERCENT 按字号换算，
+ * 无有效值返回 undefined —— 绝不把对象写进 props.text（前端会当 React child 渲染而白屏）。
+ */
+function textMetricPx(v: unknown, fontSize: number): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (v && typeof v === 'object') {
+    const o = v as { unit?: unknown; value?: unknown };
+    const n = Number(o.value);
+    if (!Number.isFinite(n)) return undefined;
+    if (String(o.unit ?? '').toUpperCase() === 'PERCENT') {
+      return fontSize > 0 ? (n / 100) * fontSize : undefined;
+    }
+    return n;
+  }
+  return undefined;
+}
+
 function parseTextStyle(node: FigmaNode): ParsedTextStyle | undefined {
   if (node.type !== 'TEXT') return undefined;
-  const s = (node.style ?? {}) as Record<string, number | string>;
+  const s = (node.style ?? {}) as Record<string, unknown>;
   const solid = parsePaints(node.fills, node.id).find((f) => f.type === 'solid' && f.visible);
+  const fontSize = textMetricPx(s.fontSize, 0) ?? 0;
+  const lhRaw = s.lineHeightPx ?? s.lineHeight;
+  // 插件把 PERCENT 行高的原始数值存进 lineHeightPx 并另存单位；REST 的 lineHeightPx 已是 px
+  const lhPercent = String(s.lineHeightUnit ?? '').toUpperCase() === 'PERCENT';
+  const lineHeight = typeof lhRaw === 'number' && lhPercent && fontSize > 0
+    ? (lhRaw / 100) * fontSize
+    : textMetricPx(lhRaw, fontSize);
   const style: ParsedTextStyle = {
     family: s.fontFamily as string,
     postScript: s.fontPostScriptName as string,
     weight: s.fontWeight as number,
-    size: s.fontSize as number,
-    lineHeight: (s.lineHeightPx as number) ?? undefined,
-    letterSpacing: (s.letterSpacing as number) ?? undefined,
+    size: fontSize || undefined,
+    lineHeight,
+    letterSpacing: textMetricPx(s.letterSpacing, fontSize),
     alignHorizontal: s.textAlignHorizontal as string,
     alignVertical: s.textAlignVertical as string,
     textDecoration: s.textDecoration as string,
@@ -258,14 +288,31 @@ function parseTextStyle(node: FigmaNode): ParsedTextStyle | undefined {
   return style;
 }
 
-function parseExportPresets(settings: ExportSetting[] | undefined): ParsedExportPreset[] {
+function parseExportPresets(settings: ExportSetting[] | undefined, box?: Rect): ParsedExportPreset[] {
   if (!Array.isArray(settings)) return [];
-  return settings.map((s) => ({
-    format: s.format ?? 'PNG',
-    suffix: s.suffix ?? '',
-    // constraint SCALE 的 value 即倍率；缺省按 2x
-    scale: s.constraint?.type === 'SCALE' ? s.constraint.value : 2,
-  }));
+  return settings.map((s) => {
+    const c = s.constraint;
+    let scale = 2;
+    let targetWidth: number | undefined;
+    let targetHeight: number | undefined;
+    if (c?.type === 'SCALE' && Number(c.value) > 0) {
+      scale = c.value;
+    } else if (c?.type === 'WIDTH' && Number(c.value) > 0 && box && box.width > 0) {
+      // Figma 的「按固定宽度导出」换算成等效倍率，网站下拉/下载链路才能对上
+      scale = c.value / box.width;
+      targetWidth = c.value;
+    } else if (c?.type === 'HEIGHT' && Number(c.value) > 0 && box && box.height > 0) {
+      scale = c.value / box.height;
+      targetHeight = c.value;
+    }
+    return {
+      format: s.format ?? 'PNG',
+      suffix: s.suffix ?? '',
+      scale: Math.round(scale * 10000) / 10000,
+      ...(targetWidth ? { targetWidth } : {}),
+      ...(targetHeight ? { targetHeight } : {}),
+    };
+  });
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -329,7 +376,7 @@ function parseProps(node: FigmaNode): ParsedNodeProps {
     blendMode: node.blendMode,
     rotation: typeof node.rotation === 'number' && Number.isFinite(node.rotation) ? node.rotation : undefined,
     text: text ? { ...text, content: node.characters ?? '' } : undefined,
-    exportPresets: parseExportPresets(node.exportSettings),
+    exportPresets: parseExportPresets(node.exportSettings, bbox(node)),
     hasImageFill: fills.some((f) => f.type === 'image' && f.visible),
   };
 }
@@ -344,7 +391,7 @@ function parseArtboard(node: FigmaNode, pageName: string, sortOrder: number): Pa
   // 画板自身标记了导出预设（Figma 中选中画板 → Export 面板）：生成一个与画板同名的
   // 全幅虚拟图层承载预设，放数组最前（画布热区按数组序渲染，z 最低不拦截内部图层点击，
   // 点击画板空白处即可选中它）。画板级切图与图层切图共用同一套导出链路。
-  const boardPresets = parseExportPresets(node.exportSettings);
+  const boardPresets = parseExportPresets(node.exportSettings, box);
   if (boardPresets.length) {
     layers.push({
       nodeId: node.id,

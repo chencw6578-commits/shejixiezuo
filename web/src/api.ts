@@ -263,6 +263,13 @@ export const api = {
   deleteFrame: (fileId: string, frameId: string) =>
     request<{ ok: true }>(`/api/files/${fileId}/frames/${frameId}`, { method: 'DELETE' }),
 
+  /** 批量删除同一设计稿内的画板；跨设计稿请按 file_id 分组分别调用 */
+  deleteFrames: (fileId: string, ids: string[]) =>
+    request<{ ok: true; deleted: number }>(`/api/files/${fileId}/frames`, {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    }),
+
   // ---- 团队 ----
   listTeams: () =>
     request<{ id: string; name: string; project_count: string; created_at: string }[]>('/api/teams'),

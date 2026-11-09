@@ -4,6 +4,8 @@ import { pool } from '../db.js';
 import { downloadImage, getImages } from '../figma/client.js';
 import { getStorage } from '../storage/index.js';
 import { isLocalFile, renderLocalSlice } from '../export/local.js';
+import { cropSliceFromBoard, loadStoredAsset } from '../export/crop.js';
+import { resolveExportTarget, loadNodeIndex, resolveFromIndex } from '../export/preset.js';
 
 export const assetsRouter = Router();
 
@@ -16,6 +18,28 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const safeName = (name: string) => name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'asset';
+
+interface PreferredSlice { id: string; url: string; source: string }
+
+/**
+ * 只认插件按 Figma Export 预设上传的真实切图。
+ * 整板裁剪（source='crop'）只是兜底产物，绝不能当缓存命中——否则第一次
+ * 裁错了尺寸/边缘，之后无论怎么修都会被那条旧记录锁死。
+ * source='render' 是服务端近似渲染（常为全透明空白），同样不参与优先链。
+ */
+async function findPreferredSlice(
+  fileId: string, nodeId: string, format: string, scale: number
+): Promise<PreferredSlice | null> {
+  const { rows } = await pool.query<PreferredSlice>(
+    `SELECT id, url, source FROM assets
+     WHERE file_id = $1 AND node_id = $2 AND format = $3 AND scale = $4
+       AND source = 'figma'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [fileId, nodeId, format, scale]
+  );
+  return rows[0] ?? null;
+}
 
 /** 导出单个图层切图 */
 assetsRouter.post('/export', async (req, res) => {
@@ -33,33 +57,62 @@ assetsRouter.post('/export', async (req, res) => {
   ).rows[0];
   if (!file) return res.status(404).json({ error: '文件不存在' });
 
-  // 切图权限：仅「在 Figma 中标记了导出预设」的图层可下载切图；未标记图层只读（尺寸/坐标仍可查看）
+  // 任意已导入图层均可导出切图（不再要求 Figma Export 预设）。
+  // 设计标记的预设仍保留，供前端展示「一键按标记导出」快捷按钮。
   const node = (
-    await pool.query<{ props: { exportPresets?: unknown[] } | null }>(
-      'SELECT props FROM nodes WHERE file_id = $1 AND node_id = $2 LIMIT 1',
+    await pool.query<{ props: { exportPresets?: unknown[] } | null; frame_id: string }>(
+      'SELECT props, frame_id FROM nodes WHERE file_id = $1 AND node_id = $2 LIMIT 1',
       [fileId, nodeId]
     )
   ).rows[0];
   if (!node) return res.status(404).json({ error: '图层不存在' });
-  if (!(node.props?.exportPresets ?? []).length) {
-    return res.status(403).json({
-      error: '该图层未在 Figma 中标记为切图（无导出设置）。请在 Figma 中选中图层 → 右侧 Export 面板添加导出预设，然后重新同步本文件；未标记图层仅可查看尺寸与坐标。',
-    });
-  }
 
   const ext = format.toLowerCase();
+  const localOnly = isLocalFile(file.source, file.figma_key);
 
-  // 本地文件（演示 / Sketch / PSD）：服务端直接渲染，不走 Figma API
-  if (isLocalFile(file.source, file.figma_key)) {
+  // 把「用户点中的图层」解析成「Figma 真正标记要导出的图层」：
+  // 点图标内部 Vector 时会落到带预设的父级 20×20 Frame，尺寸与四边才与设计一致。
+  const target = await resolveExportTarget(fileId, node.frame_id, nodeId);
+  const resolvedFrom = target?.resolvedFrom ?? null;
+
+  // 1) 插件按 Figma Export 预设上传的真实切图：透明底、真矢量、尺寸完全按设计标记
+  const real = await findPreferredSlice(fileId, target?.nodeId ?? nodeId, format, s);
+  if (real) {
+    try {
+      const buf = await loadStoredAsset(real.url);
+      if (buf.length) {
+        return res.json({
+          id: real.id, url: real.url, format, scale: s,
+          size: buf.length, source: real.source, resolvedFrom,
+        });
+      }
+    } catch {
+      // 存储文件丢失：继续走下面的兜底，不把用户卡死
+    }
+  }
+
+  // 2) 插件/本地文件拿不到 Figma API：从已保存的 Figma 原生整板 PNG 裁剪。
+  //    裁剪框用解析出的目标包围盒（有 Figma 标记时即标记图层的完整边界），
+  //    而不是用户点中的内部子路径 bbox，避免把四角/描边切掉。
+  if (localOnly && format !== 'PDF') {
+    const cropped = await cropSliceFromBoard(fileId, node.frame_id, nodeId, format, s, target?.bounds);
+    if (cropped) {
+      const storage = await getStorage();
+      const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.${cropped.ext}`;
+      const url = await storage.put(key, cropped.buf, cropped.contentType);
+      const { rows } = await pool.query(
+        `INSERT INTO assets (file_id, frame_id, node_id, name, format, scale, url, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'crop') RETURNING id, url, format, scale, created_at`,
+        [fileId, node.frame_id, nodeId, name ?? nodeId, format, s, url]
+      );
+      return res.json({ ...rows[0], size: cropped.buf.length, source: 'crop', resolvedFrom });
+    }
+  }
+
+  // 3) 最后的兜底：服务端近似渲染（演示 / Sketch / PSD）或 Figma REST 真实导出
+  if (localOnly) {
     if (format === 'PDF') return res.status(400).json({ error: '本地文件暂只支持 PNG / SVG / JPG 导出' });
-    const frameOf = (
-      await pool.query<{ frame_id: string }>(
-        'SELECT frame_id FROM nodes WHERE file_id = $1 AND node_id = $2 LIMIT 1',
-        [fileId, nodeId]
-      )
-    ).rows[0];
-    if (!frameOf) return res.status(404).json({ error: '图层不存在' });
-    const slice = await renderLocalSlice(fileId, frameOf.frame_id, nodeId, format, s);
+    const slice = await renderLocalSlice(fileId, node.frame_id, nodeId, format, s);
     if (!slice) return res.status(404).json({ error: '图层不存在或不可导出' });
     const storage = await getStorage();
     const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.${slice.ext}`;
@@ -108,12 +161,11 @@ const MAX_ZIP_TASKS = 600;
 assetsRouter.post('/export-zip', async (req, res) => {
   const { fileId, frameId, mode = 'presets', format = 'PNG', scale = 2 } = req.body ?? {};
   if (!fileId || !frameId) return res.status(400).json({ error: '缺少 fileId 或 frameId' });
-  if (mode === 'all') {
-    return res.status(400).json({
-      error: '「全部图层」批量导出已下线：仅导出在 Figma 中标记了导出预设（Export）的图层，请使用按标记导出模式。',
-    });
+  // 两种批量模式：presets=按 Figma 标记逐个导出；all=按所选格式/倍率导出全部图层
+  if (mode !== 'presets' && mode !== 'all') {
+    return res.status(400).json({ error: `不支持的导出模式: ${mode}` });
   }
-  if (mode === 'presets' && !FORMATS.has(format)) {
+  if (!FORMATS.has(format)) {
     return res.status(400).json({ error: `不支持的格式: ${format}` });
   }
   const s = Number(scale);
@@ -166,22 +218,67 @@ assetsRouter.post('/export-zip', async (req, res) => {
     return res.status(400).json({ error: `导出任务数 ${tasks.length} 超过上限 ${MAX_ZIP_TASKS}，请缩小范围` });
   }
 
-  // 按 格式+倍率 分组，尽量减少 images API 调用
+  const zip = new JSZip();
+  const usedNames = new Map<string, number>();
+  const failures: string[] = [];
+  const localOnly = isLocalFile(file.source, file.figma_key);
+
+  const addToZip = (t: ZipTask, buf: Buffer, ext: string) => {
+    const base = safeName(t.name);
+    const n = (usedNames.get(base) ?? 0) + 1;
+    usedNames.set(base, n);
+    const filename = n > 1 ? `${base} (${n})${t.suffix}.${ext}` : `${base}${t.suffix}.${ext}`;
+    zip.file(filename, buf);
+  };
+
+  // 三级优先链：插件真实切图 > 整板 PNG 裁剪 > 原渲染路径
+  // 节点索引一次加载并按图层缓存，批量 600 个任务不会逐层查库。
+  const nodeIndex = await loadNodeIndex(fileId, frameId);
+  const targetCache = new Map<string, ReturnType<typeof resolveFromIndex>>();
+  const targetOf = (nodeId: string) => {
+    if (!targetCache.has(nodeId)) targetCache.set(nodeId, resolveFromIndex(nodeIndex, nodeId));
+    return targetCache.get(nodeId) ?? null;
+  };
+  const resolved = new Map<number, { buf: Buffer; ext: string }>();
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    const target = targetOf(t.nodeId);
+    const real = await findPreferredSlice(fileId, target?.nodeId ?? t.nodeId, t.format, t.scale);
+    if (real) {
+      try {
+        const buf = await loadStoredAsset(real.url);
+        if (buf.length) {
+          resolved.set(i, { buf, ext: t.format.toLowerCase() });
+          continue;
+        }
+      } catch {
+        // 存储文件丢失：落到裁剪
+      }
+    }
+    if (localOnly && t.format !== 'PDF') {
+      const cropped = await cropSliceFromBoard(fileId, frameId, t.nodeId, t.format, t.scale, target?.bounds);
+      if (cropped) resolved.set(i, { buf: cropped.buf, ext: cropped.ext });
+    }
+  }
+  const rest: ZipTask[] = [];
+  tasks.forEach((t, i) => {
+    const r = resolved.get(i);
+    if (r) addToZip(t, r.buf, r.ext);
+    else rest.push(t);
+  });
+
+  // 按 格式+倍率 分组，尽量减少 images API 调用（只处理未优先解析的任务）
   const byKey = new Map<string, ZipTask[]>();
-  for (const t of tasks) {
+  for (const t of rest) {
     const k = `${t.format}@${t.scale}`;
     const list = byKey.get(k) ?? [];
     list.push(t);
     byKey.set(k, list);
   }
 
-  const zip = new JSZip();
-  const usedNames = new Map<string, number>();
-  const failures: string[] = [];
-
   // 本地文件（演示 / Sketch / PSD）：逐图层服务端渲染
-  if (isLocalFile(file.source, file.figma_key)) {
-    for (const t of tasks) {
+  if (localOnly) {
+    for (const t of rest) {
       if (t.format === 'PDF') {
         failures.push(t.name);
         continue;
@@ -192,11 +289,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
           failures.push(t.name);
           continue;
         }
-        const base = safeName(t.name);
-        const n = (usedNames.get(base) ?? 0) + 1;
-        usedNames.set(base, n);
-        const filename = n > 1 ? `${base} (${n})${t.suffix}.${slice.ext}` : `${base}${t.suffix}.${slice.ext}`;
-        zip.file(filename, slice.buf);
+        addToZip(t, slice.buf, slice.ext);
       } catch {
         failures.push(t.name);
       }

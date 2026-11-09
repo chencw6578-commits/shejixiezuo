@@ -1,4 +1,5 @@
 import type { LayerNode } from '../types';
+import { metricToPx } from './textMetric';
 
 export type SnippetLang = 'CSS' | 'React' | 'Swift' | 'Android';
 
@@ -21,6 +22,17 @@ function baseParts(node: LayerNode) {
     effects: node.props.effects ?? [],
     exportPresets: node.props.exportPresets ?? [],
   };
+  // 插件导入的文本度量可能是 {unit,value} 对象；统一成 px 数字，
+  // 否则 CSS / React 代码片段会出现 "[object Object]px" 或 NaN。
+  if (p.text) {
+    const size = metricToPx(p.text.size);
+    p.text = {
+      ...p.text,
+      size: size ?? undefined,
+      lineHeight: metricToPx(p.text.lineHeight, size ?? undefined) ?? undefined,
+      letterSpacing: metricToPx(p.text.letterSpacing, size ?? undefined) ?? undefined,
+    };
+  }
   const fill = p.fills.find((f) => f.visible && (f.type === 'solid' || f.type === 'gradient'));
   const stroke = p.strokes.find((s) => s.visible && s.color);
   return { p, fill, stroke };

@@ -578,6 +578,9 @@ pluginRouter.post('/import', async (req, res) => {
 
     await client.query('COMMIT');
 
+    // 画板内容可能已更新，旧的「整板裁剪」缓存失效，下次导出按新图重裁
+    await pool.query(`DELETE FROM assets WHERE file_id = $1 AND source = 'crop'`, [fileId]);
+
     // 位图：逐张解码落 storage，超 5MB 只跳过图片、不影响画板与节点
     const storage = await getStorage();
     for (const raw of rawImages) {
@@ -650,6 +653,108 @@ pluginRouter.post('/import', async (req, res) => {
     res.status(502).json({ error: userFacingFailure(errId) });
   } finally {
     client.release();
+  }
+});
+
+/**
+ * POST /api/plugin/slices
+ * 插件按 Figma Export 预设逐图层 exportAsync 得到的真实切图（透明底、真矢量、尺寸按设计标记）。
+ * 与 /import 分开上传，避免位图把画板导入请求撑爆；切图失败只记 warning，不影响画板入库。
+ * body: { projectId, slices: [{ nodeId, name?, format, scale, dataUrl }] }
+ */
+const SLICE_FORMATS = new Set(['PNG', 'SVG', 'JPG', 'PDF']);
+const SLICE_MIME: Record<string, string> = {
+  PNG: 'image/png', SVG: 'image/svg+xml', JPG: 'image/jpeg', PDF: 'application/pdf',
+};
+const MAX_SLICES_PER_REQUEST = 120;
+
+pluginRouter.post('/slices', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (!UUID_RE.test(projectId)) return res.status(400).json({ error: '非法的项目 ID' });
+
+  try {
+    const access = await projectAccess(projectId, ctxOf(req));
+    if (!access.ok) {
+      if (access.status === 403) return forbidden(res, '项目');
+      return res.status(404).json({ error: '项目不存在' });
+    }
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] slices access ${errId}:`, err);
+    return res.status(502).json({ error: userFacingFailure(errId) });
+  }
+
+  const slices = Array.isArray(body.slices) ? body.slices : [];
+  if (!slices.length) return res.status(400).json({ error: '缺少切图数据（slices 不能为空）' });
+  if (slices.length > MAX_SLICES_PER_REQUEST) {
+    return res.status(400).json({ error: `单次最多 ${MAX_SLICES_PER_REQUEST} 张切图，请分批上传` });
+  }
+
+  try {
+    const fileRow = await pool.query<{ id: string }>(
+      'SELECT id FROM design_files WHERE project_id = $1 AND figma_key = $2 LIMIT 1',
+      [projectId, pluginFileKey(projectId)]
+    );
+    if (!fileRow.rows[0]) {
+      return res.status(404).json({ error: '该项目还没有插件导入的设计稿，请先导入画板' });
+    }
+    const fileId = fileRow.rows[0].id;
+    const storage = await getStorage();
+    let saved = 0;
+    const warnings: string[] = [];
+
+    for (const raw of slices) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Record<string, unknown>;
+      const nodeId = typeof item.nodeId === 'string' ? item.nodeId.trim() : '';
+      const format = typeof item.format === 'string' ? item.format.trim().toUpperCase() : '';
+      const scale = Number(item.scale);
+      const dataUrl = typeof item.dataUrl === 'string' ? item.dataUrl : '';
+      const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : nodeId;
+      if (!nodeId || !SLICE_FORMATS.has(format) || !(scale >= 0.5 && scale <= 4) || !dataUrl) {
+        warnings.push(`切图参数不合法（nodeId=${nodeId || '-'} format=${format || '-'} scale=${scale}），已跳过`);
+        continue;
+      }
+      const buf = Buffer.from(dataUrl.replace(/^data:[^;]+;base64,/, ''), 'base64');
+      if (!buf.length) {
+        warnings.push(`「${name}」的切图为空，已跳过`);
+        continue;
+      }
+      if (buf.length > MAX_IMAGE_BYTES) {
+        warnings.push(`「${name}」的切图 ${(buf.length / 1024 / 1024).toFixed(1)}MB 超过 5MB，已跳过`);
+        continue;
+      }
+      const nodeRow = await pool.query<{ frame_id: string | null }>(
+        'SELECT frame_id FROM nodes WHERE file_id = $1 AND node_id = $2 LIMIT 1',
+        [fileId, nodeId]
+      );
+      if (!nodeRow.rows[0]) {
+        warnings.push(`切图对应的图层 ${nodeId} 不在已导入节点中，已忽略`);
+        continue;
+      }
+      // Figma 节点 id 含 ":" / ";"，Windows 下会被当成 NTFS 流分隔符，必须净化
+      const safeId = nodeId.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 90);
+      const ext = format.toLowerCase();
+      const key = `files/${fileId}/slices/${safeId}/${scale}x.${ext}`;
+      const url = await storage.put(key, buf, SLICE_MIME[format]);
+      // 同一图层同格式同倍率重复导入时原位替换，不留旧图
+      await pool.query(
+        `DELETE FROM assets WHERE file_id = $1 AND node_id = $2 AND format = $3 AND scale = $4 AND source = 'figma'`,
+        [fileId, nodeId, format, scale]
+      );
+      await pool.query(
+        `INSERT INTO assets (file_id, frame_id, node_id, name, format, scale, url, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'figma')`,
+        [fileId, nodeRow.rows[0].frame_id, nodeId, name, format, scale, url]
+      );
+      saved++;
+    }
+    res.status(201).json({ saved, warnings });
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] slices failed ${errId}:`, err);
+    res.status(502).json({ error: userFacingFailure(errId) });
   }
 });
 

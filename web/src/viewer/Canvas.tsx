@@ -4,7 +4,8 @@ import type { CommentItem } from '../api';
 import type { Unit } from '../unit';
 import { canvasBgStyle, useCanvasBg } from '../canvasBg';
 import CanvasBgPicker from '../components/CanvasBgPicker';
-import { Maximize, Minus, Plus } from '../components/icons';
+import { metricToPx } from './textMetric';
+import { Maximize, Minus, Plus, Scissors } from '../components/icons';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -75,15 +76,19 @@ function layerBoxStyle(n: LayerNode, zoom: number): React.CSSProperties {
 function layerTextStyle(n: LayerNode, zoom: number): React.CSSProperties | null {
   const t = n.props?.text;
   if (!t?.content) return null;
-  const align = (t.alignHorizontal ?? 'LEFT').toUpperCase();
+  const align = String(t.alignHorizontal ?? 'LEFT').toUpperCase();
+  // 文本度量可能是 {unit,value} 对象（插件导入），统一换算，避免 NaNpx / 渲染报错
+  const size = metricToPx(t.size);
+  const lh = metricToPx(t.lineHeight, size ?? undefined);
+  const ls = metricToPx(t.letterSpacing, size ?? undefined);
   return {
-    fontFamily: t.family
+    fontFamily: typeof t.family === 'string' && t.family
       ? `"${t.family}", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif`
       : undefined,
-    fontSize: (t.size ?? 12) * zoom,
-    fontWeight: t.weight ?? 400,
-    lineHeight: t.lineHeight ? `${t.lineHeight * zoom}px` : undefined,
-    letterSpacing: t.letterSpacing ? `${t.letterSpacing * zoom}px` : undefined,
+    fontSize: (size ?? 12) * zoom,
+    fontWeight: typeof t.weight === 'number' ? t.weight : 400,
+    lineHeight: lh !== null && lh > 0 ? `${lh * zoom}px` : undefined,
+    letterSpacing: ls !== null && ls !== 0 ? `${ls * zoom}px` : undefined,
     color:
       t.color?.rgba ??
       n.props?.fills?.find((f) => f.visible && f.color)?.color?.rgba ??
@@ -98,24 +103,73 @@ function layerTextStyle(n: LayerNode, zoom: number): React.CSSProperties | null 
   };
 }
 
-/** 计算两个矩形的标注间距（仅在另一轴有重叠时），返回线段与数值。 */
-function gapBetween(a: Rect, b: Rect): { dir: 'h' | 'v'; gap: number; x1: number; y1: number; x2: number; y2: number } | null {
-  const vOverlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
-  const hOverlap = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
-  if (vOverlap > 0 && (b.x + b.w <= a.x || b.x >= a.x + a.w)) {
-    if (b.x + b.w <= a.x) {
-      return { dir: 'h', gap: a.x - (b.x + b.w), x1: b.x + b.w, x2: a.x, y1: Math.max(a.y, b.y) + vOverlap / 2, y2: 0 };
-    }
-    return { dir: 'h', gap: b.x - (a.x + a.w), x1: a.x + a.w, x2: b.x, y1: Math.max(a.y, b.y) + vOverlap / 2, y2: 0 };
+/**
+ * 选中 A、鼠标移到 B 时，测出 A↔B 的距离：水平 / 垂直各一条。
+ * 只在存在正间距的方向出标注，相交或包含不制造 0 / 负数标签；
+ * 斜向放置的两个元素会同时给出两轴距离（设计交付工具的标准测距）。
+ */
+function measureBetween(a: Rect, b: Rect): Measure[] {
+  const out: Measure[] = [];
+  const leftGap = a.x - (b.x + b.w);
+  const rightGap = b.x - (a.x + a.w);
+  const topGap = a.y - (b.y + b.h);
+  const bottomGap = b.y - (a.y + a.h);
+  // y 轴投影重叠 → 水平引线走重叠区中点；否则走 A 的水平中心线
+  const yOverlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  const xOverlap = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  if (leftGap > 0.5 || rightGap > 0.5) {
+    const side: Side = leftGap > 0.5 ? 'left' : 'right';
+    const y = yOverlap > 0 ? Math.max(a.y, b.y) + yOverlap / 2 : a.y + a.h / 2;
+    out.push({
+      side, axis: 'h', gap: side === 'left' ? leftGap : rightGap,
+      x1: side === 'left' ? b.x + b.w : a.x + a.w, y1: y,
+      x2: side === 'left' ? a.x : b.x, y2: y,
+    });
   }
-  if (hOverlap > 0 && (b.y + b.h <= a.y || b.y >= a.y + a.h)) {
-    const midX = Math.max(a.x, b.x) + hOverlap / 2;
-    if (b.y + b.h <= a.y) {
-      return { dir: 'v', gap: a.y - (b.y + b.h), x1: midX, y1: b.y + b.h, x2: 0, y2: a.y };
-    }
-    return { dir: 'v', gap: b.y - (a.y + a.h), x1: midX, y1: a.y + a.h, x2: 0, y2: b.y };
+  if (topGap > 0.5 || bottomGap > 0.5) {
+    const side: Side = topGap > 0.5 ? 'top' : 'bottom';
+    const x = xOverlap > 0 ? Math.max(a.x, b.x) + xOverlap / 2 : a.x + a.w / 2;
+    out.push({
+      side, axis: 'v', gap: side === 'top' ? topGap : bottomGap,
+      x1: x, y1: side === 'top' ? b.y + b.h : a.y + a.h,
+      x2: x, y2: side === 'top' ? a.y : b.y,
+    });
   }
-  return null;
+  return out;
+}
+
+type Side = 'left' | 'right' | 'top' | 'bottom';
+interface Measure {
+  side: Side;
+  axis: 'h' | 'v';
+  gap: number;
+  x1: number; y1: number; x2: number; y2: number;
+  peerId?: string;
+  /** 包含关系的四边 inset 标注（标签锚在引线中点） */
+  inset?: boolean;
+}
+
+/** 图标内部绘制路径不是布局元素，与紧包它的图标容器之间不出 inset 距离 */
+const PATH_TYPES = ['VECTOR', 'BOOLEAN_OPERATION', 'LINE', 'ELLIPSE', 'POLYGON', 'STAR'];
+
+/**
+ * 包含关系（hover 到父级背景 / 容器，或反过来 hover 到内层子元素）：
+ * 显示内层元素到外层容器四边的距离，与设计标注工具的 inset 标注一致。
+ * 每条引线从内层元素对应边中点画到外层容器的边；贴边时显示 0，负值（几何异常）不画。
+ */
+function insetMeasures(inner: Rect, outer: Rect): Measure[] {
+  const out: Measure[] = [];
+  const cx = inner.x + inner.w / 2;
+  const cy = inner.y + inner.h / 2;
+  const push = (side: Side, gap: number, line: { x1: number; y1: number; x2: number; y2: number }) => {
+    if (gap < 0) return;
+    out.push({ side, axis: side === 'left' || side === 'right' ? 'h' : 'v', gap, ...line, inset: true });
+  };
+  push('top', inner.y - outer.y, { x1: cx, y1: outer.y, x2: cx, y2: inner.y });
+  push('bottom', outer.y + outer.h - (inner.y + inner.h), { x1: cx, y1: inner.y + inner.h, x2: cx, y2: outer.y + outer.h });
+  push('left', inner.x - outer.x, { x1: outer.x, y1: cy, x2: inner.x, y2: cy });
+  push('right', outer.x + outer.w - (inner.x + inner.w), { x1: inner.x + inner.w, y1: cy, x2: outer.x + outer.w, y2: cy });
+  return out;
 }
 
 export default function Canvas({
@@ -143,6 +197,9 @@ export default function Canvas({
   // 画布底色（localStorage，按用户，与项目画布页共用偏好）
   const [canvasBg, pickCanvasBg] = useCanvasBg();
   const bg = canvasBgStyle(canvasBg);
+  // 画板底图：插件导入时已经保存了 Figma 原生 exportAsync 的整板 PNG（含图片填充、图标、渐变）。
+  // 节点矢量层只是 CSS 近似，还原不了这些，因此默认展示原图，用户可主动切到「图层」看节点渲染。
+  const [renderMode, setRenderMode] = useState<'image' | 'vector'>('image');
 
   const setZoom = useCallback((z: number) => {
     z = clamp(z, MIN_ZOOM, MAX_ZOOM);
@@ -321,62 +378,131 @@ export default function Canvas({
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.node_id, n])), [nodes]);
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const hovered = hoverId ? nodeById.get(hoverId) : undefined;
+  // 有切图的图层：Figma/Sketch 导入时打了导出预设的节点，与「按设计标记导出 zip」同一口径。
+  // 画布右上角常显角标，让用户不 hover/选中也能一眼看出这里有切图可导出。
+  const sliceNodes = useMemo(
+    () => nodes.filter((n) => (n.props?.exportPresets?.length ?? 0) > 0),
+    [nodes]
+  );
   const fmt = useCallback(
     (a: LayerNode): Rect => ({ x: a.x, y: a.y, w: a.width, h: a.height }),
     []
   );
-  const gap = useMemo(
-    () =>
-      selected && hovered && selected !== hovered
-        ? gapBetween(fmt(selected), fmt(hovered))
-        : null,
-    [selected, hovered, fmt]
+  /**
+   * 尺寸标注统一口径：图标内部的 Vector 只是绘制路径，不是切图单位。
+   * 例：Figma 导出标记打在外层 20×20 容器上，内部 Vector 的 bbox 是
+   * 16.67×15.83（≈17×16）。旧逻辑按「当前 hover / 选中的节点」直接显示，
+   * 同一个图标会随鼠标命中的层级不同一会儿 20×20、一会儿 17×16，干扰判断。
+   * 这里统一取图标容器（优先 Figma 导出标记所在层）的尺寸与位置。
+   */
+  const sizeBadge = useCallback(
+    (n: LayerNode | undefined) => {
+      if (!n) return null;
+      const anc = n.exportPresetAncestor;
+      // 父级没有 Figma 标记的图标（如 309:886 / 312:907 这类 20×20 容器）也按父级容器标注，
+      // 否则内部 Vector 仍会冒出 17×17、15×16 这类路径 bbox。
+      const isPath = ['VECTOR', 'BOOLEAN_OPERATION', 'LINE', 'ELLIPSE', 'POLYGON', 'STAR'].includes(n.type);
+      const parent = n.parent_id ? nodeById.get(n.parent_id) : undefined;
+      // 只认近正方形的小图标容器（20×20 / 14×14 / 24×24）。长条文本容器
+      // （67×11 等）不是图标，仍按路径自身尺寸标注，避免制造新的错误数字。
+      const iconParent = !anc && isPath && parent &&
+        parent.width <= 64 && parent.height <= 64 &&
+        Math.abs(parent.width - parent.height) <= 1 &&
+        parent.width >= n.width * 0.6 && parent.height >= n.height * 0.6 &&
+        parent.width * parent.height <= Math.max(64, n.width * n.height * 2.5)
+        ? parent : null;
+      // anc 自带父级真实尺寸，即使该节点不在本页 nodes 里也不会退回路径 bbox
+      const markedNode = anc ? nodeById.get(anc.node_id) : null;
+      const target = markedNode || iconParent || n;
+      const w = anc ? anc.width : (iconParent || n).width;
+      const h = anc ? anc.height : (iconParent || n).height;
+      return { rect: fmt(target), w, h };
+    },
+    [nodeById, fmt]
   );
+  // 描边框与尺寸徽标共用同一口径：只框住真实切图范围（图标容器），
+  // 内部 Vector 的 17×16 bbox 不再单独画一个框，也不再单独标一个尺寸。
+  const selectedOutline = sizeBadge(selected);
+  const hoverOutline = sizeBadge(hovered);
+  const sameOutline = (a: Rect | null, b: Rect | null) =>
+    !!a && !!b &&
+    Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5 &&
+    Math.abs(a.w - b.w) <= 0.5 && Math.abs(a.h - b.h) <= 0.5;
+  // hover 命中的是同一个图标的内外层时，只保留选中框，避免出现一大一小两个框
+  const showHoverOutline = !!hovered && hovered !== selected &&
+    !sameOutline(selectedOutline?.rect ?? null, hoverOutline?.rect ?? null);
+  // 任何时刻只保留一个尺寸徽标：有选中时以选中对象为准，未选中时才看悬停对象
+  const sizeTag = selectedOutline ?? hoverOutline;
+  // 距离标注的触发口径：只有「选中 A + 鼠标移到另一个元素 B」时才显示 A↔B 的距离。
+  // 不相交 → 两轴间距；B 包含 A（hover 父级背景）或 A 包含 B → 内层到外层四边的 inset；
+  // 图标容器与内部绘制路径不算布局包含，避免 0~3pt 的碎片数字（沿用上一轮口径）。
+  const measures = useMemo<Measure[]>(() => {
+    if (!selected || !hovered || hovered === selected) return [];
+    const a = fmt(selected);
+    const b = fmt(hovered);
+    const contains = (o: Rect, i: Rect) =>
+      o.x <= i.x + 0.5 && o.y <= i.y + 0.5 &&
+      o.x + o.w >= i.x + i.w - 0.5 && o.y + o.h >= i.y + i.h - 0.5 &&
+      o.w * o.h > i.w * i.h;
+    const iconLike = (n: LayerNode) =>
+      n.width <= 64 && n.height <= 64 && Math.abs(n.width - n.height) <= 1;
+    const iconPair = (inner: LayerNode, outer: LayerNode) =>
+      PATH_TYPES.includes(inner.type) && iconLike(outer);
+    if (contains(b, a) && !iconPair(selected, hovered)) {
+      return insetMeasures(a, b).map((m) => ({ ...m, peerId: hovered.node_id }));
+    }
+    if (contains(a, b) && !iconPair(hovered, selected)) {
+      return insetMeasures(b, a).map((m) => ({ ...m, peerId: hovered.node_id }));
+    }
+    return measureBetween(a, b).map((m) => ({ ...m, peerId: hovered.node_id }));
+  }, [selected, hovered, fmt]);
 
   const W = frame.width * zoom;
   const H = frame.height * zoom;
   // 有节点数据 → 节点矢量渲染；否则回退到位图 + 热区（两条路径共用同一套热区命中逻辑）
   const hasNodes = nodes.length > 0;
-  const lw = 1 / zoom; // 视觉恒定 1px
-  const fs = 11 / zoom;
+  const hasThumb = !!frame.thumb_url;
+  // 原图是导入时 Figma 原生导出的整板 PNG，与画板列表缩略图同一份文件，保真度最高。
+  // 无节点数据时无条件用原图；有节点时由用户选择（默认原图）。
+  const showImage = hasThumb && (!hasNodes || renderMode === 'image');
+  const showVector = hasNodes && !showImage;
+  const modeBtn = (m: 'image' | 'vector', label: string, title: string) => (
+    <button
+      key={m}
+      title={title}
+      onClick={() => setRenderMode(m)}
+      style={{
+        fontSize: 12,
+        borderRadius: 4,
+        background: renderMode === m ? 'rgba(108, 76, 241, 0.14)' : 'transparent',
+        color: renderMode === m ? 'var(--accent)' : undefined,
+      }}
+    >
+      {label}
+    </button>
+  );
+  // 缩放是把每个坐标手动乘 zoom（.artboard 只有 translate，没有 transform: scale），
+  // 所以标注层的 DOM / SVG 本身就是屏幕像素坐标系。以前按「外层 scale(zoom)」的假设
+  // 用 1/zoom 反向补偿，结果 zoom 越大字号、描边越细 —— 即「越放大文字越小」。
+  // 统一改成恒定像素：标注不随画板缩放，与 Figma / 蓝湖等标注工具行为一致。
+  const lw = 1; // 恒定 1px 描边
+  const fs = 11; // 恒定 11px 字号
 
-  // 选中「元素」时：它到父容器四边的距离；父级无边界（顶层节点）时以画板为基准
-  const padLines = useMemo(() => {
-    if (!selected || !hasNodes) return [];
-    const p = selected.parent_id ? nodeById.get(selected.parent_id) : undefined;
-    const pr = p
-      ? { x: p.x, y: p.y, w: p.width, h: p.height }
-      : { x: 0, y: 0, w: frame.width, h: frame.height };
-    if (pr.w <= 0 || pr.h <= 0) return [];
-    const sides = {
-      left: selected.x - pr.x,
-      right: pr.x + pr.w - (selected.x + selected.width),
-      top: selected.y - pr.y,
-      bottom: pr.y + pr.h - (selected.y + selected.height),
-    };
-    // 出现负值/0 说明父级与元素关系不成立，不画错误数值
-    if (Object.values(sides).some((v) => v < 1)) return [];
-    const cy = selected.y + selected.height / 2;
-    const cx = selected.x + selected.width / 2;
-    return [
-      { x1: pr.x, y1: cy, x2: selected.x, y2: cy, value: sides.left },
-      { x1: selected.x + selected.width, y1: cy, x2: pr.x + pr.w, y2: cy, value: sides.right },
-      { x1: cx, y1: pr.y, x2: cx, y2: selected.y, value: sides.top },
-      { x1: cx, y1: selected.y + selected.height, x2: cx, y2: pr.y + pr.h, value: sides.bottom },
-    ];
-  }, [selected, hasNodes, nodeById, frame.width, frame.height]);
+  // 距离统一只在 hover 其它元素时出现（见 measures）；
+  // 旧版「选中即自动标注到父容器四边距离」已移除，避免不 hover 时刷出一堆数字。
 
 
   const badgeStyle = (r: Rect): React.CSSProperties => {
-    const below = r.y + r.h + 20 / zoom <= frame.height;
+    // 偏移量同样是屏幕像素：放大时标签与选中框的间距应保持恒定，不能除以 zoom
+    const below = (r.y + r.h) * zoom + 20 <= H;
     return {
       position: 'absolute',
       left: r.x * zoom + (r.w * zoom) / 2,
-      top: below ? r.y * zoom + r.h * zoom + 6 / zoom : r.y * zoom - 6 / zoom,
+      top: below ? (r.y + r.h) * zoom + 6 : r.y * zoom - 6,
       transform: `translate(-50%, ${below ? '0%' : '-100%'})`,
       fontSize: fs,
-      padding: `${2 / zoom}px ${5 / zoom}px`,
-      borderRadius: 2 / zoom,
+      padding: '2px 5px',
+      borderRadius: 2,
       whiteSpace: 'nowrap',
     };
   };
@@ -407,8 +533,20 @@ export default function Canvas({
         style={{ width: W, height: H, transform: `translate(${pan.x}px, ${pan.y}px)` }}
         ref={artboardRef}
       >
-        {hasNodes ? (
-          /* 有节点数据：直接按节点渲染矢量视图，像素位置/颜色与属性面板同源 */
+        {showImage && (
+          /* 原图模式：直接用导入时保存的整板 PNG，与画板列表缩略图同源，完整还原设计稿 */
+          <img
+            className="artboard-img"
+            data-render="image"
+            data-bg="1"
+            src={frame.thumb_url!}
+            alt={frame.name}
+            draggable={false}
+            style={{ objectFit: 'fill' }}
+          />
+        )}
+        {showVector && (
+          /* 图层模式：按节点数据 CSS 近似渲染，仅用于查看图层颜色/文字（图片填充与矢量图标无法还原） */
           <div className="artboard-vector" data-render="nodes" aria-hidden="true">
             {nodes.map((n) => (
               <div
@@ -433,11 +571,6 @@ export default function Canvas({
               </div>
             ))}
           </div>
-        ) : (
-          /* 无节点数据（纯截图/位图导入）：保留位图底图 + 热区 */
-          frame.thumb_url && (
-            <img className="artboard-img" data-bg="1" src={frame.thumb_url} alt={frame.name} draggable={false} />
-          )
         )}
 
         {/* 热区层：按数组顺序渲染，后渲染者在上层，天然符合 Figma z-order */}
@@ -468,80 +601,88 @@ export default function Canvas({
 
         {/* 标注层：选中/悬停描边、尺寸徽标、间距 */}
         <svg className="overlay" width={W} height={H} style={{ pointerEvents: 'none' }}>
-          {hovered && hovered !== selected && (
+          {showHoverOutline && hoverOutline && (
             <rect
-              x={hovered.x * zoom} y={hovered.y * zoom}
-              width={hovered.width * zoom} height={hovered.height * zoom}
+              data-outline="hover"
+              data-outline-w={hoverOutline.w} data-outline-h={hoverOutline.h}
+              x={hoverOutline.rect.x * zoom} y={hoverOutline.rect.y * zoom}
+              width={hoverOutline.rect.w * zoom} height={hoverOutline.rect.h * zoom}
               fill="none" stroke="rgba(108, 76, 241, 0.45)" strokeWidth={lw}
             />
           )}
-          {selected && (
+          {selectedOutline && (
             <rect
-              x={selected.x * zoom} y={selected.y * zoom}
-              width={selected.width * zoom} height={selected.height * zoom}
+              data-outline="selected"
+              data-outline-w={selectedOutline.w} data-outline-h={selectedOutline.h}
+              x={selectedOutline.rect.x * zoom} y={selectedOutline.rect.y * zoom}
+              width={selectedOutline.rect.w * zoom} height={selectedOutline.rect.h * zoom}
               fill="none" stroke="#6c4cf1" strokeWidth={lw}
             />
           )}
-          {gap && (
+          {/* 距离引线统一品牌色，不再出现粉红/白底两套颜色 */}
+          {measures.map((m) => (
             <line
-              x1={gap.x1 * zoom} y1={gap.y1 * zoom}
-              x2={gap.x2 * zoom} y2={gap.y2 * zoom}
-              stroke="#6c4cf1" strokeWidth={lw} strokeDasharray={`${4 * lw} ${3 * lw}`}
-            />
-          )}
-          {padLines.map((l, i) => (
-            <line
-              key={`pad-${i}`}
-              x1={l.x1 * zoom} y1={l.y1 * zoom} x2={l.x2 * zoom} y2={l.y2 * zoom}
+              key={`gap-${m.side}`}
+              data-gap-line={m.side}
+              x1={m.x1 * zoom} y1={m.y1 * zoom}
+              x2={m.x2 * zoom} y2={m.y2 * zoom}
               stroke="#6c4cf1" strokeWidth={lw}
+              strokeDasharray={`${4 * lw} ${3 * lw}`}
             />
           ))}
         </svg>
 
-        {hovered && hovered !== selected && (
-          <div className="badge badge-hover" style={badgeStyle(fmt(hovered))}>
-            {Math.round(hovered.width)} × {Math.round(hovered.height)} {unit}
-          </div>
-        )}
-        {selected && (
-          <div className="badge badge-selected" style={badgeStyle(fmt(selected))}>
-            {Math.round(selected.width)} × {Math.round(selected.height)} {unit}
-          </div>
-        )}
-        {gap && (
+        {/* 切图角标：有导出预设的图层右上角常显品牌色剪刀标记（pointer-events:none 不干扰热区） */}
+        {sliceNodes.map((n) => (
           <div
+            key={`slice-${n.node_id}`}
+            className="slice-marker"
+            data-slice-marker={n.node_id}
+            title={`切图：${n.name} · ${Math.round(n.width)}×${Math.round(n.height)} ${unit ?? ''}`}
+            style={{ left: (n.x + n.width) * zoom, top: n.y * zoom }}
+          >
+            <Scissors size={9} />
+          </div>
+        ))}
+
+        {/* 只显示一个真实切图尺寸：内部 Vector 路径的 bbox 不再单独标注，
+            且选中状态下 hover 到别的图层也不再叠出第二个尺寸数字 */}
+        {sizeTag && (
+          <div className={`badge ${selected ? 'badge-selected' : 'badge-hover'}`} style={badgeStyle(sizeTag.rect)}>
+            {Math.round(sizeTag.w)} × {Math.round(sizeTag.h)} {unit}
+          </div>
+        )}
+        {/* 选中 A + hover B 时显示 A↔B 的距离：每方向一条引线 + 一个品牌色胶囊标签 */}
+        {measures.map((m) => (
+          <div
+            key={`gapb-${m.side}`}
             className="badge badge-gap"
+            data-gap-side={m.side}
+            data-gap-peer={m.peerId ?? ''}
             style={{
               position: 'absolute',
-              left: gap.dir === 'h' ? ((gap.x1 + gap.x2) / 2) * zoom : gap.x1 * zoom,
-              top: gap.dir === 'h' ? gap.y1 * zoom : ((gap.y1 + gap.y2) / 2) * zoom,
-              transform: gap.dir === 'h' ? 'translate(-50%, -130%)' : 'translate(-130%, -50%)',
+              // 锚点贴「相邻元素」那一端，标签留在外侧；选中框正下方只留给尺寸徽标。
+              // inset（包含关系）的引线两端分别是容器边与元素边，标签锚在线段中点居中。
+              left: m.inset ? ((m.x1 + m.x2) / 2) * zoom
+                : m.side === 'left' ? m.x1 * zoom - 4
+                  : m.side === 'right' ? m.x2 * zoom + 4
+                    : m.x1 * zoom,
+              top: m.inset ? ((m.y1 + m.y2) / 2) * zoom
+                : m.side === 'top' ? m.y1 * zoom - 4
+                  : m.side === 'bottom' ? m.y2 * zoom + 4
+                    : m.y1 * zoom,
+              transform: m.inset ? 'translate(-50%, -50%)'
+                : m.side === 'left' ? 'translate(-100%, -50%)'
+                  : m.side === 'right' ? 'translate(0, -50%)'
+                    : m.side === 'top' ? 'translate(-50%, -100%)'
+                      : 'translate(-140%, -50%)',
               fontSize: fs,
-              padding: `${2 / zoom}px ${5 / zoom}px`,
-              borderRadius: 2 / zoom,
+              padding: '2px 6px',
+              borderRadius: 999,
               whiteSpace: 'nowrap',
             }}
           >
-            {Math.round(gap.gap)} {unit}
-          </div>
-        )}
-        {/* 选中元素到父容器四边的距离（白底小标签，缩放时数值随之换算） */}
-        {padLines.map((l, i) => (
-          <div
-            key={`padb-${i}`}
-            className="badge badge-pad"
-            style={{
-              position: 'absolute',
-              left: ((l.x1 + l.x2) / 2) * zoom,
-              top: ((l.y1 + l.y2) / 2) * zoom,
-              transform: 'translate(-50%, -50%)',
-              fontSize: fs,
-              padding: `${1 / zoom}px ${4 / zoom}px`,
-              borderRadius: 2 / zoom,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {Math.round(l.value)} {unit}
+            {Math.round(m.gap)} {unit}
           </div>
         ))}
         {/* 评论钉点 */}
@@ -599,6 +740,13 @@ export default function Canvas({
         <span className="zoom-value">{Math.round(zoom * 100)}%</span>
         <button onClick={() => zoomCenter(zoom * 1.25)} title="放大" aria-label="放大"><Plus /></button>
         <button onClick={fit} title="适应画布"><Maximize /><span>适应</span></button>
+        {hasThumb && hasNodes && (
+          <>
+            <span aria-hidden="true" style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+            {modeBtn('image', '原图', '原图：与画板列表一致的 Figma 原生导出图，完整还原颜色/图标/图片')}
+            {modeBtn('vector', '图层', '图层：按节点数据 CSS 近似渲染（图片填充与矢量图标无法还原）')}
+          </>
+        )}
         <CanvasBgPicker token={canvasBg} onPick={pickCanvasBg} />
       </div>
     </div>

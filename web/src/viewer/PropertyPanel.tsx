@@ -4,6 +4,7 @@ import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
 import { EXPORT_SCALES, PLATFORM_LABEL, type PlatformId } from './devices';
 import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
+import { metricToPx, renderable } from './textMetric';
 import type { Unit } from '../unit';
 
 interface Props {
@@ -53,11 +54,11 @@ function CopyChip({ text, children }: { text: string; children: React.ReactNode 
 
 function ColorRow({ color, label }: { color: ParsedColor; label?: string }) {
   return (
-    <CopyChip text={color.hex}>
-      <span className="swatch" style={{ background: color.rgba }} />
-      <span className="mono">{color.hex}</span>
-      <span className="dim">{Math.round(color.alpha * 100)}%</span>
-      {label && <span className="dim">{label}</span>}
+    <CopyChip text={renderable(color.hex)}>
+      <span className="swatch" style={{ background: typeof color.rgba === 'string' ? color.rgba : undefined }} />
+      <span className="mono">{renderable(color.hex)}</span>
+      <span className="dim">{renderable(Math.round((Number(color.alpha) || 1) * 100))}%</span>
+      {label && <span className="dim">{renderable(label)}</span>}
     </CopyChip>
   );
 }
@@ -78,6 +79,28 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
     setTextDraft(selected?.props?.text?.content ?? '');
     setTextCopied(false);
   }, [selected?.node_id]);
+
+  // 切图默认格式/倍率跟随 Figma Export 面板里设置好的预设。
+  // 设计师常把预设打在图标外层容器上，用户点到内部 Vector 时也必须跟随父级标记，
+  // 否则会按默认 2x 把 16.67×15.83 的内部路径裁成 33×32，且四边被切断。
+  useEffect(() => {
+    const ps = selected?.props?.exportPresets ?? [];
+    const anc = selected?.exportPresetAncestor;
+    if (ps.length) {
+      setFormat(ps[0].format);
+      setScale(String(ps[0].scale));
+    } else if (anc) {
+      setFormat(anc.format);
+      setScale(String(anc.scale));
+    } else {
+      setFormat('PNG');
+      setScale('2');
+    }
+  }, [selected?.node_id, selected?.exportPresetAncestor]);
+
+  const allScaleValues = new Set(
+    (Object.keys(EXPORT_SCALES) as PlatformId[]).flatMap((pid) => EXPORT_SCALES[pid].map((s) => s.value))
+  );
 
   // 原型交互（跳转到画板）
   const [protoFrames, setProtoFrames] = useState<{ id: string; name: string }[]>([]);
@@ -142,7 +165,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
               ) : null}
             </>
           ) : (
-            '点击画布中的元素即可查看宽高、坐标、颜色、字体等属性；标记了切图的元素可导出。'
+            '点击画布中的元素即可查看宽高、坐标、颜色、字体等属性，并可自选格式与倍率导出切图。'
           )}
         </p>
       </div>
@@ -157,7 +180,14 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
     effects: selected.props.effects ?? [],
     exportPresets: selected.props.exportPresets ?? [],
   };
+  const anc = selected.exportPresetAncestor ?? null;
   const isSvg = format === 'SVG' || format === 'PDF';
+
+  // Figma 插件导入的文本度量可能是 {unit,value} 对象（PERCENT 相对字号）。
+  // 统一换算成 px 数字再渲染，避免把对象直接当 React 子节点导致整页白屏。
+  const textSize = metricToPx(p.text?.size);
+  const lineHeightPx = metricToPx(p.text?.lineHeight, textSize ?? undefined);
+  const letterSpacingPx = metricToPx(p.text?.letterSpacing, textSize ?? undefined);
 
   const doExport = async (presetFormat?: string, presetScale?: number) => {
     setExporting(true);
@@ -172,7 +202,10 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         scale: presetScale ?? Number(scale),
       });
       api.download(r.url, `${selected.name}${presetScale && presetScale !== 1 ? `@${presetScale}x` : Number(scale) !== 1 ? `@${scale}x` : ''}.${(presetFormat ?? format).toLowerCase()}`);
-      setExportMsg(`已导出 ${(r.size / 1024).toFixed(1)} KB`);
+      const from = r.resolvedFrom
+        ? `（按 Figma 标记的父级「${r.resolvedFrom.name}」${r.resolvedFrom.format} ${r.resolvedFrom.scale}x 导出）`
+        : '';
+      setExportMsg(`已导出 ${(r.size / 1024).toFixed(1)} KB${from}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -190,40 +223,40 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
       {/* 位置尺寸 */}
       <div className="prop-section">
         <h3>位置与尺寸</h3>
-        <div className="kv-grid">
-          <div className="kv">
-            <span>X（相对父级）</span>
+        <div className="size-grid">
+          <div className="size-cell">
+            <span className="cell-label">X（相对父级）</span>
             <CopyChip text={String(coords?.relative.x ?? selected.x)}>
               <b>{coords?.relative.x ?? selected.x} {unit}</b>
             </CopyChip>
           </div>
-          <div className="kv">
-            <span>Y（相对父级）</span>
+          <div className="size-cell">
+            <span className="cell-label">Y（相对父级）</span>
             <CopyChip text={String(coords?.relative.y ?? selected.y)}>
               <b>{coords?.relative.y ?? selected.y} {unit}</b>
             </CopyChip>
           </div>
-          <div className="kv">
-            <span>X（绝对）</span>
+          <div className="size-cell">
+            <span className="cell-label">X（绝对）</span>
             <CopyChip text={String(coords?.absolute.x ?? selected.x)}>
               <b>{coords?.absolute.x ?? selected.x} {unit}</b>
             </CopyChip>
           </div>
-          <div className="kv">
-            <span>Y（绝对）</span>
+          <div className="size-cell">
+            <span className="cell-label">Y（绝对）</span>
             <CopyChip text={String(coords?.absolute.y ?? selected.y)}>
               <b>{coords?.absolute.y ?? selected.y} {unit}</b>
             </CopyChip>
           </div>
-          <div className="kv"><span>W</span><CopyChip text={String(selected.width)}><b>{selected.width} {unit}</b></CopyChip></div>
-          <div className="kv"><span>H</span><CopyChip text={String(selected.height)}><b>{selected.height} {unit}</b></CopyChip></div>
+          <div className="size-cell"><span className="cell-label">W</span><CopyChip text={String(selected.width)}><b>{selected.width} {unit}</b></CopyChip></div>
+          <div className="size-cell"><span className="cell-label">H</span><CopyChip text={String(selected.height)}><b>{selected.height} {unit}</b></CopyChip></div>
           {p.cornerRadius !== undefined && p.cornerRadius > 0 && (
-            <div className="kv"><span>圆角</span><b>{p.cornerRadius}</b></div>
+            <div className="size-cell"><span className="cell-label">圆角</span><b className="cell-value">{renderable(p.cornerRadius)}</b></div>
           )}
           {p.cornerRadii && (
-            <div className="kv"><span>四角</span><b>{p.cornerRadii.join(' / ')}</b></div>
+            <div className="size-cell"><span className="cell-label">四角</span><b className="cell-value">{renderable(p.cornerRadii)}</b></div>
           )}
-          <div className="kv"><span>透明度</span><b>{Math.round((p.opacity ?? 1) * 100)}%</b></div>
+          <div className="size-cell"><span className="cell-label">透明度</span><b className="cell-value">{renderable(Math.round((Number(p.opacity) || 1) * 100))}%</b></div>
         </div>
         <p className="dim small hint">
           {coords?.parentName
@@ -273,12 +306,17 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
               {textCopied ? '已复制 ✓' : '复制文本'}
             </button>
           </div>
-          {p.text?.family && <div className="kv"><span>字体</span><CopyChip text={p.text.family}><b>{p.text.family}</b></CopyChip></div>}
-          {p.text?.size && <div className="kv"><span>字号</span><CopyChip text={String(p.text.size)}><b>{p.text.size}px / {p.text.weight ?? 400}</b></CopyChip></div>}
-          {p.text?.lineHeight && <div className="kv"><span>行高</span><b>{p.text.lineHeight}px</b></div>}
-          {p.text?.letterSpacing !== undefined && <div className="kv"><span>字间距</span><b>{p.text.letterSpacing}px</b></div>}
-          {p.text?.alignHorizontal && <div className="kv"><span>对齐</span><b>{p.text.alignHorizontal}</b></div>}
-          {p.text?.color && <ColorRow color={p.text.color} />}
+          {p.text?.family && <div className="kv"><span>字体</span><CopyChip text={renderable(p.text.family)}><b>{renderable(p.text.family)}</b></CopyChip></div>}
+          {textSize !== null && textSize > 0 && (
+            <div className="kv"><span>字号</span><CopyChip text={renderable(textSize)}><b>{renderable(textSize)}px / {renderable(p.text?.weight ?? 400)}</b></CopyChip></div>
+          )}
+          {lineHeightPx !== null && lineHeightPx > 0 && (
+            <div className="kv"><span>行高</span><b>{renderable(lineHeightPx)}px</b></div>
+          )}
+          {letterSpacingPx !== null && (
+            <div className="kv"><span>字间距</span><b>{renderable(letterSpacingPx)}px</b></div>
+          )}
+          {p.text?.alignHorizontal && <div className="kv"><span>对齐</span><b>{renderable(p.text.alignHorizontal)}</b></div>}
         </div>
       )}
 
@@ -291,7 +329,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
             if (f.type === 'gradient')
               return (
                 <div key={i} className="fill-row">
-                  <span className="swatch swatch-lg" style={{ background: f.css ?? undefined }} />
+                  <span className="swatch swatch-lg" style={{ background: typeof f.css === 'string' ? f.css : undefined }} />
                   <span className="dim">渐变</span>
                 </div>
               );
@@ -299,10 +337,10 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
               return (
                 <div key={i} className="fill-row">
                   <span className="swatch swatch-lg swatch-img" />
-                  <span className="dim">图像填充（{f.scaleMode}）</span>
+                  <span className="dim">图像填充（{renderable(f.scaleMode)}）</span>
                 </div>
               );
-            return <div key={i} className="fill-row"><span className="dim">{f.type}</span></div>;
+            return <div key={i} className="fill-row"><span className="dim">{renderable(f.type)}</span></div>;
           })}
         </div>
       )}
@@ -312,7 +350,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         <div className="prop-section">
           <h3>描边</h3>
           {p.strokes.filter((s) => s.visible).map((s, i) =>
-            s.color ? <ColorRow key={i} color={s.color} label={p.strokeWeight ? `${p.strokeWeight}px` : undefined} /> : null
+            s.color ? <ColorRow key={i} color={s.color} label={p.strokeWeight ? `${Math.round(Number(p.strokeWeight) * 100) / 100}px` : undefined} /> : null
           )}
         </div>
       )}
@@ -323,8 +361,8 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           <h3>效果</h3>
           {p.effects.map((e, i) => (
             <div key={i} className="effect-row">
-              <span className="dim">{e.type === 'DROP_SHADOW' ? '投影' : e.type === 'INNER_SHADOW' ? '内阴影' : e.type}</span>
-              {e.css && <code className="mono small">{e.css}</code>}
+              <span className="dim">{e.type === 'DROP_SHADOW' ? '投影' : e.type === 'INNER_SHADOW' ? '内阴影' : renderable(e.type)}</span>
+              {e.css && <code className="mono small">{renderable(e.css)}</code>}
             </div>
           ))}
         </div>
@@ -386,24 +424,25 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         </p>
       </div>
 
-      {/* 切图导出 */}
+      {/* 切图导出：任意图层均可按自选格式与倍率导出（服务端渲染） */}
       <div className="prop-section">
         <h3>切图导出</h3>
-        {p.exportPresets.length > 0 ? (
-          <>
+        {p.exportPresets.length > 0 && (
           <div className="preset-row">
             {p.exportPresets.map((ps, i) => (
               <button key={i} className="preset-btn" disabled={exporting} onClick={() => doExport(ps.format, ps.scale)}>
-                {ps.format}{ps.suffix} {ps.scale}x
+                {renderable(ps.format)}{renderable(ps.suffix)} {renderable(ps.scale)}x
               </button>
             ))}
             <span className="dim">设计标记的导出预设</span>
           </div>
+        )}
         <div className="export-controls">
           <select value={format} onChange={(e) => setFormat(e.target.value)}>
             <option>PNG</option><option>SVG</option><option>JPG</option><option>PDF</option>
           </select>
           <select value={scale} onChange={(e) => setScale(e.target.value)} disabled={isSvg}>
+            {!allScaleValues.has(scale) && <option value={scale}>{scale}x</option>}
             {(Object.keys(EXPORT_SCALES) as PlatformId[]).map((pid) => (
               <optgroup key={pid} label={PLATFORM_LABEL[pid]}>
                 {EXPORT_SCALES[pid].map((s) => (
@@ -416,15 +455,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
             {exporting ? '导出中…' : '导出切图'}
           </button>
         </div>
-        {p.hasImageFill && (
-          <p className="dim small hint">该图层含图像填充，导出 PNG 会带出填充图。</p>
-        )}
-          </>
-        ) : (
+        {anc && (
           <p className="dim small hint">
-            该图层未在 Figma 中标记为切图（无导出预设），仅可查看尺寸与坐标。<br />
-            需要切图：在 Figma 选中该图层 → 右侧 Export 面板添加导出设置 → 回到本工具重新同步。
+            该图层是「{anc.name}」的内部路径；Figma 的导出标记设在父级（{Math.round(anc.width)}×{Math.round(anc.height)} · {anc.format} {anc.scale}x），导出会按这个完整图标输出，不会裁掉四边。
           </p>
+        )}
+        {p.hasImageFill && (
+          <p className="dim small hint">该图层含图像填充，整板裁剪会如实带出填充图。</p>
         )}
         {exportMsg && <p className="ok small">{exportMsg}</p>}
         {error && <p className="err small">{error}</p>}

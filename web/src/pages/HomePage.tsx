@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member } from '../api';
-import { ChevronDown, Folder, Layers, Mail, Plus, Users } from '../components/icons';
+import { ChevronDown, Folder, KeyRound, Mail, Plus, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 
 interface Team {
@@ -21,7 +21,7 @@ interface Project {
   cover: string | null;
 }
 
-type View = 'projects' | 'members' | 'settings';
+type View = 'projects' | 'members';
 
 /** 最近访问的团队：无 team 参数时优先用它，避免总落到列表第一个团队 */
 const LAST_TEAM_KEY = 'shejixiezuo:last-team';
@@ -49,6 +49,9 @@ export default function HomePage() {
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [switchOpen, setSwitchOpen] = useState(false);
+  // 导入令牌从侧栏页改为头像下拉入口 + 弹窗展示
+  const [tokenModal, setTokenModal] = useState(false);
+  const avatarMenuRef = useRef<HTMLDetailsElement | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   // 团队导入令牌：newToken 只在生成后展示一次
@@ -332,7 +335,7 @@ export default function HomePage() {
             </form>
           </div>
         </details>
-        <details className="avatar-menu">
+        <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
             <span className="avatar-dot">{(authUser?.email ?? identity?.email ?? '主').slice(0, 1).toUpperCase()}</span>
             <span className="avatar-name">{authUser?.email ?? (identity ? identity.email : '所有者')}</span>
@@ -354,6 +357,15 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+            <button
+              className="ghost-btn avatar-menu-item"
+              onClick={() => {
+                setTokenModal(true);
+                if (avatarMenuRef.current) avatarMenuRef.current.open = false;
+              }}
+            >
+              <KeyRound /> 导入令牌
+            </button>
             {authUser && (
               <button className="ghost-btn auth-logout-btn" onClick={() => void doLogout()}>
                 退出登录
@@ -383,12 +395,6 @@ export default function HomePage() {
             onClick={() => setView('members')}
           >
             <Users /> 团队成员
-          </button>
-          <button
-            className={`side-nav-item ${view === 'settings' ? 'active' : ''}`}
-            onClick={() => setView('settings')}
-          >
-            <Layers /> 团队设置
           </button>
         </nav>
       </aside>
@@ -431,65 +437,6 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-            </>
-          ) : view === 'settings' && activeTeamName ? (
-            <>
-              <header className="view-header">
-                <h1>团队设置 · {activeTeamName}</h1>
-                <p>为 Figma 插件生成「导入令牌」，插件用它调用导入接口，不需要浏览器登录状态</p>
-              </header>
-
-              <section className="settings-section">
-                <div className="settings-head">
-                  <div>
-                    <h2>导入令牌</h2>
-                    <p className="dim small">
-                      令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销即删除记录，插件立即失效（401）。
-                    </p>
-                  </div>
-                  <div className="token-create">
-                    <select
-                      value={tokenScope}
-                      aria-label="令牌作用范围"
-                      onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
-                    >
-                      <option value="all">全部团队</option>
-                      <option value="team">仅 {activeTeamName}</option>
-                    </select>
-                    <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>
-                      <Plus /> 生成导入令牌
-                    </button>
-                  </div>
-                </div>
-
-                {newToken && (
-                  <div className="token-once">
-                    <div className="token-once-head">新令牌（只显示这一次）</div>
-                    <div className="token-once-body">
-                      <code>{newToken}</code>
-                      <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
-                    </div>
-                    <p className="dim small">粘贴到 Figma 插件的「导入令牌」输入框，之后无法再从网站查看明文。</p>
-                  </div>
-                )}
-
-                <ul className="token-list">
-                  {tokens.length === 0 && <p className="empty">还没有导入令牌，点击右上角生成</p>}
-                  {tokens.map((t) => (
-                    <li key={t.id} className="token-row">
-                      <code>{t.prefix}…</code>
-                      <span className={`role-badge ${t.scope === 'all' ? 'admin' : 'collaborator'}`}>
-                        {t.scope === 'all' ? '全部团队' : '单团队'}
-                      </span>
-                      <span className="dim small">创建于 {new Date(t.created_at).toLocaleString('zh-CN')}</span>
-                      <span className="dim small">
-                        {t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : '尚未使用'}
-                      </span>
-                      <button type="button" className="member-remove" onClick={() => void revokeToken(t.id)}>撤销</button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
             </>
           ) : activeTeamName ? (
             <>
@@ -571,6 +518,87 @@ export default function HomePage() {
         </div>
       </main>
       </div>
+
+      {/* 导入令牌弹窗：原「团队设置」页内容，入口在头像下拉框 */}
+      {tokenModal && activeTeamName && (
+        <div className="dlg-overlay" onClick={() => setTokenModal(false)}>
+          <div
+            className="dlg token-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`导入令牌 · ${activeTeamName}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="token-modal-head">
+              <div>
+                <h2>导入令牌 · {activeTeamName}</h2>
+                <p className="dim small">为 Figma 插件生成「导入令牌」，插件用它调用导入接口，不需要浏览器登录状态</p>
+              </div>
+              <button
+                type="button"
+                className="token-modal-close"
+                aria-label="关闭"
+                onClick={() => setTokenModal(false)}
+              >
+                <X />
+              </button>
+            </header>
+
+            <section className="settings-section">
+              <div className="settings-head">
+                <div>
+                  <h3>令牌列表</h3>
+                  <p className="dim small">
+                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销即删除记录，插件立即失效（401）。
+                  </p>
+                </div>
+                <div className="token-create">
+                  <select
+                    value={tokenScope}
+                    aria-label="令牌作用范围"
+                    onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
+                  >
+                    <option value="all">全部团队</option>
+                    <option value="team">仅 {activeTeamName}</option>
+                  </select>
+                  <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>
+                    <Plus /> 生成导入令牌
+                  </button>
+                </div>
+              </div>
+
+              {newToken && (
+                <div className="token-once">
+                  <div className="token-once-head">新令牌（只显示这一次）</div>
+                  <div className="token-once-body">
+                    <code>{newToken}</code>
+                    <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
+                  </div>
+                  <p className="dim small">粘贴到 Figma 插件的「导入令牌」输入框，之后无法再从网站查看明文。</p>
+                </div>
+              )}
+
+              <ul className="token-list">
+                {tokens.length === 0 && <p className="empty">还没有导入令牌，点击右上角生成</p>}
+                {tokens.map((t) => (
+                  <li key={t.id} className="token-row">
+                    <code>{t.prefix}…</code>
+                    <span className={`role-badge ${t.scope === 'all' ? 'admin' : 'collaborator'}`}>
+                      {t.scope === 'all' ? '全部团队' : '单团队'}
+                    </span>
+                    <span className="dim small">创建于 {new Date(t.created_at).toLocaleString('zh-CN')}</span>
+                    <span className="dim small">
+                      {t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString('zh-CN')}` : '尚未使用'}
+                    </span>
+                    <button type="button" className="member-remove" onClick={() => void revokeToken(t.id)}>撤销</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
+      )}
+
       {dialogs.element}
     </div>
   );

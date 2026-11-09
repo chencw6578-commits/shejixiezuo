@@ -167,9 +167,13 @@ CREATE TABLE IF NOT EXISTS assets (
   width       REAL,
   height      REAL,
   url         TEXT NOT NULL,
+  source      TEXT NOT NULL DEFAULT 'render',  -- figma(插件真实导出) | crop(整板裁剪) | render(服务端近似)
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_assets_file ON assets(file_id);
+-- 旧库升级：历史切图均为服务端近似渲染
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'render';
+CREATE INDEX IF NOT EXISTS idx_assets_slice ON assets(file_id, node_id, format, scale, source);
 `;
 
 let initialized: Promise<void> | null = null;
