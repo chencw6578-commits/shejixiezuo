@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  FileText,
   Folder,
   MessageSquare,
   Plus,
@@ -770,7 +769,7 @@ export default function ViewerPage() {
                           }
                         }}
                       >
-                        <FileText className="page-group-icon" size={13} />
+                        <Folder className="page-group-icon" size={14} />
                         {pg.name}
                       </span>
                       <span className="page-count">{list.length}</span>
@@ -837,7 +836,7 @@ export default function ViewerPage() {
                       }
                     }}
                   >
-                    <FileText className="page-group-icon" size={13} />
+                    <Folder className="page-group-icon" size={14} />
                     未分组
                   </span>
                   <span className="page-count">{globalUngrouped.length}</span>
