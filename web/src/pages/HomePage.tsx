@@ -501,12 +501,14 @@ export default function HomePage() {
             <>
               <header className="view-header">
                 <div className="view-header-row">
-                  <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
+                  <div className="view-header-text">
+                    <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
+                    <p>选择项目进入，查看设计稿、标注与规范</p>
+                  </div>
                   <button type="button" className="new-project-btn" onClick={openCreateProject}>
                     <Plus /> 新建项目
                   </button>
                 </div>
-                <p>选择项目进入，查看设计稿、标注与规范</p>
               </header>
 
               <ul className="project-grid">
