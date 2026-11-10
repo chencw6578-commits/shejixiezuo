@@ -366,6 +366,31 @@ export default function HomePage() {
     });
   };
 
+  /** 重命名团队（所有者 / 管理员）：弹窗输入新名称，成功后刷新团队列表与侧栏显示 */
+  const openRenameTeam = (t: Team) => {
+    setSwitchOpen(false);
+    void dialogs.prompt({
+      title: '重命名团队',
+      label: '团队名称',
+      initialValue: t.name,
+      placeholder: '输入新的团队名称',
+      maxLength: 60,
+      confirmText: '保存',
+      validate: (v) => (v.trim() ? null : '请输入团队名称'),
+      onSubmit: async (name) => {
+        const trimmed = name.trim();
+        if (trimmed === t.name) return null;
+        try {
+          await api.renameTeam(t.id, trimmed);
+          await loadTeams();
+          return null;
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err);
+        }
+      },
+    });
+  };
+
   /** 移交所有权（仅所有者可用）：拉取该团队其他成员 → 选择 → 二次确认 → 后端互改角色 */
   const openTransferTeam = async (teamId: string, teamName: string) => {
     setSwitchOpen(false);
@@ -618,10 +643,16 @@ export default function HomePage() {
                       items={
                         role === 'owner'
                           ? [
+                              { label: '重命名', onClick: () => openRenameTeam(t) },
                               { label: '移交所有权', onClick: () => void openTransferTeam(t.id, t.name) },
                               { label: '删除团队', onClick: () => void removeCurrentTeam(t) },
                             ]
-                          : [{ label: '退出团队', onClick: () => void leaveCurrentTeam(t) }]
+                          : role === 'admin'
+                            ? [
+                                { label: '重命名', onClick: () => openRenameTeam(t) },
+                                { label: '退出团队', onClick: () => void leaveCurrentTeam(t) },
+                              ]
+                            : [{ label: '退出团队', onClick: () => void leaveCurrentTeam(t) }]
                       }
                     />
                   )}

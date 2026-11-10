@@ -52,6 +52,22 @@ teamsRouter.get('/', async (req, res) => {
   res.json(rows);
 });
 
+/** 团队重命名（所有者 / 管理员；校验规则与创建团队一致） */
+teamsRouter.patch('/:id/rename', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的团队 ID' });
+  const denied = await manageGuard(req.params.id, req);
+  if (denied) return res.status(denied === '团队不存在' ? 404 : 403).json({ error: denied });
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: '请输入团队名称' });
+  if (name.length > 60) return res.status(400).json({ error: '团队名称过长（最多 60 字）' });
+  const { rows } = await pool.query(
+    'UPDATE teams SET name = $1 WHERE id = $2 RETURNING id, name',
+    [name, req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: '团队不存在' });
+  res.json(rows[0]);
+});
+
 /** 删除团队（仅所有者；项目与设计稿级联删除） */
 teamsRouter.delete('/:id', async (req, res) => {
   const denied = await ownerGuard(req.params.id, req);

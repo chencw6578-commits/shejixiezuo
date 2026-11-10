@@ -365,6 +365,11 @@ export const api = {
   createTeam: (name: string) =>
     request<{ id: string; name: string }>('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteTeam: (id: string) => request<{ deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),
+  renameTeam: (id: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/teams/${id}/rename`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
   transferTeam: (id: string, memberId: string) =>
     request<{ transferred: boolean }>(`/api/teams/${id}/transfer`, {
       method: 'POST',
