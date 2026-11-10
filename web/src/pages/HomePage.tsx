@@ -542,22 +542,6 @@ export default function HomePage() {
                 <p>所有者 / 管理员可邀请与移除成员、增删项目、上传设计稿；协作者为只读（仅查看）</p>
               </header>
 
-              <div className="identity-bar">
-                当前身份：
-                {identity ? (
-                  <>
-                    <strong>{identity.email}</strong>
-                    <span className={`role-badge ${identity.role}`}>{ROLE_LABEL[identity.role] ?? identity.role}</span>
-                    <button className="ghost-btn" onClick={exitIdentity}>退出身份</button>
-                  </>
-                ) : (
-                  <>
-                    <strong>{authUser?.email ?? '未登录'}</strong>
-                    <span className={`role-badge ${myRole}`}>{ROLE_LABEL[myRole] ?? myRole}</span>
-                  </>
-                )}
-              </div>
-
               {canManage ? (
                 <>
                   <form className="inline-form" onSubmit={addMember}>

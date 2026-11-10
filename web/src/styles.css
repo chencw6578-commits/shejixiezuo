@@ -898,7 +898,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-team-switch .team-switch-name { flex: none; max-width: 200px; font-size: 13px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
-/* 团队成员：当前身份条 / 邀请表单 / 邀请结果 / 成员列表统一 1120px，右边界对齐 */
+/* 团队成员：邀请表单 / 邀请结果 / 成员列表统一 1120px，右边界对齐 */
 .member-list { list-style: none; max-width: 1120px; }
 .member-row {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;
@@ -1024,13 +1024,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .prop-section .hint { margin-top: 3px; font-size: 11px; }
 
 /* ---------- 成员邀请 / 角色 / 只读标识 ---------- */
-.identity-bar {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-  font-size: 13px; color: var(--text-dim); max-width: 1120px;
-}
-.identity-bar strong { color: var(--text); }
-.identity-bar .ghost-btn { margin-left: auto; }
 .role-badge { border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .role-badge.admin { background: rgba(108, 76, 241, 0.12); color: var(--accent); }
 .role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
