@@ -2167,7 +2167,12 @@ export default function ProjectCanvasPage() {
                         aria-expanded={open}
                         title={`${g.name} · 所在设计稿：${g.fileName}`}
                         onClick={() => {
-                          if (!readOnly && g.items.length) selectFrames(g.items.map((f) => f.id));
+                          // 点击编组名称：切换展开/折叠；展开时顺带选中组内画板。
+                          // 注意必须先 toggle 再 selectFrames——selectFrames 内部的
+                          // revealSelection 也会展开编组，若先选中再 toggle 会把
+                          // 刚展开的编组又折叠回去（等于双重切换、点了没反应）。
+                          togglePage(g.key);
+                          if (!open && !readOnly && g.items.length) selectFrames(g.items.map((f) => f.id));
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
