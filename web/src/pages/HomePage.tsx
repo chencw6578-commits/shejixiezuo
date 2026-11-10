@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, getIdentity, setIdentity, type AuthUser } from '../api';
+import { api, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
 import { ArrowLeftRight, ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
@@ -141,8 +141,28 @@ export default function HomePage() {
     api.me().then(setAuthUser).catch(() => undefined);
   }, []);
 
-  // 邮箱验证：未验证时顶部提示条；重发 60s 冷却
+  // 邮箱验证：未验证时顶部提示条；可手动关闭（本次登录会话内不再出现，下次登录由 LoginPage 重置）；重发 60s 冷却
   const [resendState, setResendState] = useState<'idle' | 'sent' | 'cool'>('idle');
+  const [verifyDismissed, setVerifyDismissed] = useState(false);
+  useEffect(() => {
+    if (!authUser) {
+      setVerifyDismissed(false);
+      return;
+    }
+    try {
+      setVerifyDismissed(sessionStorage.getItem(VERIFY_BANNER_DISMISS_KEY) === authUser.email);
+    } catch {
+      setVerifyDismissed(false);
+    }
+  }, [authUser]);
+  const dismissVerifyBanner = () => {
+    setVerifyDismissed(true);
+    try {
+      if (authUser) sessionStorage.setItem(VERIFY_BANNER_DISMISS_KEY, authUser.email);
+    } catch {
+      /* 隐私模式下忽略，仅本次渲染内隐藏 */
+    }
+  };
   const resendVerification = async () => {
     if (resendState === 'cool') return;
     try {
@@ -513,12 +533,21 @@ export default function HomePage() {
 
   return (
     <div className="home-shell">
-      {/* 邮箱未验证提示条（软验证：不阻断使用） */}
-      {authUser && authUser.verified === false && (
+      {/* 邮箱未验证提示条（软验证：不阻断使用；可关闭，本次登录内不再提示） */}
+      {authUser && authUser.verified === false && !verifyDismissed && (
         <div className="verify-banner">
           <span>📧 邮箱尚未验证，验证后可确保账号安全与找回密码。</span>
           <button onClick={resendVerification} disabled={resendState === 'cool'}>
             {resendState === 'cool' ? '请 1 分钟后再试' : resendState === 'sent' ? '已重新发送 ✓' : '重新发送验证邮件'}
+          </button>
+          <button
+            type="button"
+            className="verify-banner-close"
+            title="本次登录不再提示"
+            aria-label="关闭验证提示"
+            onClick={dismissVerifyBanner}
+          >
+            <X />
           </button>
         </div>
       )}

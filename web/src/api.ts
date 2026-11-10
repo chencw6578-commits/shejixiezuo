@@ -127,6 +127,9 @@ export interface AuthUser {
   verified?: boolean;
 }
 
+/** 邮箱验证提示条的「本次登录不再提示」标记（sessionStorage；登录成功时由 LoginPage 清除） */
+export const VERIFY_BANNER_DISMISS_KEY = 'shejixiezuo:verify-banner-dismissed';
+
 export const api = {
   // ---------- 登录注册 ----------
   register: (email: string, password: string, name?: string) =>

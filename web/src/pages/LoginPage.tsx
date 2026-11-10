@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { api, type AuthUser } from '../api';
+import { api, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 
 /** 登录 / 注册双模式卡片页。登录成功后回到来源页或首页。 */
 export default function LoginPage() {
@@ -39,6 +39,8 @@ export default function LoginPage() {
           mode === 'login'
             ? await api.login(email.trim(), password)
             : await api.register(email.trim(), password, name.trim());
+        // 新一次登录会话：清除上次会话里「验证提示条不再提示」的关闭标记
+        try { sessionStorage.removeItem(VERIFY_BANNER_DISMISS_KEY); } catch { /* 忽略 */ }
         if (mode === 'register') {
           // 软验证：已登录可用，先提示验证邮件已发出
           setRegistered(user.email);

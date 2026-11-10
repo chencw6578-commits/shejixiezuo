@@ -1454,6 +1454,15 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 }
 .verify-banner button:hover:not(:disabled) { background: #fef3c7; }
 .verify-banner button:disabled { opacity: 0.55; cursor: not-allowed; }
+/* 关闭按钮：无边框无底色的图标按钮，不继承发送按钮的琥珀描边 */
+.verify-banner button.verify-banner-close {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: 0; background: transparent; border-radius: 7px; color: #b45309;
+}
+.verify-banner button.verify-banner-close:hover:not(:disabled) { background: rgba(245, 158, 11, 0.18); }
+.verify-banner button.verify-banner-close svg { width: 14px; height: 14px; }
 
 /* ---------- 邀请链接提示框 ---------- */
 .invite-link-box {
