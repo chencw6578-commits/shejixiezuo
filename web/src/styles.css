@@ -1087,14 +1087,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
 .role-badge.owner { background: #fef3c7; color: #92400e; }
 .member-name .role-badge { margin-left: 8px; vertical-align: 1px; }
-/* 信息区吃掉剩余空间，把角色下拉/体验/移除推到右侧形成整齐的操作列 */
+/* 信息区吃掉剩余空间，把身份徽章/体验/移除推到右侧形成整齐的操作列 */
 .member-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .member-info .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.member-role {
-  background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
-  border-radius: 6px; padding: 4px 6px; font-size: 12px; cursor: pointer;
-}
-.member-role:disabled { opacity: 0.5; cursor: not-allowed; }
 /* 成员行操作按钮：无边框 + 图标 + 文字，编辑与移除同色；移除不再用危险红 */
 .member-row .role-badge { flex: 0 0 auto; }
 .member-action {

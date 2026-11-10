@@ -102,8 +102,9 @@ export default function HomePage() {
   const [inviteModal, setInviteModal] = useState(false);
   const [inviteMode, setInviteMode] = useState<'link' | 'email'>('link');
   const [inviteCopied, setInviteCopied] = useState(false);
-  // 成员角色默认只读；点「编辑身份」后该行才临时进入可编辑态
-  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  // 编辑成员身份走弹窗：记录目标成员与草稿角色，点保存才提交
+  const [roleModal, setRoleModal] = useState<{ id: string; email: string; role: 'admin' | 'collaborator' } | null>(null);
+  const [roleDraft, setRoleDraft] = useState<'admin' | 'collaborator'>('collaborator');
   const [identity, setIdentityState] = useState<Identity | null>(null);
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -803,32 +804,19 @@ export default function HomePage() {
                       </span>
                       <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
                     </div>
-                    {editingMemberId === m.id && canManage && m.email && m.role !== 'owner' ? (
-                      <select
-                        className="member-role"
-                        value={m.role}
-                        autoFocus
-                        onChange={(e) => {
-                          const role = e.target.value as 'admin' | 'collaborator';
-                          setEditingMemberId(null);
-                          void changeRole(m.id, role);
-                        }}
-                        title="选择角色后自动保存"
-                      >
-                        <option value="admin">管理员</option>
-                        <option value="collaborator">协作 · 只读</option>
-                      </select>
-                    ) : (
-                      <span className={`role-badge ${m.role}`}>{ROLE_LABEL[m.role] ?? m.role}</span>
-                    )}
+                    <span className={`role-badge ${m.role}`}>{ROLE_LABEL[m.role] ?? m.role}</span>
                     {canManage && m.email && m.role !== 'owner' && (
                       <button
-                        className={`member-action ${editingMemberId === m.id ? 'is-active' : ''}`}
-                        onClick={() => setEditingMemberId(editingMemberId === m.id ? null : m.id)}
-                        title={editingMemberId === m.id ? '取消编辑身份' : '编辑该成员身份（角色）'}
+                        className="member-action"
+                        onClick={() => {
+                          const email = m.email!;
+                          const role = m.role === 'admin' ? 'admin' : 'collaborator';
+                          setRoleDraft(role);
+                          setRoleModal({ id: m.id, email, role });
+                        }}
+                        title="编辑该成员身份（角色）"
                       >
-                        {editingMemberId === m.id ? <X size={14} /> : <Pencil size={14} />}
-                        {editingMemberId === m.id ? '取消' : '编辑身份'}
+                        <Pencil size={14} /> 编辑身份
                       </button>
                     )}
                     {canManage && m.role !== 'owner' && (
@@ -940,6 +928,43 @@ export default function HomePage() {
                 </div>
               </>
             )}
+          </form>
+        </div>
+      )}
+
+      {/* 编辑成员身份弹窗：不在角色徽章上直接编辑，弹窗内选择后点保存才提交 */}
+      {roleModal && (
+        <div className="dlg-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setRoleModal(null); }}>
+          <form
+            className="dlg invite-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="编辑成员身份"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setRoleModal(null); } }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const target = roleModal;
+              setRoleModal(null);
+              if (target && roleDraft !== target.role) void changeRole(target.id, roleDraft);
+            }}
+          >
+            <h2 className="dlg-title">编辑成员身份</h2>
+            <p className="dim small" style={{ margin: 0 }}>{roleModal.email}</p>
+            <label className="dlg-label" htmlFor="role-modal-select">身份权限</label>
+            <select
+              id="role-modal-select"
+              className="dlg-input"
+              value={roleDraft}
+              autoFocus
+              onChange={(e) => setRoleDraft(e.target.value as 'admin' | 'collaborator')}
+            >
+              <option value="collaborator">协作 · 只读</option>
+              <option value="admin">管理员（可编辑、可邀请）</option>
+            </select>
+            <div className="dlg-actions">
+              <button type="button" className="dlg-btn" onClick={() => setRoleModal(null)}>取消</button>
+              <button type="submit" className="dlg-btn is-primary">保存</button>
+            </div>
           </form>
         </div>
       )}
