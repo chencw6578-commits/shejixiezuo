@@ -566,9 +566,7 @@ export default function HomePage() {
                           <ProjectCover frames={p.cover_frames} />
                         ) : p.cover ? (
                           <img className="project-cover-single" src={p.cover} alt={p.name} loading="lazy" />
-                        ) : (
-                          <span className="project-cover-empty"><Folder /></span>
-                        )}
+                        ) : null}
                       </span>
                       <span className="file-name"><Folder /> {p.name}</span>
                       <span className="file-meta">
