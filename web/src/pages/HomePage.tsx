@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
-import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
+import { ArrowLeftRight, ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
+import { canvasBgColor, isDarkCanvas, readCanvasBg } from '../canvasBg';
 import RowMenu from '../components/RowMenu';
 
 interface Team {
@@ -338,6 +339,90 @@ export default function HomePage() {
     });
   };
 
+  /** 移交所有权（仅所有者可见）：选其他成员 → 二次确认 → 后端互改角色 */
+  const openTransferTeam = async () => {
+    setSwitchOpen(false);
+    if (!activeTeam || !activeTeamName) return;
+    const others = members.filter((m) => m.role !== 'owner');
+    if (!others.length) {
+      void dialogs.alert('团队里还没有其他成员，先在「团队成员」页邀请成员后再移交所有权。', '无法移交');
+      return;
+    }
+    const picked = await dialogs.choose({
+      title: '移交所有权',
+      message: <>选择「{activeTeamName}」的新所有者。移交后你将变为管理员。</>,
+      options: others.map((m) => ({
+        label: `${m.name} · ${m.email}`,
+        value: m.id,
+      })),
+    });
+    if (!picked) return;
+    const target = others.find((m) => m.id === picked);
+    if (!target) return;
+    const ok = await dialogs.confirm({
+      title: '确认移交',
+      message: (
+        <>
+          确定把「{activeTeamName}」的所有权移交给 <b>{target.email}</b> 吗？移交后你将成为管理员。
+        </>
+      ),
+      confirmText: '移交',
+    });
+    if (!ok) return;
+    try {
+      await api.transferTeam(activeTeam, picked);
+      await loadTeams();
+      api.listMembers(activeTeam).then((rows) => setMembers(Array.isArray(rows) ? rows : [])).catch(() => undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  /** 删除团队（仅所有者可见）：项目与设计稿级联删除，删除后自动回退到剩余团队 */
+  const removeCurrentTeam = async () => {
+    setSwitchOpen(false);
+    if (!activeTeam || !activeTeamName) return;
+    const ok = await dialogs.confirm({
+      title: '删除团队',
+      message: (
+        <>
+          确定删除「{activeTeamName}」吗？团队内的 <b>{projects.length} 个项目</b>、全部设计稿与标注数据会一并删除，且不可恢复。
+        </>
+      ),
+      confirmText: '删除团队',
+    });
+    if (!ok) return;
+    try {
+      await api.deleteTeam(activeTeam);
+      await loadTeams();
+      // activeTeam 已不在列表中，既有兜底 effect 会自动切换到最近/第一个团队
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  /** 退出团队（管理员 / 协作者可见）：所有者需先移交或删除，后端会拒绝 */
+  const leaveCurrentTeam = async () => {
+    setSwitchOpen(false);
+    if (!activeTeam || !activeTeamName) return;
+    const ok = await dialogs.confirm({
+      title: '退出团队',
+      message: (
+        <>
+          确定退出「{activeTeamName}」吗？退出后将无法再查看该团队的项目，需要重新被邀请才能回来。
+        </>
+      ),
+      confirmText: '退出团队',
+    });
+    if (!ok) return;
+    try {
+      await api.leaveTeam(activeTeam);
+      await loadTeams();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const addMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberEmail.trim() || busy || !activeTeam) return;
@@ -419,6 +504,9 @@ export default function HomePage() {
 
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
   const avatarSeed = authUser?.email ?? identity?.email ?? '主';
+  // 项目封面底色跟随画布底色（与编辑器同一个 localStorage 偏好），不再用透明棋盘格
+  const coverBg = canvasBgColor(readCanvasBg());
+  const coverDark = isDarkCanvas(coverBg);
 
   return (
     <div className="home-shell">
@@ -466,6 +554,27 @@ export default function HomePage() {
             >
               <Plus /> 新建团队
             </button>
+            {activeTeam && activeTeamName && (
+              <div className="team-ops">
+                <div className="team-ops-title">
+                  {activeTeamName} · {ROLE_LABEL[myRole] ?? '成员'}
+                </div>
+                {myRole === 'owner' ? (
+                  <>
+                    <button type="button" className="team-op" onClick={() => void openTransferTeam()}>
+                      <ArrowLeftRight /> 移交所有权
+                    </button>
+                    <button type="button" className="team-op" onClick={() => void removeCurrentTeam()}>
+                      <Trash2 /> 删除团队
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="team-op" onClick={() => void leaveCurrentTeam()}>
+                    <LogOut /> 退出团队
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </details>
         <details className="avatar-menu" ref={avatarMenuRef}>
@@ -561,7 +670,10 @@ export default function HomePage() {
                 {projects.map((p) => (
                   <li key={p.id} className="project-card-wrap">
                     <button className="file-card project-card" onClick={() => navigate(`/projects/${p.id}`)}>
-                      <span className="project-cover">
+                      <span
+                        className={`project-cover ${coverDark ? 'is-dark-canvas' : ''}`}
+                        style={{ background: coverBg }}
+                      >
                         {p.cover_frames && p.cover_frames.length > 0 ? (
                           <ProjectCover frames={p.cover_frames} />
                         ) : p.cover ? (

@@ -230,6 +230,16 @@ export const LogOut = (p: IconProps) => (
   </Svg>
 );
 
+/** 移交（Lucide arrow-left-right） */
+export const ArrowLeftRight = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 3 4 7l4 4" />
+    <path d="M4 7h16" />
+    <path d="m16 21 4-4-4-4" />
+    <path d="M20 17H4" />
+  </Svg>
+);
+
 /** 分享（Lucide share-2） */
 export const Share2 = (p: IconProps) => (
   <Svg {...p}>

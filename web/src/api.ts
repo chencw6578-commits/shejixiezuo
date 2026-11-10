@@ -355,6 +355,12 @@ export const api = {
   createTeam: (name: string) =>
     request<{ id: string; name: string }>('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteTeam: (id: string) => request<{ deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),
+  transferTeam: (id: string, memberId: string) =>
+    request<{ transferred: boolean }>(`/api/teams/${id}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify({ memberId }),
+    }),
+  leaveTeam: (id: string) => request<{ left: boolean }>(`/api/teams/${id}/leave`, { method: 'POST' }),
 
   // ---- 团队成员（邮箱邀请 / 角色） ----
   listMembers: (teamId: string) => request<Member[]>(`/api/teams/${teamId}/members`),

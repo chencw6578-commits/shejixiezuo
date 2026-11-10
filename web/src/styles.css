@@ -891,6 +891,20 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 0 0 8px 8px; cursor: pointer; width: 100%;
 }
 .team-switch-create:hover { background: var(--bg-hover); outline: none; }
+/* 团队操作区：按身份显示 移交所有权/删除团队（所有者） 或 退出团队（管理员/协作者） */
+.team-ops { border-top: 1px dashed var(--border); padding: 4px 6px 6px; }
+.team-ops-title {
+  font-size: 11px; color: var(--text-dim);
+  padding: 4px 6px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.team-op {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%; padding: 7px 8px; margin-top: 2px;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--text); font: inherit; font-size: 13px; cursor: pointer; text-align: left;
+}
+.team-op svg { width: 14px; height: 14px; color: var(--text-dim); flex: none; }
+.team-op:hover { background: var(--bg-hover); outline: none; }
 /* 顶栏团队切换器（取代顶部面包屑与侧栏团队下拉） */
 .topbar-team-switch { padding: 0; }
 .topbar-team-switch summary { padding: 4px 8px; border-radius: 8px; gap: 6px; }
@@ -985,12 +999,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .project-cover {
   display: block; height: 160px; margin: -16px -16px 12px;
   border-radius: 10px 10px 0 0; overflow: hidden;
-  background:
-    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%),
-    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%);
-  background-color: #f7f8fa;
-  background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
+  /* 底色由内联样式跟随画布底色传入，这里只是兜底 */
+  background-color: #f4f5f7;
 }
 .project-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
 /* 批量切图倍数选择 */
@@ -1488,20 +1498,21 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 }
 .project-cover-cell {
   display: flex; align-items: center; justify-content: center;
-  min-width: 0; min-height: 0; overflow: hidden; padding: 2px;
-  background: #fff; border: 1px solid rgba(29, 33, 41, 0.09); border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(29, 33, 41, 0.06);
+  min-width: 0; min-height: 0; overflow: hidden;
+  /* 画板缩略图直接铺在画布底色上，不再套白色卡片 */
+  background: transparent;
 }
 /* 每张画板完整等比显示，不再 object-fit: cover 裁切 */
 .project-cover .project-cover-cell img {
   width: 100%; height: 100%; object-fit: contain; object-position: center; display: block;
 }
-/* 缩略图资源缺失时的占位：白底 + 画板名 */
+/* 缩略图资源缺失时的占位：画板名文字（深色画布下换浅色） */
 .project-cover-cell-name {
   font-size: 8px; line-height: 1.3; color: var(--text-dim);
   text-align: center; word-break: break-all;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
+.project-cover.is-dark-canvas .project-cover-cell-name { color: #98a2b3; }
 /* 只有单张 cover 的兜底分支同样不裁切 */
 .project-cover > img.project-cover-single {
   width: 100%; height: 100%; object-fit: contain; object-position: center; display: block;

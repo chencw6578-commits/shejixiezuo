@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { pool } from '../db.js';
-import { editGuard, manageGuard, ownerGuard } from './authz.js';
+import { editGuard, manageGuard, ownerGuard, teamRole } from './authz.js';
 import { getSessionUser } from '../auth.js';
 import { createTeamInvite } from './invites.js';
 import { emailConfig } from '../config.js';
@@ -54,6 +54,66 @@ teamsRouter.delete('/:id', async (req, res) => {
   if (denied) return res.status(denied === '团队不存在' ? 404 : 403).json({ error: denied });
   const { rowCount } = await pool.query('DELETE FROM teams WHERE id = $1', [req.params.id]);
   res.json({ deleted: rowCount === 1 });
+});
+
+/** 移交所有权（仅所有者；目标成员成为 owner，原所有者降为 admin） */
+teamsRouter.post('/:id/transfer', async (req, res) => {
+  const denied = await ownerGuard(req.params.id, req);
+  if (denied) return res.status(denied === '团队不存在' ? 404 : 403).json({ error: denied });
+  const memberId = typeof req.body?.memberId === 'string' ? req.body.memberId : '';
+  if (!UUID_RE.test(memberId)) return res.status(400).json({ error: '非法的成员 ID' });
+
+  const target = await pool.query<{ id: string; email: string; role: string }>(
+    'SELECT id, email, role FROM team_members WHERE id = $1 AND team_id = $2',
+    [memberId, req.params.id]
+  );
+  if (!target.rows[0]) return res.status(404).json({ error: '目标成员不存在' });
+  if (target.rows[0].role === 'owner') return res.status(400).json({ error: '该成员已经是所有者' });
+
+  const session = getSessionUser(req);
+  const myEmail = session?.email?.trim().toLowerCase() ?? '';
+  // teams.owner_id 指向注册用户；被邀请成员若尚未注册则保持 NULL，
+  // ownerGuard 已按 team_members.role='owner' 兜底
+  const u = await pool.query<{ id: string }>('SELECT id FROM users WHERE email = $1 LIMIT 1', [
+    target.rows[0].email,
+  ]);
+  await pool.query('BEGIN');
+  try {
+    await pool.query('UPDATE team_members SET role = $3 WHERE id = $1 AND team_id = $2', [
+      memberId,
+      req.params.id,
+      'owner',
+    ]);
+    await pool.query(
+      "UPDATE team_members SET role = 'admin' WHERE team_id = $1 AND email = $2 AND role = 'owner'",
+      [req.params.id, myEmail]
+    );
+    if (u.rows[0]) {
+      await pool.query('UPDATE teams SET owner_id = $2 WHERE id = $1', [req.params.id, u.rows[0].id]);
+    }
+    await pool.query('COMMIT');
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    throw err;
+  }
+  res.json({ transferred: true, to: target.rows[0].email });
+});
+
+/** 退出团队（管理员 / 协作者；所有者需先移交或删除团队） */
+teamsRouter.post('/:id/leave', async (req, res) => {
+  const session = getSessionUser(req);
+  if (!session) return res.status(401).json({ error: '请先登录后再退出团队' });
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的团队 ID' });
+  const role = await teamRole(req.params.id, req);
+  if (role === 'owner') {
+    return res.status(403).json({ error: '所有者不能直接退出团队，请先移交所有权或删除团队' });
+  }
+  const { rowCount } = await pool.query(
+    'DELETE FROM team_members WHERE team_id = $1 AND email = $2',
+    [req.params.id, session.email.trim().toLowerCase()]
+  );
+  if (rowCount === 0) return res.status(404).json({ error: '你不是该团队成员' });
+  res.json({ left: true });
 });
 
 /** 团队成员列表 */
