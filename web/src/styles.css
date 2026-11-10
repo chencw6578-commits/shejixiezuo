@@ -1589,40 +1589,41 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   border-radius: var(--radius-pill); background: var(--accent-soft);
   color: var(--brand-700); font-size: 12px; font-weight: 500;
 }
-.share-main { width: 100%; max-width: 1400px; margin: 0 auto; padding: 28px 32px 48px; }
-.share-head { margin-bottom: 18px; }
-.share-head h2 { font-size: 18px; font-weight: 600; }
-.share-head p { margin-top: 4px; font-size: 12px; color: var(--text-dim); }
+.share-stage { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .share-state { text-align: center; padding: 80px 20px; font-size: 14px; }
 .share-state h2 { font-size: 18px; margin-bottom: 8px; }
 .share-state p { font-size: 13px; line-height: 1.8; color: var(--text-dim); }
-.share-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; }
-.share-card {
-  display: flex; flex-direction: column; gap: 8px; padding: 10px; text-align: left;
-  border: 1px solid var(--border); border-radius: var(--radius-card);
-  background: var(--bg-panel); box-shadow: var(--shadow-card);
-  cursor: zoom-in; color: var(--text);
+/* 画板墙：与项目画布一致的点阵底，画板按真实比例直接铺在上面（无卡片外壳、无文字标签）
+   注：--canvas-bg/--canvas-dot 只在 .canvas-container 作用域内定义，这里用同值字面量 */
+.share-canvas {
+  flex: 1; overflow: auto; min-height: 0;
+  background-color: #f4f5f7;
+  background-image: radial-gradient(circle, rgba(17, 24, 39, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
-.share-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-pop); }
-.share-card-cover {
-  display: flex; align-items: center; justify-content: center;
-  height: 180px; overflow: hidden; border-radius: 10px;
-  background:
-    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%),
-    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%);
-  background-color: #f7f8fa; background-size: 16px 16px; background-position: 0 0, 8px 8px;
+.share-board-row {
+  display: flex; align-items: center; gap: 56px;
+  width: max-content; min-width: 100%;
+  margin: 0 auto; padding: 48px 64px;
+  box-sizing: border-box;
 }
-.share-card-cover img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-.share-card-fallback {
-  padding: 10px; font-size: 13px; color: var(--text-dim);
-  text-align: center; word-break: break-all;
+.share-board {
+  position: relative; flex: none;
+  height: min(62vh, 560px);
+  background: #fff; border: none; padding: 0;
+  border-radius: 6px; overflow: hidden; cursor: zoom-in;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06), 0 12px 32px rgba(17, 24, 39, 0.12);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
-.share-card-name {
-  font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.share-board:hover {
+  box-shadow: 0 2px 4px rgba(17, 24, 39, 0.08), 0 16px 44px rgba(17, 24, 39, 0.18);
+  transform: translateY(-2px);
 }
-.share-card-meta {
-  font-size: 11px; color: var(--text-dim);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.share-board img { width: 100%; height: 100%; object-fit: fill; display: block; }
+.share-board-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; padding: 12px;
+  font-size: 12px; color: var(--text-dim); text-align: center; word-break: break-all;
 }
 .share-lightbox {
   position: fixed; inset: 0; z-index: 100; background: rgba(17, 24, 39, 0.62);
@@ -1649,5 +1650,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 @media (max-width: 820px) {
   .share-btn span { display: none; }
   .share-popover { width: min(360px, calc(100vw - 24px)); }
-  .share-main { padding: 20px 16px 40px; }
+  .share-canvas { padding: 0; }
+  .share-board-row { gap: 24px; padding: 24px; }
+  .share-board { height: min(48vh, 380px); }
 }

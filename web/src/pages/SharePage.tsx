@@ -50,7 +50,7 @@ export default function SharePage() {
         {data && <span className="crumb">{data.frames.length} 个画板</span>}
       </header>
 
-      <main className="share-main">
+      <main className="share-stage">
         {error && (
           <div className="share-state">
             <h2>链接已失效</h2>
@@ -66,29 +66,26 @@ export default function SharePage() {
           </div>
         )}
         {data && data.frames.length > 0 && (
-          <>
-            <div className="share-head">
-              <h2>全部画板</h2>
-              <p className="dim">点击画板可放大查看 · 此页面仅可查看，不能编辑</p>
-            </div>
-            <div className="share-grid">
+          <div className="share-canvas">
+            <div className="share-board-row">
               {data.frames.map((f) => (
-                <button key={f.id} type="button" className="share-card" onClick={() => setActive(f)}>
-                  <span className="share-card-cover">
-                    {imgOk(f) ? (
-                      <img src={f.thumb_url!} alt={f.name} loading="lazy" onError={() => markFailed(f.id)} />
-                    ) : (
-                      <span className="share-card-fallback">{f.name}</span>
-                    )}
-                  </span>
-                  <span className="share-card-name">{f.name}</span>
-                  <span className="share-card-meta">
-                    {f.file_name}{f.page_name ? ` / ${f.page_name}` : ''} · {Math.round(f.width)}×{Math.round(f.height)}
-                  </span>
+                <button
+                  key={f.id}
+                  type="button"
+                  className="share-board"
+                  style={{ aspectRatio: `${f.width} / ${f.height}` }}
+                  title={f.name}
+                  onClick={() => setActive(f)}
+                >
+                  {imgOk(f) ? (
+                    <img src={f.thumb_url!} alt={f.name} loading="lazy" onError={() => markFailed(f.id)} />
+                  ) : (
+                    <span className="share-board-fallback">{f.name}</span>
+                  )}
                 </button>
               ))}
             </div>
-          </>
+          </div>
         )}
       </main>
 
