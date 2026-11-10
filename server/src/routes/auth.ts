@@ -97,7 +97,7 @@ authRouter.post('/verify', async (req, res) => {
   try {
     const uid = await consumeEmailToken(token, 'verify');
     if (!uid) return res.status(400).json({ error: '链接无效或已过期，请重新发送验证邮件' });
-    await pool.query('UPDATE users SET verified = true WHERE id = $1', [uid]);
+    await pool.query('UPDATE users SET email_verified = true WHERE id = $1', [uid]);
     res.json({ ok: true });
   } catch (err) {
     console.error('[auth] verify failed:', err);
