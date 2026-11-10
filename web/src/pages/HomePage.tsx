@@ -105,6 +105,8 @@ export default function HomePage() {
   // 编辑成员身份走弹窗：记录目标成员与草稿角色，点保存才提交
   const [roleModal, setRoleModal] = useState<{ id: string; email: string; role: 'admin' | 'collaborator' } | null>(null);
   const [roleDraft, setRoleDraft] = useState<'admin' | 'collaborator'>('collaborator');
+  // 移除成员二次确认弹窗：点「移除」先弹窗，确认后才真正调用接口
+  const [removeModal, setRemoveModal] = useState<{ id: string; email: string } | null>(null);
   const [identity, setIdentityState] = useState<Identity | null>(null);
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -820,7 +822,7 @@ export default function HomePage() {
                       </button>
                     )}
                     {canManage && m.role !== 'owner' && (
-                      <button className="member-action" onClick={() => void removeMember(m.id)} title="移除该成员">
+                      <button className="member-action" onClick={() => setRemoveModal({ id: m.id, email: m.email ?? '该成员' })} title="移除该成员">
                         <Trash2 size={14} /> 移除
                       </button>
                     )}
@@ -966,6 +968,32 @@ export default function HomePage() {
               <button type="submit" className="dlg-btn is-primary">保存</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* 移除成员确认弹窗：防止误点直接移除，确认后才调用接口 */}
+      {removeModal && (
+        <div className="dlg-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setRemoveModal(null); }}>
+          <div
+            className="dlg invite-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="移除成员确认"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setRemoveModal(null); } }}
+          >
+            <h2 className="dlg-title">移除成员</h2>
+            <p className="dim small" style={{ margin: 0 }}>
+              确定要将 <b style={{ color: 'var(--text)' }}>{removeModal.email}</b> 从团队移除吗？移除后该成员将无法访问此团队的项目与设计稿。
+            </p>
+            <div className="dlg-actions" style={{ marginTop: 18 }}>
+              <button type="button" className="dlg-btn" onClick={() => setRemoveModal(null)}>取消</button>
+              <button type="button" className="dlg-btn is-danger" autoFocus onClick={() => {
+                const target = removeModal;
+                setRemoveModal(null);
+                if (target) void removeMember(target.id);
+              }}>确认移除</button>
+            </div>
+          </div>
         </div>
       )}
 
