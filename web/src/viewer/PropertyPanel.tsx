@@ -258,11 +258,6 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           )}
           <div className="size-cell"><span className="cell-label">透明度</span><b className="cell-value">{renderable(Math.round((Number(p.opacity) || 1) * 100))}%</b></div>
         </div>
-        <p className="dim small hint">
-          {coords?.parentName
-            ? `相对父级「${coords.parentName}」；绝对坐标为相对画板左上角。`
-            : '该图层位于画板顶层，相对父级与绝对坐标相同。'}
-        </p>
       </div>
 
       {/* 文本：仅 TEXT 图层显示，内容回填且可编辑（失焦 / Enter 写回并刷新画布） */}
