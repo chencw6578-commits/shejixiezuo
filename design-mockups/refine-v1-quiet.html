@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>现有 UI 精修 · V1 净白降噪</title>
+<style>
+  /* ============ V1 净白降噪 ============
+     思路：保持现有骨架与品牌紫，只做减法——
+     · 圆角收敛 18→12，按钮 pill→方角 8px（工具感）
+     · 卡片去描边，改用底色差 + hover 轻阴影上浮
+     · 选中态从整块浅紫底 → 更轻的灰底 + 紫字 + 左侧紫线
+     · 层级靠字重与灰度，不靠颜色数量 */
+  :root{
+    --brand:#6c4cf1; --brand-100:#efebff;
+    --bg:#fafafa; --panel:#ffffff; --hover:#f2f2f3;
+    --line:#ececee; --text:#17181c; --dim:#83858c;
+    --r-card:12px; --r-btn:8px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);
+    font-family:-apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;font-size:14px}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  svg{flex:none}
+
+  /* ── 顶栏 48px：与现在一致，细节更轻 ── */
+  .topbar{display:flex;align-items:center;height:48px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .team-switch{display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--r-btn);font-size:13.5px;font-weight:600}
+  .team-switch:hover{background:var(--hover)}
+  .team-switch svg{color:var(--dim)}
+  .topbar .right{margin-left:auto}
+  .avatar{width:30px;height:30px;border-radius:50%;background:#5a8df2;color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600}
+
+  /* ── 侧栏：更安静的选中态 ── */
+  .body{display:flex;height:calc(100vh - 48px)}
+  .sidebar{width:200px;flex:none;background:var(--panel);border-right:1px solid var(--line);padding:14px 10px}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav-item{position:relative;display:flex;align-items:center;gap:9px;height:34px;padding:0 10px;
+    border-radius:7px;color:var(--dim);font-size:13.5px;transition:background .12s,color .12s}
+  .nav-item:hover{background:var(--hover);color:var(--text)}
+  .nav-item.active{background:var(--hover);color:var(--brand);font-weight:600}
+  .nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:2.5px;border-radius:2px;background:var(--brand)}
+  .nav-item svg{color:currentColor;opacity:.85}
+
+  /* ── 主区：层级靠字重 ── */
+  .main{flex:1;overflow:auto}
+  .inner{max-width:1400px;margin:0 auto;padding:44px 40px 64px}
+  .view-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:26px}
+  .view-header h1{font-size:19px;font-weight:650;letter-spacing:-.015em}
+  .view-header h1 .sep{color:#c3c5cb;font-weight:400;margin:0 2px}
+  .view-header p{margin-top:7px;font-size:13px;color:var(--dim)}
+  .new-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;
+    background:var(--text);color:#fff;border-radius:var(--r-btn);font-size:13px;font-weight:600;
+    transition:opacity .12s}
+  .new-btn:hover{opacity:.85}
+
+  /* ── 卡片：去描边，底色差 + hover 上浮 ── */
+  .grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+  .card{position:relative;text-align:left;width:100%;background:var(--panel);border-radius:var(--r-card);
+    overflow:hidden;border:1px solid transparent;
+    transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+  .card:hover{transform:translateY(-2px);box-shadow:0 10px 28px -12px rgba(23,24,28,.16);border-color:var(--line)}
+  .cover{height:158px;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:10px;background:#f3f3f4}
+  .cover .tile{border-radius:4px;background:#fff;box-shadow:0 0 0 1px rgba(23,24,28,.05);overflow:hidden;
+    display:flex;flex-direction:column;padding:7px 6px;gap:4px}
+  .cover .tile i{display:block;height:4px;border-radius:2px;background:#e3e3e6}
+  .cover .tile i:first-child{width:55%;height:5px;background:#c9cbd1}
+  .cover .tile i+h i{width:80%}
+  .cover .tile.dark{background:#23242a}
+  .cover .tile.dark i{background:#3c3e46}
+  .cover .tile.dark i:first-child{background:#565964}
+  .cover .tile.tint-blue{background:#eaf1fb}
+  .cover .tile.tint-green{background:#e9f3ea}
+  .cover .tile.spacer{visibility:hidden}
+  .card-body{padding:12px 14px 13px;display:flex;flex-direction:column;gap:5px}
+  .name{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;letter-spacing:-.005em}
+  .name svg{color:#a4a6ad}
+  .meta{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;padding-right:30px}
+  .menu{position:absolute;right:8px;bottom:9px;width:28px;height:28px;border-radius:6px;color:#b3b5bb;
+    display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .12s,background .12s}
+  .card:hover .menu{opacity:1}
+  .menu:hover{background:var(--hover)}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="team-switch">演示团队
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+  <div class="right"><span class="avatar">D</span></div>
+</header>
+
+<div class="body">
+  <aside class="sidebar">
+    <nav class="nav">
+      <a class="nav-item active" href="#">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        项目</a>
+      <a class="nav-item" href="#">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.6c2.3.1 4 1.5 4.5 4"/></svg>
+        团队成员</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="inner">
+      <header class="view-header">
+        <div>
+          <h1>项目 <span class="sep">·</span> 演示团队</h1>
+          <p>选择项目进入，查看设计稿、标注与规范</p>
+        </div>
+        <button class="new-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新建项目</button>
+      </header>
+
+      <ul class="grid">
+        <li><button class="card">
+          <span class="cover">
+            <span class="tile"><i></i><i></i><i></i><i></i></span>
+            <span class="tile dark"><i></i><i></i><i></i></span>
+            <span class="tile"><i></i><i></i><i></i><i></i></span>
+            <span class="tile tint-blue"><i></i><i></i><i></i></span>
+            <span class="tile"><i></i><i></i><i></i><i></i></span>
+            <span class="tile spacer"></span>
+          </span>
+          <span class="card-body">
+            <span class="name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>演示项目</span>
+            <span class="meta">2 份设计稿 · 最后更新 2026/11/10 14:44</span>
+          </span>
+          <span class="menu">⋯</span>
+        </button></li>
+
+        <li><button class="card">
+          <span class="cover">
+            <span class="tile tint-blue"><i></i><i></i><i></i><i></i></span>
+            <span class="tile"><i></i><i></i><i></i></span>
+            <span class="tile dark"><i></i><i></i><i></i></span>
+            <span class="tile"><i></i><i></i><i></i><i></i></span>
+            <span class="tile tint-blue"><i></i><i></i><i></i></span>
+            <span class="tile spacer"></span>
+          </span>
+          <span class="card-body">
+            <span class="name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>品牌官网改版</span>
+            <span class="meta">6 份设计稿 · 最后更新 2026/11/09 18:02</span>
+          </span>
+          <span class="menu">⋯</span>
+        </button></li>
+
+        <li><button class="card">
+          <span class="cover">
+            <span class="tile tint-green"><i></i><i></i><i></i><i></i></span>
+            <span class="tile"><i></i><i></i><i></i></span>
+            <span class="tile tint-green"><i></i><i></i><i></i></span>
+            <span class="tile dark"><i></i><i></i><i></i></span>
+            <span class="tile spacer"></span>
+            <span class="tile spacer"></span>
+          </span>
+          <span class="card-body">
+            <span class="name"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>移动端 App 2.0</span>
+            <span class="meta">12 份设计稿 · 最后更新 2026/11/07 10:26</span>
+          </span>
+          <span class="menu">⋯</span>
+        </button></li>
+      </ul>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
