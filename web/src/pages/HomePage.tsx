@@ -447,7 +447,7 @@ export default function HomePage() {
                 </button>
               )}
               {authUser && (
-                <button className="avatar-menu-item is-danger" onClick={() => void doLogout()}>
+                <button className="avatar-menu-item" onClick={() => void doLogout()}>
                   <LogOut /> 退出登录
                 </button>
               )}

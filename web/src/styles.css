@@ -155,8 +155,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .avatar-menu-item svg { flex: none; }
 .avatar-menu-item:hover { background: var(--bg-hover); outline: none; }
-.avatar-menu-item.is-danger { color: #d92d20; }
-.avatar-menu-item.is-danger:hover { background: rgba(242, 72, 34, 0.08); }
 .avatar-pop-hint { margin: 10px 2px 0; padding-top: 10px; border-top: 1px dashed var(--border); }
 
 /* ---------- 登录 / 注册页（浅色，与首页一致） ---------- */
