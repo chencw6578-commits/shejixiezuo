@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member } from '../api';
-import { ChevronDown, Folder, KeyRound, LogOut, Mail, Plus, Users, X } from '../components/icons';
+import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 
 interface Team {
@@ -69,6 +69,8 @@ export default function HomePage() {
   // 最近一次生成的邀请：链接只展示给操作者，可复制
   const [inviteLink, setInviteLink] = useState<{ email: string; role: string; inviteUrl: string } | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
+  // 成员角色默认只读；点「编辑身份」后该行才临时进入可编辑态
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [identity, setIdentityState] = useState<Identity | null>(null);
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -331,12 +333,6 @@ export default function HomePage() {
     }
   };
 
-  const enterAs = (m: Member) => {
-    if (!activeTeam || !m.email) return;
-    setIdentity(activeTeam, { email: m.email, role: m.role });
-    setIdentityState({ email: m.email, role: m.role });
-  };
-
   const exitIdentity = () => {
     if (!activeTeam) return;
     setIdentity(activeTeam, null);
@@ -586,32 +582,38 @@ export default function HomePage() {
                       </span>
                       <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
                     </div>
-                    <select
-                      className="member-role"
-                      value={m.role}
-                      onChange={(e) => void changeRole(m.id, e.target.value as 'admin' | 'collaborator')}
-                      disabled={!canManage || m.role === 'owner' || !m.email}
-                      title={
-                        !canManage ? '需要管理员权限'
-                        : m.role === 'owner' ? '所有者角色不可修改'
-                        : !m.email ? '历史成员（无邮箱），角色不可切换'
-                        : '修改角色'
-                      }
-                    >
-                      <option value="admin">管理员</option>
-                      <option value="collaborator">协作 · 只读</option>
-                    </select>
+                    {editingMemberId === m.id && canManage && m.email && m.role !== 'owner' ? (
+                      <select
+                        className="member-role"
+                        value={m.role}
+                        autoFocus
+                        onChange={(e) => {
+                          const role = e.target.value as 'admin' | 'collaborator';
+                          setEditingMemberId(null);
+                          void changeRole(m.id, role);
+                        }}
+                        title="选择角色后自动保存"
+                      >
+                        <option value="admin">管理员</option>
+                        <option value="collaborator">协作 · 只读</option>
+                      </select>
+                    ) : (
+                      <span className={`role-badge ${m.role}`}>{ROLE_LABEL[m.role] ?? m.role}</span>
+                    )}
                     {canManage && m.email && m.role !== 'owner' && (
                       <button
-                        className="ghost-btn"
-                        onClick={() => enterAs(m)}
-                        title="以该成员身份体验权限差异"
+                        className={`member-action ${editingMemberId === m.id ? 'is-active' : ''}`}
+                        onClick={() => setEditingMemberId(editingMemberId === m.id ? null : m.id)}
+                        title={editingMemberId === m.id ? '取消编辑身份' : '编辑该成员身份（角色）'}
                       >
-                        以此身份体验
+                        {editingMemberId === m.id ? <X size={14} /> : <Pencil size={14} />}
+                        {editingMemberId === m.id ? '取消' : '编辑身份'}
                       </button>
                     )}
                     {canManage && m.role !== 'owner' && (
-                      <button className="member-remove" onClick={() => void removeMember(m.id)}>移除</button>
+                      <button className="member-action" onClick={() => void removeMember(m.id)} title="移除该成员">
+                        <Trash2 size={14} /> 移除
+                      </button>
                     )}
                   </li>
                 ))}

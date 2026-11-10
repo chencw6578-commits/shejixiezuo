@@ -1037,7 +1037,18 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 6px; padding: 4px 6px; font-size: 12px; cursor: pointer;
 }
 .member-role:disabled { opacity: 0.5; cursor: not-allowed; }
-.member-row .ghost-btn { padding: 4px 10px; font-size: 12px; }
+/* 成员行操作按钮：无边框 + 图标 + 文字，编辑与移除同色；移除不再用危险红 */
+.member-row .role-badge { flex: 0 0 auto; }
+.member-action {
+  display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+  padding: 4px 10px; font-size: 12px; white-space: nowrap;
+  color: var(--text); background: transparent; border: 0; border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.member-action svg { flex: 0 0 auto; }
+.home-shell .member-action:hover { background: #eef1f5; color: var(--text); }
+.member-action.is-active { color: var(--accent); background: rgba(108, 76, 241, 0.08); }
+.home-shell .member-action.is-active:hover { background: rgba(108, 76, 241, 0.14); }
 .readonly-tag {
   display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 10px;
   font-size: 12px; background: rgba(122, 125, 138, 0.14); color: var(--text-dim);
