@@ -1218,13 +1218,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   color: var(--text-dim); font-size: 11px; padding: 0 5px; border-radius: 8px;
   background: rgba(17, 24, 39, 0.06);
 }
-/* 编组线框：圆角细线框包住成员画板，点击选中整组，拖入时高亮 */
+/* 编组容器：透明描边只保留点击/拖放命中区，不显示线框（用户要求不要描边） */
 .pcanvas-group-box {
-  position: absolute; border: 1px dashed rgba(108, 76, 241, 0.45);
+  position: absolute; border: 1px solid transparent;
   border-radius: 12px; background: rgba(108, 76, 241, 0.05);
-  cursor: pointer; transition: border-color 0.12s, background 0.12s;
+  cursor: pointer; transition: background 0.12s;
 }
-.pcanvas-group-box:hover { border-color: rgba(108, 76, 241, 0.75); background: rgba(108, 76, 241, 0.08); }
+.pcanvas-group-box:hover { background: rgba(108, 76, 241, 0.08); }
 .pcanvas-group-box.is-droptarget {
   border-color: var(--accent); border-style: solid;
   background: rgba(108, 76, 241, 0.16);
@@ -1305,11 +1305,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(108, 76, 241, 0.28);
 }
 .pcanvas-group-box {
-  border-color: rgba(108, 76, 241, 0.4);
   background: rgba(108, 76, 241, 0.055);
 }
 .pcanvas-group-box:hover {
-  border-color: rgba(108, 76, 241, 0.7);
   background: rgba(108, 76, 241, 0.09);
 }
 .pcanvas-band-count { background: var(--accent-soft); color: var(--accent); }
@@ -1393,12 +1391,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .canvas-container.is-dark-canvas .pcanvas-label-sep { color: #c7cbd3; }
 .canvas-container.is-dark-canvas .pcanvas-band-name { color: #f3f4f6; }
 .canvas-container.is-dark-canvas .pcanvas-group-box {
-  border-color: rgba(180, 165, 255, 0.55);
   background: rgba(108, 76, 241, 0.16);
 }
 .canvas-container.is-dark-canvas .pcanvas-group-box:hover,
 .canvas-container.is-dark-canvas .pcanvas-group-box.is-droptarget {
-  border-color: #a896ff;
   background: rgba(108, 76, 241, 0.26);
 }
 .canvas-container.is-dark-canvas .pcanvas-band-count { background: rgba(255, 255, 255, 0.16); color: #f3f4f6; }
