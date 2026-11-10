@@ -199,7 +199,9 @@ export default function HomePage() {
     api
       .listImportTokens(activeTeam)
       .then((rows) => setTokens(Array.isArray(rows) ? rows : []))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      // 后台加载失败（如体验协作者身份时令牌列表返回 403）不弹全局错误条，
+      // 避免权限说明常驻在项目 / 团队成员页。
+      .catch(() => setTokens([]));
   }, [activeTeam]);
 
   useEffect(() => {
