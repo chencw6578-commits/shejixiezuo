@@ -114,8 +114,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 .avatar-menu { position: relative; margin-left: auto; }
 .avatar-menu summary {
-  list-style: none; display: flex; align-items: center; gap: 8px;
-  cursor: pointer; padding: 4px 6px 4px 4px; border-radius: 999px;
+  list-style: none; display: flex; align-items: center;
+  cursor: pointer; padding: 4px; border-radius: 999px;
 }
 .avatar-menu summary::-webkit-details-marker { display: none; }
 .avatar-menu summary:hover { background: var(--bg-elevated); }
@@ -126,11 +126,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   font-size: 13px; font-weight: 600;
 }
 .avatar-dot.big { width: 38px; height: 38px; font-size: 16px; }
-.avatar-name {
-  font-size: 13px; max-width: 180px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
-}
-.avatar-menu .caret { color: var(--text-dim); font-size: 10px; }
 .avatar-pop {
   position: absolute; right: 0; top: calc(100% + 6px); width: 260px; z-index: 40;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
@@ -198,7 +193,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .auth-foot { text-align: center; margin-top: 14px; font-size: 12px; }
 .auth-foot a { color: var(--accent); text-decoration: none; }
 @media (max-width: 640px) {
-  .avatar-name, .avatar-menu .caret { display: none; }
   .topbar-crumb { font-size: 12px; }
 }
 .home-sidebar {

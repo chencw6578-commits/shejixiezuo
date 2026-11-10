@@ -672,8 +672,6 @@ export default function HomePage() {
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
             <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
-            <span className="avatar-name">{authUser?.email ?? (identity ? identity.email : '所有者')}</span>
-            <span className="caret"><ChevronDown /></span>
           </summary>
           <div className="avatar-pop">
             <div className="avatar-pop-head">
