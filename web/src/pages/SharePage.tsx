@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, type SharedFrame, type SharedProject } from '../api';
-import { Folder, Share2, X } from '../components/icons';
+import { X } from '../components/icons';
 
 /**
  * 公开只读分享页（/share/:token）。
@@ -44,8 +44,6 @@ export default function SharePage() {
   return (
     <div className="share-page">
       <header className="topbar share-topbar">
-        <h1><Folder /> {data?.project.name ?? '项目分享'}</h1>
-        <span className="share-badge"><Share2 /> 只读分享 · 无需登录</span>
         <span className="spacer" />
         {data && <span className="crumb">{data.frames.length} 个画板</span>}
       </header>
