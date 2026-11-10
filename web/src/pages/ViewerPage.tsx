@@ -659,7 +659,7 @@ export default function ViewerPage() {
           )}
         </button>
         <details className="export-menu">
-          <summary className="primary-link"><Download /> 批量切图</summary>
+          <summary><Download /> 批量切图</summary>
           <div className="export-menu-pop">
             <button disabled={!!zipBusy} onClick={() => void doExportZip('presets')}>
               {zipBusy === 'presets' ? '导出中…' : '按设计标记导出 zip'}

@@ -682,7 +682,16 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 /* ---------- 批量切图菜单 ---------- */
 .export-menu { position: relative; }
-.export-menu summary { list-style: none; }
+/* summary 与顶栏胶囊按钮（如「评论」）完全同款：全局 button 样式的等价实现 */
+.export-menu summary {
+  list-style: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; color: var(--text); background: var(--bg-panel);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: 6px 14px; cursor: pointer; user-select: none;
+}
+.export-menu summary:hover { background: var(--bg-hover); }
+.export-menu[open] summary { background: var(--bg-hover); }
 .export-menu summary::-webkit-details-marker { display: none; }
 .export-menu-pop {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
@@ -1299,7 +1308,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar h1, .team-crumb, .primary-link, .comment-toggle, .icon-btn, .upload-btn, .back {
   display: inline-flex; align-items: center; gap: 5px;
 }
-.topbar h1 svg, .team-crumb svg, .primary-link svg, .comment-toggle svg, .upload-btn svg {
+.topbar h1 svg, .team-crumb svg, .primary-link svg, .comment-toggle svg, .upload-btn svg, .export-menu summary svg {
   flex: none; color: var(--text-dim);
 }
 .primary-link svg, .comment-toggle.is-active svg { color: var(--accent); }
