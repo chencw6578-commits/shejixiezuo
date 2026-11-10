@@ -127,6 +127,8 @@ export default function ProjectCanvasPage() {
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
   const panRef = useRef<{ x: number; y: number } | null>(null);
+  // 左键在空白处按下 = 平移（拖动生效；未移动的单击仍是取消选择）
+  const leftPanRef = useRef(false);
   const dragMovedRef = useRef(false);
   // 空格按住 = 平移模式（Figma 式）：光标变抓手，松开后才允许点击画板
   const [spacePan, setSpacePan] = useState(false);
@@ -1460,7 +1462,7 @@ export default function ProjectCanvasPage() {
     };
   };
 
-  /** 空白处按下：准备框选（Shift 追加） */
+  /** Shift+左键空白拖拽：框选（追加选中） */
   const beginMarquee = (e: React.PointerEvent) => {
     const el = containerRef.current;
     if (!el || readOnly || e.button !== 0) return;
@@ -1699,7 +1701,7 @@ export default function ProjectCanvasPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomCenter, ctxMenu, selectedFrames, removeFrames, updatePositions, savePositions, recordPositions, doUndo, doRedo]);
 
-  // 指针交互：拖动画板 / 框选 / 平移（空格或中键），按 zoom 换算世界位移
+  // 指针交互：拖动画板 / Shift 框选 / 平移（左键、空格或中键），按 zoom 换算世界位移
   useEffect(() => {
     const worldPoint = (clientX: number, clientY: number, rect: DOMRect) => {
       const z = zoomRef.current;
@@ -1785,6 +1787,11 @@ export default function ProjectCanvasPage() {
       setGuides(g);
     };
     const up = () => {
+      // 左键平移松开：拖动了=平移结束；没拖动=空白单击，取消选择
+      if (leftPanRef.current) {
+        leftPanRef.current = false;
+        if (!dragMovedRef.current) setSelectedFrames(new Set());
+      }
       panRef.current = null;
       const gd = groupDragRef.current;
       if (gd) {
@@ -2207,14 +2214,24 @@ export default function ProjectCanvasPage() {
           ref={containerRef}
           style={bg.style}
           onPointerDown={(e) => {
-            // 空格 / 中键平移；否则左键空白处开始框选
+            // 空格 / 中键平移；左键空白处：Shift=框选，普通按下=平移（拖动生效）
             if (e.button === 1 || (e.button === 0 && spaceRef.current)) {
               e.preventDefault();
               panRef.current = { x: e.clientX, y: e.clientY };
               dragMovedRef.current = false;
               return;
             }
-            if (e.button === 0) beginMarquee(e);
+            if (e.button !== 0) return;
+            // 只处理真正的空白处：画板/编组/缩放条上的按下冒泡到容器时直接忽略
+            if ((e.target as HTMLElement).closest('.pcanvas-frame, .pcanvas-group-box, .pcanvas-group-band, .zoombar')) return;
+            if (e.shiftKey) {
+              beginMarquee(e);
+              return;
+            }
+            e.preventDefault();
+            panRef.current = { x: e.clientX, y: e.clientY };
+            dragMovedRef.current = false;
+            leftPanRef.current = true;
           }}
           onContextMenu={(e) => {
             // 画板自身已 stopPropagation；这里只处理「框选后在空白处右键」，
