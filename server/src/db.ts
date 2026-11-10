@@ -205,6 +205,16 @@ CREATE INDEX IF NOT EXISTS idx_assets_file ON assets(file_id);
 -- 旧库升级：历史切图均为服务端近似渲染
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'render';
 CREATE INDEX IF NOT EXISTS idx_assets_slice ON assets(file_id, node_id, format, scale, source);
+
+-- 公开只读分享：库里只存「分享记录」，链接由服务端用 AUTH_SECRET 做 HMAC 签发，
+-- 明文 token 不落库；删除这条记录即可让已发出的链接立即失效。
+CREATE TABLE IF NOT EXISTS project_shares (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id  UUID NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+  created_by  TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_project_shares_project ON project_shares(project_id);
 `;
 
 let initialized: Promise<void> | null = null;

@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam } from '../api';
 import type { FileDetail, ProjectFrameRow, ProjectPageRow } from '../types';
-import { DeviceOptionGroups, findDevice } from '../viewer/devices';
+import { findDevice } from '../viewer/devices';
 import { useDialogs } from '../components/Dialogs';
 import { canvasBgStyle, useCanvasBg } from '../canvasBg';
 import CanvasBgPicker from '../components/CanvasBgPicker';
@@ -13,15 +13,16 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
+  ExternalLink,
   Folder,
   FolderMinus,
   FileText,
   Maximize,
-  Menu,
   Minus,
   Plus,
+  Share2,
   Trash2,
-  Upload,
   Users,
   X,
 } from '../components/icons';
@@ -178,6 +179,68 @@ export default function ProjectCanvasPage() {
     setPanState({ x, y });
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // ---------- 公开只读分享：顶栏按钮 → 生成/复制/关闭免登录链接 ----------
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareState, setShareState] = useState<{ active: boolean; url: string | null }>({ active: false, url: null });
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const toggleShare = () => {
+    const next = !shareOpen;
+    setShareOpen(next);
+    setShareCopied(false);
+    setShareError('');
+    if (next && projectId) {
+      api.shareStatus(projectId)
+        .then(setShareState)
+        .catch((e) => setShareError(e instanceof Error ? e.message : '读取分享状态失败'));
+    }
+  };
+  const enableShare = async () => {
+    if (!projectId || shareBusy) return;
+    setShareBusy(true);
+    setShareError('');
+    try {
+      setShareState(await api.enableShare(projectId));
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : '生成分享链接失败');
+    } finally {
+      setShareBusy(false);
+    }
+  };
+  const disableShare = async () => {
+    if (!projectId || shareBusy) return;
+    setShareBusy(true);
+    setShareError('');
+    try {
+      setShareState(await api.disableShare(projectId));
+      setShareCopied(false);
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : '关闭分享失败');
+    } finally {
+      setShareBusy(false);
+    }
+  };
+  const copyShare = async () => {
+    if (!shareState.url) return;
+    const full = `${window.location.origin}${shareState.url}`;
+    try {
+      await navigator.clipboard.writeText(full);
+    } catch {
+      // 非安全上下文 / 没有剪贴板权限时退回选中复制，输入框本身也可手动复制
+      const el = document.createElement('textarea');
+      el.value = full;
+      el.style.position = 'fixed';
+      el.style.opacity = '0';
+      document.body.appendChild(el);
+      el.select();
+      try { document.execCommand('copy'); } catch { /* 忽略 */ }
+      el.remove();
+    }
+    setShareCopied(true);
+  };
+
   // 导入面板
   const [importOpen, setImportOpen] = useState(false);
   const [url, setUrl] = useState('');
@@ -1908,162 +1971,54 @@ export default function ProjectCanvasPage() {
         {parsing > 0 && <span className="status status-wait status-pulse">解析中 {parsing}</span>}
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
-        <button
-          className="icon-btn mobile-only"
-          onClick={() => setDrawer(drawer === 'left' ? 'none' : 'left')}
-          title="画板列表"
-          aria-label="画板列表"
-        >
-          <Menu />
-        </button>
-        {!readOnly && (
-          <details className="export-menu" open={importOpen} onToggle={(e) => setImportOpen((e.target as HTMLDetailsElement).open)}>
-            <summary className="primary-link"><Plus /> 导入设计稿</summary>
-          <div className="export-menu-pop import-panel">
-            <div className="import-mode-tabs" role="tablist" aria-label="导入方式">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={importMode === 'url'}
-                className={importMode === 'url' ? 'is-active' : ''}
-                onClick={() => { setImportMode('url'); setError(''); }}
-              >
-                Figma 链接
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={importMode === 'json'}
-                className={importMode === 'json' ? 'is-active' : ''}
-                onClick={() => { setImportMode('json'); setError(''); }}
-              >
-                Figma 插件 JSON
-              </button>
-            </div>
-            {importMode === 'url' && (
-            <form className="import-box" onSubmit={submit}>
-              <input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://www.figma.com/design/xxxxx/文件名"
-              />
-              <button
-                type="submit"
-                disabled={busy || !url.trim() || (figmaConfigured === false && !personalToken.trim())}
-              >
-                {busy ? '导入中…' : '导入'}
-              </button>
-              {busy && (
-                <p className="import-progress">
-                  正在读取 Figma 节点…已等待 {busySec}s
-                  {busySec >= 20 ? '（大文件节点较多，仍在请求中）' : ''}
-                </p>
-              )}
-              {figmaConfigured === false && !personalToken.trim() && (
-                <p className="import-hint">
-                  服务端未配置统一令牌：请展开「高级选项」填入你的个人 Figma 令牌后再导入。
-                </p>
-              )}
-              <details
-                className="import-advanced"
-                open={advancedOpen}
-                onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
-              >
-                <summary>高级选项</summary>
-                <p className="import-advanced-tip">
-                  仅当文件不是公开可查看时需要：用你自己的个人令牌（需 file_content:read 权限）。令牌只用于本次导入，不会保存到浏览器。
-                </p>
-                <input
-                  value={personalToken}
-                  onChange={(e) => setPersonalToken(e.target.value)}
-                  placeholder="figd_…（个人 Figma 令牌）"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </details>
-              {error && <p className="import-error">{error}</p>}
-            </form>
-            )}
-            {importMode === 'json' && (
-            <form className="import-box import-json-box" onSubmit={submitJson}>
-              <textarea
-                className="import-json-text"
-                value={jsonText}
-                onChange={(e) => { setJsonText(e.target.value); setJsonFileName(''); }}
-                placeholder="粘贴 Figma 插件导出的 JSON（不调用 Figma 接口，不受限流影响）"
-                spellCheck={false}
-                aria-label="Figma 插件导出的 JSON"
-              />
-              <div className="import-json-actions">
-                <input
-                  ref={jsonFileRef}
-                  type="file"
-                  accept=".json,application/json"
-                  hidden
-                  onChange={onJsonFile}
-                />
-                <button
-                  type="button"
-                  className="upload-btn"
-                  disabled={jsonBusy}
-                  onClick={() => jsonFileRef.current?.click()}
-                >
-                  <Upload /> 选择 .json 文件
-                </button>
-                <button type="submit" disabled={jsonBusy || !jsonText.trim()}>
-                  {jsonBusy ? '导入中…' : '导入 JSON'}
+        <div className="share-wrap">
+          <button
+            type="button"
+            className={`icon-btn share-btn${shareOpen ? ' is-active' : ''}`}
+            onClick={toggleShare}
+            title="分享项目（拿到链接的人无需登录即可查看）"
+            aria-label="分享项目"
+            aria-expanded={shareOpen}
+          >
+            <Share2 /> <span>分享</span>
+          </button>
+          {shareOpen && (
+            <div className="share-popover">
+              <div className="share-popover-head">
+                <strong>分享项目</strong>
+                <button type="button" className="share-pop-close" onClick={() => setShareOpen(false)} aria-label="关闭">
+                  <X />
                 </button>
               </div>
-              {jsonFileName && <p className="import-hint">已读取文件：{jsonFileName}</p>}
-              {jsonBusy && <p className="import-progress">正在解析并写入节点…</p>}
-              {error && <p className="import-error">{error}</p>}
-            </form>
-            )}
-            <input ref={fileInputRef} type="file" accept=".sketch,.psd" hidden onChange={onUpload} />
-            <button className="upload-btn" disabled={!!uploading} onClick={() => fileInputRef.current?.click()}>
-              {uploading ? uploading : (<><Upload /> 上传 Sketch / PSD 文件</>)}
-            </button>
-            <div className="paste-device-row">
-              <label className="dim small" htmlFor="paste-device">粘贴图片的画板尺寸</label>
-              <select
-                id="paste-device"
-                value={pasteDeviceId}
-                onChange={(e) => pickPasteDevice(e.target.value)}
-                title="选择设备后，粘贴导入的图片画板将按该设备尺寸规范创建（图片按填充裁切）"
-              >
-                <option value="">自动（按图片原始尺寸）</option>
-                {DeviceOptionGroups()}
-              </select>
+              <p className="share-pop-tip">拿到链接的人无需登录即可查看全部画板，仅可查看、不能编辑。</p>
+              {shareError && <p className="share-pop-error">{shareError}</p>}
+              {shareState.active && shareState.url ? (
+                <>
+                  <div className="share-link-row">
+                    <input
+                      readOnly
+                      value={`${window.location.origin}${shareState.url}`}
+                      onFocus={(e) => e.currentTarget.select()}
+                      aria-label="分享链接"
+                    />
+                    <button type="button" className="share-copy-btn" onClick={() => void copyShare()}>
+                      {shareCopied ? <Check /> : <Copy />} {shareCopied ? '已复制' : '复制'}
+                    </button>
+                  </div>
+                  <div className="share-pop-actions">
+                    <a href={shareState.url} target="_blank" rel="noreferrer">新标签打开 <ExternalLink /></a>
+                    <button type="button" onClick={() => void disableShare()} disabled={shareBusy}>关闭分享</button>
+                  </div>
+                </>
+              ) : (
+                <button type="button" className="share-enable-btn" onClick={() => void enableShare()} disabled={shareBusy}>
+                  {shareBusy ? '生成中…' : '生成分享链接'}
+                </button>
+              )}
             </div>
-            <div className="file-list">
-              <h2>项目内设计稿</h2>
-              {files.length === 0 && <p className="empty">还没有设计稿，先导入或上传一份</p>}
-              <ul>
-                {files.map((f) => {
-                  const st = STATUS_LABEL[f.status] ?? { text: f.status, cls: '' };
-                  return (
-                    <li key={f.id}>
-                      <Link to={`/files/${f.id}`} className="file-card">
-                        <span className="file-name">{f.name}</span>
-                        <span className="file-meta">
-                          {(SOURCE_TAG[f.source ?? 'figma'] ?? '') && (
-                            <em className="source-tag">{SOURCE_TAG[f.source ?? 'figma']}</em>
-                          )}
-                          {f.frame_count ?? 0} 个画板
-                        </span>
-                      </Link>
-                      <span className={`status ${st.cls} ${f.status === 'processing' || f.status === 'pending' ? 'status-pulse' : ''}`}>
-                        {st.text}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </div>
-          </details>
-        )}
-        <span className="dim zoom-label">{Math.round(zoom * 100)}%</span>
+          )}
+        </div>
+
       </header>
 
       <div className="viewer-body">
@@ -2282,7 +2237,7 @@ export default function ProjectCanvasPage() {
         {frames.length === 0 ? (
           <div className="pcanvas-empty">
             <p>还没有可展示的画板</p>
-            <p className="dim">点击右上角「＋ 导入设计稿」，导入 Figma 链接或上传 Sketch / PSD</p>
+            <p className="dim">在页面内粘贴（Ctrl/⌘ + V）图片或 Figma 图层即可导入画板</p>
           </div>
         ) : (
           <div

@@ -8,6 +8,29 @@ export interface ProjectCoverFrame {
   height: number;
 }
 
+/** 公开只读分享：登录态的开关状态 */
+export interface ShareState {
+  active: boolean;
+  url: string | null;
+}
+
+/** 公开只读分享页：后端只返回展示所需的白名单字段 */
+export interface SharedFrame {
+  id: string;
+  file_id: string;
+  name: string;
+  file_name: string;
+  page_name: string | null;
+  width: number;
+  height: number;
+  thumb_url: string | null;
+}
+
+export interface SharedProject {
+  project: { id: string; name: string };
+  frames: SharedFrame[];
+}
+
 export interface Member {
   id: string;
   team_id: string;
@@ -375,6 +398,17 @@ export const api = {
   listProjectFrames: (projectId: string) =>
     request<{ frames: ProjectFrameRow[]; pages: ProjectPageRow[] }>(`/api/projects/${projectId}/frames`),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
+
+  // ---------- 公开只读分享 ----------
+  shareStatus: (projectId: string) =>
+    request<ShareState>(`/api/share/projects/${projectId}`),
+  enableShare: (projectId: string) =>
+    request<ShareState>(`/api/share/projects/${projectId}`, { method: 'POST' }),
+  disableShare: (projectId: string) =>
+    request<ShareState>(`/api/share/projects/${projectId}`, { method: 'DELETE' }),
+  /** 公开接口：不需要登录，token 直接写在路径里 */
+  getSharedProject: (token: string) =>
+    request<SharedProject>(`/api/share/${encodeURIComponent(token)}`),
 
   getFile: (id: string) => request<FileDetail>(`/api/files/${id}`),
 

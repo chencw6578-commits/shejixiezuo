@@ -699,7 +699,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 @media (max-width: 820px) {
   .mobile-only { display: inline-flex; }
-  .zoom-label { display: none; }
   .topbar h1 { max-width: 30vw; font-size: 14px; }
   .topbar .crumb { display: none; }
   .back { font-size: 12px; }
@@ -1506,4 +1505,125 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 /* 只有单张 cover 的兜底分支同样不裁切 */
 .project-cover > img.project-cover-single {
   width: 100%; height: 100%; object-fit: contain; object-position: center; display: block;
+}
+
+/* ===== 顶栏「分享」按钮与弹窗 ===== */
+.share-wrap { position: relative; flex: none; }
+.share-btn {
+  gap: 6px; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--bg-panel);
+  color: var(--text); cursor: pointer; font-size: var(--fs-body);
+}
+.share-btn svg { color: var(--accent); }
+.share-btn:hover, .share-btn.is-active { border-color: var(--accent); background: var(--accent-soft-2); }
+.share-popover {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 80;
+  width: 360px; padding: 14px; border-radius: var(--radius);
+  border: 1px solid var(--border-strong); background: var(--bg-panel);
+  box-shadow: var(--shadow-pop); text-align: left;
+}
+.share-popover-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+.share-pop-close {
+  display: inline-flex; padding: 2px; border: 0; background: transparent;
+  color: var(--text-dim); cursor: pointer;
+}
+.share-pop-close:hover { color: var(--text); }
+.share-pop-tip { margin-top: 8px; font-size: 12px; line-height: 1.6; color: var(--text-dim); }
+.share-pop-error { margin-top: 8px; font-size: 12px; color: var(--err); }
+.share-link-row { display: flex; gap: 6px; margin-top: 12px; }
+.share-link-row input {
+  flex: 1; min-width: 0; padding: 7px 9px; font-size: 12px; color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 7px; background: var(--bg-elevated);
+}
+.share-copy-btn, .share-enable-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: none;
+  padding: 7px 11px; border-radius: 7px; border: 1px solid var(--brand-600);
+  background: var(--brand-600); color: #fff; font-size: 12px; cursor: pointer;
+}
+.share-copy-btn:hover, .share-enable-btn:hover { background: var(--brand-700); border-color: var(--brand-700); }
+.share-copy-btn:disabled, .share-enable-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.share-enable-btn { width: 100%; margin-top: 12px; padding: 9px 12px; font-size: 13px; }
+.share-pop-actions {
+  display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12px;
+}
+.share-pop-actions a {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--accent); text-decoration: none;
+}
+.share-pop-actions a:hover { text-decoration: underline; }
+.share-pop-actions button {
+  border: 0; background: transparent; color: var(--text-dim);
+  cursor: pointer; font-size: 12px; padding: 2px 0;
+}
+.share-pop-actions button:hover { color: var(--text); }
+
+/* ===== 公开只读分享页（/share/:token） ===== */
+.share-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.share-topbar { position: sticky; top: 0; z-index: 20; }
+.share-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
+  border-radius: var(--radius-pill); background: var(--accent-soft);
+  color: var(--brand-700); font-size: 12px; font-weight: 500;
+}
+.share-main { width: 100%; max-width: 1400px; margin: 0 auto; padding: 28px 32px 48px; }
+.share-head { margin-bottom: 18px; }
+.share-head h2 { font-size: 18px; font-weight: 600; }
+.share-head p { margin-top: 4px; font-size: 12px; color: var(--text-dim); }
+.share-state { text-align: center; padding: 80px 20px; font-size: 14px; }
+.share-state h2 { font-size: 18px; margin-bottom: 8px; }
+.share-state p { font-size: 13px; line-height: 1.8; color: var(--text-dim); }
+.share-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; }
+.share-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  background: var(--bg-panel); box-shadow: var(--shadow-card);
+  cursor: zoom-in; color: var(--text);
+}
+.share-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-pop); }
+.share-card-cover {
+  display: flex; align-items: center; justify-content: center;
+  height: 180px; overflow: hidden; border-radius: 10px;
+  background:
+    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%),
+    linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%);
+  background-color: #f7f8fa; background-size: 16px 16px; background-position: 0 0, 8px 8px;
+}
+.share-card-cover img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.share-card-fallback {
+  padding: 10px; font-size: 13px; color: var(--text-dim);
+  text-align: center; word-break: break-all;
+}
+.share-card-name {
+  font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-card-meta {
+  font-size: 11px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-lightbox {
+  position: fixed; inset: 0; z-index: 100; background: rgba(17, 24, 39, 0.62);
+  display: flex; align-items: center; justify-content: center; padding: 32px;
+}
+.share-lightbox-inner {
+  width: min(1100px, 100%); max-height: 100%; display: flex; flex-direction: column;
+  background: var(--bg-panel); border-radius: var(--radius); box-shadow: var(--shadow-pop); overflow: hidden;
+}
+.share-lightbox-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.share-lightbox-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-lightbox-title span { margin-left: 8px; font-size: 12px; color: var(--text-dim); }
+.share-lightbox-body {
+  flex: 1; min-height: 260px; max-height: calc(100vh - 140px); overflow: auto;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated); padding: 20px;
+}
+.share-lightbox-body img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.share-lightbox-fallback { text-align: center; color: var(--text-dim); font-size: 13px; }
+.share-lightbox-fallback p:first-child { font-size: 16px; color: var(--text); margin-bottom: 8px; }
+@media (max-width: 820px) {
+  .share-btn span { display: none; }
+  .share-popover { width: min(360px, calc(100vw - 24px)); }
+  .share-main { padding: 20px 16px 40px; }
 }
