@@ -177,18 +177,25 @@ export const api = {
     }),
 
   // ---------- 团队邀请 ----------
-  /** 生成邀请（owner/admin）：返回邀请链接（明文 token 仅此一次） */
-  inviteMember: (teamId: string, email: string, role: 'admin' | 'collaborator') =>
-    request<{ id: string; email: string; role: string; expires_at: string; inviteUrl: string }>(
+  /** 链接邀请（owner/admin）：生成不绑定邮箱的邀请链接（明文 token 仅此一次），7 天内可多人使用 */
+  createInviteLink: (teamId: string, role: 'admin' | 'collaborator') =>
+    request<{ id: string; role: string; expires_at: string; inviteUrl: string }>(
       `/api/teams/${teamId}/invites`,
-      { method: 'POST', body: JSON.stringify({ email, role }) }
+      { method: 'POST', body: JSON.stringify({ mode: 'link', role }) }
     ),
 
-  /** 邀请落地页信息（公开） */
-  inviteInfo: (token: string) =>
-    request<{ teamName: string; email: string; role: string }>(`/api/invites/info?token=${encodeURIComponent(token)}`),
+  /** 邮箱邀请（owner/admin）：把邮箱直接加入团队成员，不发邮件不需要对方接受 */
+  addMemberByEmail: (teamId: string, email: string, role: 'admin' | 'collaborator') =>
+    request<{ mode: 'email'; member: { id: string; name: string; email: string; role: string; created_at: string } }>(
+      `/api/teams/${teamId}/invites`,
+      { method: 'POST', body: JSON.stringify({ mode: 'email', email, role }) }
+    ),
 
-  /** 接受邀请（需登录且邮箱一致） */
+  /** 邀请落地页信息（公开）；链接邀请时 email 为 null */
+  inviteInfo: (token: string) =>
+    request<{ teamName: string; email: string | null; role: string }>(`/api/invites/info?token=${encodeURIComponent(token)}`),
+
+  /** 接受邀请（需登录；链接邀请任何登录用户可接受，邮箱邀请须邮箱一致） */
   acceptInvite: (token: string) =>
     request<{ ok: boolean; teamId: string; teamName: string; role: string }>('/api/invites/accept', {
       method: 'POST',

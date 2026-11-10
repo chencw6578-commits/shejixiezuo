@@ -9,7 +9,7 @@ export default function InvitePage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
 
-  const [info, setInfo] = useState<{ teamName: string; email: string; role: string } | null>(null);
+  const [info, setInfo] = useState<{ teamName: string; email: string | null; role: string } | null>(null);
   const [me, setMe] = useState<AuthUser | null>(null);
   const [checked, setChecked] = useState(false);
   const [loadErr, setLoadErr] = useState('');
@@ -80,12 +80,20 @@ export default function InvitePage() {
               </span>
               身份加入
             </p>
-            <p style={{ fontSize: 13, color: '#6b7280' }}>被邀请邮箱：{info.email}</p>
+            <p style={{ fontSize: 13, color: '#6b7280' }}>
+              {info.email ? <>被邀请邮箱：{info.email}</> : <>这是一条链接邀请，任何登录账号点击接受后即可加入</>}
+            </p>
 
             {!me ? (
               <>
                 <p style={{ fontSize: 13, color: '#92400e', margin: '14px 0 6px' }}>
-                  请先注册 / 登录 <b>{info.email}</b> 账号，再回到本页面接受邀请
+                  {info.email ? (
+                    <>
+                      请先注册 / 登录 <b>{info.email}</b> 账号，再回到本页面接受邀请
+                    </>
+                  ) : (
+                    <>请先登录 / 注册账号，再回到本页面接受邀请</>
+                  )}
                 </p>
                 <Link
                   className="auth-submit"
@@ -96,7 +104,7 @@ export default function InvitePage() {
                   去登录 / 注册
                 </Link>
               </>
-            ) : me.email !== info.email ? (
+            ) : info.email && me.email !== info.email ? (
               <>
                 <p style={{ fontSize: 13, color: '#92400e', margin: '14px 0 6px' }}>
                   当前登录的是 <b>{me.email}</b>，与本邀请不符

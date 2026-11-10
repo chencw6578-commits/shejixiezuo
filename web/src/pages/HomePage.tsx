@@ -96,10 +96,11 @@ export default function HomePage() {
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
-  // 最近一次生成的邀请：链接只展示给操作者，可复制
-  const [inviteLink, setInviteLink] = useState<{ email: string; role: string; inviteUrl: string } | null>(null);
-  // 邀请成员走弹窗（替代原内联表单）
+  // 最近一次生成的邀请链接：只展示给操作者，可复制（链接邀请不绑定邮箱，可多人使用）
+  const [inviteLink, setInviteLink] = useState<{ email?: string | null; role: string; inviteUrl: string } | null>(null);
+  // 邀请成员走弹窗（替代原内联表单）：link=复制邀请链接 / email=邮箱直接加入
   const [inviteModal, setInviteModal] = useState(false);
+  const [inviteMode, setInviteMode] = useState<'link' | 'email'>('link');
   const [inviteCopied, setInviteCopied] = useState(false);
   // 成员角色默认只读；点「编辑身份」后该行才临时进入可编辑态
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
@@ -451,17 +452,38 @@ export default function HomePage() {
     }
   };
 
-  const addMember = async (e: React.FormEvent) => {
+  /** 链接邀请：选好身份生成邀请链接，复制发给别人，对方点击链接登录后即可加入 */
+  const createInviteLink = async () => {
+    if (busy || !activeTeam) return;
+    setBusy(true);
+    setError('');
+    try {
+      const inv = await api.createInviteLink(activeTeam, memberRole);
+      setInviteLink(inv);
+      setInviteCopied(false);
+      setInviteModal(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 邮箱邀请：直接把邮箱加入团队成员，不发链接、不需要对方接受 */
+  const addMemberByEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberEmail.trim() || busy || !activeTeam) return;
     setBusy(true);
     setError('');
     try {
-      // 邀请流：生成一次性邀请链接（7 天有效），并发送邀请邮件；对方接受后才入队
-      const inv = await api.inviteMember(activeTeam, memberEmail.trim(), memberRole);
-      setInviteLink(inv);
+      await api.addMemberByEmail(activeTeam, memberEmail.trim(), memberRole);
       setMemberEmail('');
       setInviteModal(false);
+      // 直接刷新成员列表，新成员立即可见
+      api
+        .listMembers(activeTeam)
+        .then((rows) => setMembers(Array.isArray(rows) ? rows : []))
+        .catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -755,7 +777,9 @@ export default function HomePage() {
               {canManage && inviteLink && (
                 <div className="invite-link-box">
                   <span className="small dim">
-                    已向 <b>{inviteLink.email}</b> 发送邀请邮件（{ROLE_LABEL[inviteLink.role] ?? inviteLink.role}，7 天有效）。对方也可通过链接接受：
+                    {inviteLink.email
+                      ? `已向 ${inviteLink.email} 发送邀请邮件（${ROLE_LABEL[inviteLink.role] ?? inviteLink.role}，7 天有效）。对方也可通过链接接受：`
+                      : `已生成邀请链接（${ROLE_LABEL[inviteLink.role] ?? inviteLink.role}，7 天内有效，可发给多人）。对方点击链接登录后即可加入：`}
                   </span>
                   <code className="invite-link-url">{inviteLink.inviteUrl}</code>
                   <button type="button" onClick={() => void copyInviteLink()}>
@@ -828,7 +852,7 @@ export default function HomePage() {
       </main>
       </div>
 
-      {/* 邀请成员弹窗：邮箱 + 角色，成功后弹窗关闭并在列表上方回显邀请链接 */}
+      {/* 邀请成员弹窗：链接邀请（复制链接发给别人）/ 邮箱邀请（直接加入成员） */}
       {inviteModal && (
         <div className="dlg-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setInviteModal(false); }}>
           <form
@@ -837,37 +861,85 @@ export default function HomePage() {
             aria-modal="true"
             aria-label="邀请成员"
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setInviteModal(false); } }}
-            onSubmit={addMember}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (inviteMode === 'email') void addMemberByEmail(e);
+              else void createInviteLink();
+            }}
           >
             <h2 className="dlg-title">邀请成员 · {activeTeamName}</h2>
-            <label className="dlg-label" htmlFor="invite-email">被邀请邮箱</label>
-            <input
-              id="invite-email"
-              className="dlg-input"
-              type="email"
-              value={memberEmail}
-              autoFocus
-              onChange={(e) => setMemberEmail(e.target.value)}
-              placeholder="如 design@company.com"
-              maxLength={120}
-            />
-            <label className="dlg-label" htmlFor="invite-role">角色权限</label>
-            <select
-              id="invite-role"
-              className="dlg-input"
-              value={memberRole}
-              onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')}
-            >
-              <option value="collaborator">协作 · 只读</option>
-              <option value="admin">管理员（可编辑、可邀请）</option>
-            </select>
-            <p className="dim small">将生成一次性邀请链接（7 天有效）并发送邀请邮件，对方接受后才加入团队。</p>
-            <div className="dlg-actions">
-              <button type="button" className="dlg-btn" onClick={() => setInviteModal(false)}>取消</button>
-              <button type="submit" className="dlg-btn is-primary" disabled={busy || !memberEmail.trim()}>
-                {busy ? '发送中…' : '发送邀请'}
+            <div className="invite-mode-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={inviteMode === 'link'}
+                className={inviteMode === 'link' ? 'is-active' : ''}
+                onClick={() => setInviteMode('link')}
+              >
+                链接邀请
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={inviteMode === 'email'}
+                className={inviteMode === 'email' ? 'is-active' : ''}
+                onClick={() => setInviteMode('email')}
+              >
+                邮箱邀请
               </button>
             </div>
+            {inviteMode === 'link' ? (
+              <>
+                <label className="dlg-label" htmlFor="invite-role-link">邀请身份</label>
+                <select
+                  id="invite-role-link"
+                  className="dlg-input"
+                  value={memberRole}
+                  onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')}
+                >
+                  <option value="collaborator">协作 · 只读</option>
+                  <option value="admin">管理员（可编辑、可邀请）</option>
+                </select>
+                <p className="dim small">复制链接发给对方，对方点击链接登录后即以此身份加入团队；链接 7 天内有效，可发给多人。</p>
+                <div className="dlg-actions">
+                  <button type="button" className="dlg-btn" onClick={() => setInviteModal(false)}>取消</button>
+                  <button type="submit" className="dlg-btn is-primary" disabled={busy}>
+                    {busy ? '生成中…' : '生成邀请链接'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="dlg-label" htmlFor="invite-email">对方邮箱</label>
+                <input
+                  id="invite-email"
+                  className="dlg-input"
+                  type="email"
+                  value={memberEmail}
+                  autoFocus
+                  onChange={(e) => setMemberEmail(e.target.value)}
+                  placeholder="如 design@company.com"
+                  maxLength={120}
+                />
+                <label className="dlg-label" htmlFor="invite-role-email">邀请身份</label>
+                <select
+                  id="invite-role-email"
+                  className="dlg-input"
+                  value={memberRole}
+                  onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')}
+                >
+                  <option value="collaborator">协作 · 只读</option>
+                  <option value="admin">管理员（可编辑、可邀请）</option>
+                </select>
+                <p className="dim small">对方将被直接加入团队成员并立即生效，不发送邮件、不需要对方点击链接接受。</p>
+                <div className="dlg-actions">
+                  <button type="button" className="dlg-btn" onClick={() => setInviteModal(false)}>取消</button>
+                  <button type="submit" className="dlg-btn is-primary" disabled={busy || !memberEmail.trim()}>
+                    {busy ? '添加中…' : '直接加入成员'}
+                  </button>
+                </div>
+              </>
+            )}
           </form>
         </div>
       )}

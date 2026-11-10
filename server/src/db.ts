@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS team_invites (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_team_invites_hash ON team_invites(token_hash);
+-- 链接邀请不绑定邮箱（email 为 NULL，7 天内可多人使用）
+ALTER TABLE team_invites ALTER COLUMN email DROP NOT NULL;
 
 -- 团队成员（邮箱邀请 + 三级角色：owner=所有者 / admin=管理员 / collaborator=协作者只读）
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email TEXT;

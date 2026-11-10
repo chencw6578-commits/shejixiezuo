@@ -1019,6 +1019,21 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: flex; flex-direction: column; gap: 8px;
 }
 .dlg.invite-modal .dlg-label { margin-top: 4px; }
+/* 邀请方式切换（链接邀请 / 邮箱邀请） */
+.invite-mode-tabs {
+  display: flex; gap: 4px; margin: 2px 0 4px;
+  background: var(--bg-subtle, #f3f4f6); border-radius: 10px; padding: 3px;
+}
+.invite-mode-tabs button {
+  flex: 1; border: none; background: transparent; cursor: pointer;
+  font-size: 13px; color: var(--text-dim); padding: 7px 0; border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.invite-mode-tabs button:hover { color: var(--text); }
+.invite-mode-tabs button.is-active {
+  background: var(--bg-panel); color: var(--accent); font-weight: 600;
+  box-shadow: 0 1px 4px rgba(29, 33, 41, 0.10);
+}
 .project-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .project-card {
   width: 100%; padding: 16px; text-align: left;

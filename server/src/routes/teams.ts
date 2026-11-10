@@ -193,36 +193,44 @@ teamsRouter.delete('/:id/members/:memberId', async (req, res) => {
 
 // ---------- 团队邀请 ----------
 
-/** 生成邀请（owner/admin）：一次性 token + 邮件；返回邀请链接供前端展示/复制 */
+/**
+ * 创建邀请（owner/admin），两种模式：
+ * - mode='link'：不需要邮箱，生成不绑定邮箱的邀请链接（7 天内可多人使用），返回 inviteUrl
+ * - mode='email'：把邮箱直接写入团队成员表（不发邮件、不生成链接），返回 member
+ */
 teamsRouter.post('/:id/invites', async (req, res) => {
   if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的团队 ID' });
   const denied = await manageGuard(req.params.id, req);
   if (denied) return res.status(403).json({ error: denied });
 
-  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   const role = req.body?.role === 'admin' ? 'admin' : 'collaborator';
-  if (!email) return res.status(400).json({ error: '请输入被邀请邮箱' });
-  if (!EMAIL_RE.test(email) || email.length > 120) return res.status(400).json({ error: '邮箱格式不正确' });
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const mode = req.body?.mode === 'link' || !email ? 'link' : 'email';
 
   const t = await pool.query<{ id: string }>('SELECT id FROM teams WHERE id = $1', [req.params.id]);
   if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
-
-  const member = await pool.query('SELECT 1 FROM team_members WHERE team_id = $1 AND email = $2', [
-    req.params.id,
-    email,
-  ]);
-  if (member.rows[0]) return res.status(409).json({ error: '该邮箱已在团队中，无需邀请' });
-
-  const pending = await pool.query(
-    `SELECT 1 FROM team_invites WHERE team_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at > now()`,
-    [req.params.id, email]
-  );
-  if (pending.rows[0]) return res.status(409).json({ error: '该邮箱已有待接受的邀请，无需重复发送' });
-
   const session = getSessionUser(req);
+
+  if (mode === 'email') {
+    // 邮箱邀请：直接加入成员，不需要对方接受
+    if (!EMAIL_RE.test(email) || email.length > 120) return res.status(400).json({ error: '邮箱格式不正确' });
+    const dup = await pool.query('SELECT 1 FROM team_members WHERE team_id = $1 AND email = $2', [
+      req.params.id,
+      email,
+    ]);
+    if (dup.rows[0]) return res.status(409).json({ error: '该邮箱已在团队中，无需重复添加' });
+    const { rows } = await pool.query(
+      `INSERT INTO team_members (team_id, name, email, role) VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, role, created_at`,
+      [req.params.id, email.split('@')[0].slice(0, 30), email, role]
+    );
+    return res.status(201).json({ mode, member: rows[0] });
+  }
+
+  // 链接邀请：不绑定邮箱，7 天内可多人使用
   const { token, invite } = await createTeamInvite(
     req.params.id,
-    email,
+    null,
     role,
     session?.email ?? '',
     emailConfig.webBaseUrl
