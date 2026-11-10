@@ -4,6 +4,7 @@ import { api, getIdentity, setIdentity, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member } from '../api';
 import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
+import RowMenu from '../components/RowMenu';
 
 interface Team {
   id: string;
@@ -267,6 +268,27 @@ export default function HomePage() {
     }
   };
 
+  /** 删除项目：服务端级联删除其中设计稿 / 画板 / 图层，不可逆，先站内确认 */
+  const removeProject = async (p: Project) => {
+    const ok = await dialogs.confirm({
+      title: '删除项目',
+      message: (
+        <>
+          确定删除「{p.name}」吗？项目内的 <b>{p.file_count} 份设计稿</b>及其画板、标注数据会一并删除，且不可恢复。
+        </>
+      ),
+      confirmText: '删除项目',
+    });
+    if (!ok) return;
+    try {
+      await api.deleteProject(p.id);
+      loadProjects();
+      loadTeams();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   /** 创建团队：弹出与「新建项目」一致的弹窗（Enter 确认 / Esc 取消 / 点遮罩关闭） */
   const openCreateTeam = () => {
     setSwitchOpen(false);
@@ -510,7 +532,7 @@ export default function HomePage() {
               <ul className="project-grid">
                 {projects.length === 0 && <p className="empty">暂无项目</p>}
                 {projects.map((p) => (
-                  <li key={p.id}>
+                  <li key={p.id} className="project-card-wrap">
                     <button className="file-card project-card" onClick={() => navigate(`/projects/${p.id}`)}>
                       <span className="project-cover">
                         {p.cover ? (
@@ -527,6 +549,14 @@ export default function HomePage() {
                           : new Date(p.created_at).toLocaleString('zh-CN')}
                       </span>
                     </button>
+                    {/* 与卡片按钮同级，避免 button 嵌套 button；点击 ⋯ 不会进入项目 */}
+                    {canManage && (
+                      <RowMenu
+                        className="project-card-menu"
+                        label={p.name}
+                        items={[{ label: '删除项目', onClick: () => void removeProject(p) }]}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>

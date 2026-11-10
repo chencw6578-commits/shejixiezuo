@@ -1469,3 +1469,15 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   color: var(--accent); font: inherit; font-size: 13px; cursor: pointer;
 }
 .auth-link-btn:hover { text-decoration: underline; }
+
+/* ---------- 项目卡片「更多操作」（⋯）：与卡片 button 同级，绝对定位到右下角 ---------- */
+.project-card-wrap { position: relative; }
+/* 给右下角按钮预留空间，避免压住「最后更新」文字 */
+.project-card-wrap .file-meta { padding-right: 36px; }
+.project-card-wrap > .project-card-menu.row-menu {
+  position: absolute; right: 6px; bottom: 6px;
+}
+/* 常显但低调；hover / 键盘聚焦时完全显现，沿用侧栏 ⋯ 的交互 */
+.project-card-wrap > .project-card-menu .row-menu-btn { opacity: 0.5; }
+.project-card-wrap:hover > .project-card-menu .row-menu-btn,
+.project-card-wrap:focus-within > .project-card-menu .row-menu-btn { opacity: 1; }
