@@ -526,6 +526,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   --canvas-bg: #f4f5f7;
   --canvas-dot: rgba(17, 24, 39, 0.07);
   flex: 1; overflow: hidden; position: relative;
+  /* 画布严禁文本选择：拖拽平移一旦拉出选区，下一次按住拖动会把选区
+     发起原生拖放（dragstart），Chrome 随即 pointercancel 掐断平移监听——
+     表现为"画布拖到一定位置就再也移不动"。设计工具画布统一禁选。 */
+  user-select: none;
   background-color: var(--canvas-bg);
   background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px);
   background-size: 24px 24px;

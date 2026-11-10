@@ -313,6 +313,9 @@ export default function Canvas({
   }, [zoomCenter]);
 
   // 空白处拖拽平移（拖动超过阈值后吞掉随后的 click，避免拖完误选图层）
+  // move/up 必须挂 window：挂容器时，平移中 pan 状态每帧变化重建热区层，
+  // Chrome 会合成 pointerleave/pointercancel（clientY=0）打断监听——
+  // 表现为拖到一半画布"卡住"，每次只动一小段（项目画布页同为 window 级监听，无此问题）。
   const dragMovedRef = useRef(false);
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -320,8 +323,6 @@ export default function Canvas({
     dragMovedRef.current = false;
   };
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
     const move = (e: PointerEvent) => {
       if (!panRef.current) return;
       const dx = e.clientX - panRef.current.x;
@@ -332,13 +333,13 @@ export default function Canvas({
       panRef.current = { x: e.clientX, y: e.clientY };
     };
     const up = () => (panRef.current = null);
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointerleave', up);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
     return () => {
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointerleave', up);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     };
   }, []);
 
@@ -513,6 +514,7 @@ export default function Canvas({
       ref={containerRef}
       style={bg.style}
       onPointerDown={onPointerDown}
+      onDragStart={(e) => e.preventDefault()}
       onMouseDown={(e) => {
         // 点击空白取消选中（拖拽后不触发）；空格平移模式下不触发；评论模式下改为在点击处起草评论
         if (spaceRef.current) return;
