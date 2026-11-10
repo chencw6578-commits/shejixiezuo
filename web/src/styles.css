@@ -897,8 +897,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-team-switch .team-switch-name { flex: none; max-width: 200px; font-size: 13px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
-/* 团队成员 */
-.member-list { list-style: none; max-width: 560px; }
+/* 团队成员：当前身份条 / 邀请表单 / 邀请结果 / 成员列表统一 720px，右边界对齐 */
+.member-list { list-style: none; max-width: 720px; }
 .member-row {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -910,7 +910,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   font-weight: 600; flex-shrink: 0;
 }
 .member-name { font-weight: 600; }
-.member-row .small { margin-left: auto; font-size: 12px; }
+/* 加入时间与邮箱左对齐（原 margin-left:auto 会把它推到右侧） */
+.member-row .small { font-size: 12px; }
 .member-remove { padding: 4px 10px; font-size: 12px; color: var(--err); background: transparent; }
 .member-remove:hover { border-color: var(--err); background: rgba(242, 72, 34, 0.08); }
 /* 团队设置：导入令牌 */
@@ -969,7 +970,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .members-empty { text-align: center; margin-top: 80px; }
 .members-empty p { font-size: 15px; }
 .members-empty .dim { margin-top: 8px; }
-.inline-form { display: flex; gap: 8px; margin-bottom: 16px; }
+.inline-form { display: flex; gap: 8px; margin-bottom: 16px; max-width: 720px; }
 .inline-form .compact-input { width: 220px; }
 .inline-form .compact-input.grow { flex: 1; }
 .project-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
@@ -1025,7 +1026,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .identity-bar {
   display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-  font-size: 13px; color: var(--text-dim); max-width: 560px;
+  font-size: 13px; color: var(--text-dim); max-width: 720px;
 }
 .identity-bar strong { color: var(--text); }
 .identity-bar .ghost-btn { margin-left: auto; }
@@ -1034,7 +1035,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
 .role-badge.owner { background: #fef3c7; color: #92400e; }
 .member-name .role-badge { margin-left: 8px; vertical-align: 1px; }
-.member-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 信息区吃掉剩余空间，把角色下拉/体验/移除推到右侧形成整齐的操作列 */
+.member-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .member-info .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-role {
   background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
@@ -1441,7 +1443,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 
 /* ---------- 邀请链接提示框 ---------- */
 .invite-link-box {
-  margin-top: 10px; padding: 10px 12px;
+  margin-top: 10px; padding: 10px 12px; max-width: 720px;
   background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
   display: flex; flex-direction: column; gap: 6px; font-size: 13px;
 }
