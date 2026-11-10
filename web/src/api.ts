@@ -354,7 +354,7 @@ export const api = {
 
   // ---- 团队 ----
   listTeams: () =>
-    request<{ id: string; name: string; project_count: string; created_at: string }[]>('/api/teams'),
+    request<{ id: string; name: string; project_count: string; created_at: string; my_role: 'owner' | 'admin' | 'collaborator' | null }[]>('/api/teams'),
   createTeam: (name: string) =>
     request<{ id: string; name: string }>('/api/teams', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteTeam: (id: string) => request<{ deleted: boolean }>(`/api/teams/${id}`, { method: 'DELETE' }),

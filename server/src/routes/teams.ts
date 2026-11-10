@@ -34,16 +34,20 @@ teamsRouter.post('/', async (req, res) => {
   res.json(team);
 });
 
-/** 团队列表（含项目数） */
-teamsRouter.get('/', async (_req, res) => {
+/** 团队列表（含项目数 + 当前登录用户在该团队的角色，未登录时 my_role 为 null） */
+teamsRouter.get('/', async (req, res) => {
+  const session = getSessionUser(req);
   const { rows } = await pool.query(
     `SELECT t.id, t.name, t.created_at,
-            count(p.id) AS project_count
+            count(p.id) AS project_count,
+            tm.role AS my_role
      FROM teams t
      LEFT JOIN projects p ON p.team_id = t.id
-     GROUP BY t.id
+     LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.email = $1::text
+     GROUP BY t.id, tm.role
      ORDER BY t.created_at DESC
-     LIMIT 200`
+     LIMIT 200`,
+    [session?.email ?? null]
   );
   res.json(rows);
 });

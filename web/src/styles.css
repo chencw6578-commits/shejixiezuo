@@ -882,16 +882,28 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 8px; padding: 6px; z-index: 60;
   box-shadow: 0 12px 32px rgba(29, 33, 41, 0.12);
 }
+/* 团队行：名字按钮 + 右侧「⋯ 更多」操作菜单（按身份显示移交/删除/退出） */
+.team-switch-row {
+  display: flex; align-items: center; position: relative; border-radius: 6px;
+}
+.team-switch-row.active .team-switch-item {
+  background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600;
+}
 .team-switch-item {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left;
   padding: 8px 10px; background: transparent; border-color: transparent; font-size: 13px;
 }
+.team-switch-row .team-switch-item.active { background: transparent; }
 .team-switch-item:hover { background: var(--bg-panel); }
-.team-switch-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
 .team-switch-item em {
   margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-dim);
   background: rgba(29, 33, 41, 0.06); border-radius: 999px; padding: 1px 8px;
 }
+.team-row-menu { flex: none; display: inline-flex; align-items: center; }
+.team-row-menu .row-menu-btn { opacity: 0.45; }
+.team-switch-row:hover .team-row-menu .row-menu-btn,
+.team-row-menu .row-menu-btn:focus,
+.team-row-menu .row-menu-btn[aria-expanded="true"] { opacity: 1; }
 .team-switch-create {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   margin-top: 6px; padding: 7px 10px; border: 0; border-top: 1px dashed var(--border);
@@ -899,20 +911,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 0 0 8px 8px; cursor: pointer; width: 100%;
 }
 .team-switch-create:hover { background: var(--bg-hover); outline: none; }
-/* 团队操作区：按身份显示 移交所有权/删除团队（所有者） 或 退出团队（管理员/协作者） */
-.team-ops { border-top: 1px dashed var(--border); padding: 4px 6px 6px; }
-.team-ops-title {
-  font-size: 11px; color: var(--text-dim);
-  padding: 4px 6px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.team-op {
-  display: flex; align-items: center; gap: 7px;
-  width: 100%; padding: 7px 8px; margin-top: 2px;
-  border: 0; border-radius: 6px; background: transparent;
-  color: var(--text); font: inherit; font-size: 13px; cursor: pointer; text-align: left;
-}
-.team-op svg { width: 14px; height: 14px; color: var(--text-dim); flex: none; }
-.team-op:hover { background: var(--bg-hover); outline: none; }
 /* 顶栏团队切换器（取代顶部面包屑与侧栏团队下拉） */
 .topbar-team-switch { padding: 0; }
 .topbar-team-switch summary { padding: 4px 8px; border-radius: 8px; gap: 6px; }
@@ -1374,7 +1372,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch .logo { display: inline-flex; color: var(--accent); }
 .team-switch .caret, .avatar-menu .caret { display: inline-flex; color: var(--text-dim); }
 .team-switch .caret svg, .avatar-menu .caret svg { width: 14px; height: 14px; }
-.team-switch-item { display: inline-flex; align-items: center; gap: 7px; }
+.team-switch-item { display: flex; align-items: center; gap: 7px; }
 .team-switch-item svg { color: var(--text-dim); flex: none; }
 .side-nav-item { display: inline-flex; align-items: center; gap: 8px; }
 .side-nav-item svg { color: var(--text-dim); flex: none; }
