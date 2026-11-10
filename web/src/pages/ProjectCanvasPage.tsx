@@ -122,6 +122,11 @@ export default function ProjectCanvasPage() {
   const [openPages, setOpenPages] = useState<Set<string>>(new Set());
   const knownPagesRef = useRef<Set<string>>(new Set());
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
+  // ---------- 画板名称标签：双击行内重命名 ----------
+  const [renamingFrameId, setRenamingFrameId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renamingIdRef = useRef<string | null>(null);
+  const renameValueRef = useRef('');
   const [error, setError] = useState('');
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
@@ -417,6 +422,29 @@ export default function ProjectCanvasPage() {
           : null,
     });
     if (!name || name === f.name) return;
+    try {
+      await api.renameFrame(f.file_id, f.id, name);
+      recordHistory({
+        label: '重命名画板',
+        undo: () => api.renameFrame(f.file_id, f.id, f.name).then(() => undefined),
+        redo: () => api.renameFrame(f.file_id, f.id, name).then(() => undefined),
+      });
+      load();
+    } catch (e) {
+      void dialogs.alert(e instanceof Error ? e.message : '重命名失败');
+    }
+  };
+  /** 画板名称标签行内编辑：Enter / 失焦提交，Esc 取消；与对话框重命名共用同名校验与历史记录。 */
+  const commitFrameRename = async (f: ProjectFrameRow) => {
+    if (renamingIdRef.current !== f.id) return;
+    renamingIdRef.current = null;
+    setRenamingFrameId(null);
+    const name = renameValueRef.current.trim();
+    if (!name || name === f.name) return;
+    if (frames.some((x) => x.id !== f.id && x.file_id === f.file_id && x.name === name)) {
+      void dialogs.alert(`该设计稿内已存在同名画板「${name}」`);
+      return;
+    }
     try {
       await api.renameFrame(f.file_id, f.id, name);
       recordHistory({
@@ -2370,6 +2398,52 @@ export default function ProjectCanvasPage() {
                 onContextMenu={(e) => openCtxMenu(f, e)}
                 onDoubleClick={(e) => onFrameDoubleClick(f, e)}
               >
+                {renamingFrameId === f.id ? (
+                  <input
+                    className="pcanvas-frame-name-input"
+                    value={renameValue}
+                    autoFocus
+                    maxLength={100}
+                    style={{ fontSize: Math.max(11, Math.round(12 * Math.min(zoom, 2))) }}
+                    onChange={(e) => {
+                      setRenameValue(e.target.value);
+                      renameValueRef.current = e.target.value;
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void commitFrameRename(f);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        renamingIdRef.current = null;
+                        setRenamingFrameId(null);
+                      }
+                    }}
+                    onBlur={() => void commitFrameRename(f)}
+                  />
+                ) : (
+                  <span
+                    className="pcanvas-frame-name"
+                    style={{ fontSize: Math.max(11, Math.round(12 * Math.min(zoom, 2))) }}
+                    title={`${f.name}（双击重命名）`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (readOnly) return;
+                      renamingIdRef.current = f.id;
+                      renameValueRef.current = f.name;
+                      setRenameValue(f.name);
+                      setRenamingFrameId(f.id);
+                    }}
+                  >
+                    {f.name}
+                  </span>
+                )}
                 {dropFrameHint?.frameId === f.id && (
                   <span className={`pcanvas-drop-line is-${dropFrameHint.position}`} />
                 )}
