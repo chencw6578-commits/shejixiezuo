@@ -760,7 +760,7 @@ export default function HomePage() {
               </ul>
             </>
           ) : activeTeamName ? (
-            <>
+            <div className="team-view">
               <header className="view-header">
                 <div className="view-header-row">
                   <div className="view-header-text">
@@ -827,7 +827,7 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-            </>
+            </div>
           ) : (
             <div className="members-empty">
               <p>请先在左上角下拉框选择一个团队</p>

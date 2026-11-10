@@ -944,8 +944,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-team-switch .team-switch-name { flex: none; max-width: 200px; font-size: 13px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
-/* 团队成员：邀请表单 / 邀请结果 / 成员列表统一 1120px，右边界对齐 */
-.member-list { list-style: none; max-width: 1120px; }
+/* 团队成员：整页视图限宽 1120px 并左右居中（头部按钮右缘 = 列表右缘） */
+.team-view { max-width: 1120px; margin: 0 auto; }
+/* 邀请表单 / 邀请结果 / 成员列表统一 1120px，右边界对齐 */
+.member-list { list-style: none; }
 .member-row {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
