@@ -5,7 +5,7 @@ import type { Unit } from '../unit';
 import { canvasBgStyle, useCanvasBg } from '../canvasBg';
 import CanvasBgPicker from '../components/CanvasBgPicker';
 import { metricToPx } from './textMetric';
-import { Maximize, Minus, Plus, Scissors } from '../components/icons';
+import { Maximize, Minus, Plus } from '../components/icons';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -379,7 +379,7 @@ export default function Canvas({
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const hovered = hoverId ? nodeById.get(hoverId) : undefined;
   // 有切图的图层：Figma/Sketch 导入时打了导出预设的节点，与「按设计标记导出 zip」同一口径。
-  // 画布右上角常显角标，让用户不 hover/选中也能一眼看出这里有切图可导出。
+  // 画布上用极浅虚线框轻提示（不遮挡内容），hover/选中时才有完整描边与尺寸徽标。
   const sliceNodes = useMemo(
     () => nodes.filter((n) => (n.props?.exportPresets?.length ?? 0) > 0),
     [nodes]
@@ -632,17 +632,18 @@ export default function Canvas({
           ))}
         </svg>
 
-        {/* 切图角标：有导出预设的图层右上角常显品牌色剪刀标记（pointer-events:none 不干扰热区） */}
+        {/* 切图区域轻提示：极浅虚线细框常显（不遮挡、不弹字），hover/选中时另有完整品牌色描边与尺寸徽标 */}
         {sliceNodes.map((n) => (
           <div
             key={`slice-${n.node_id}`}
-            className="slice-marker"
-            data-slice-marker={n.node_id}
+            className="slice-outline"
+            data-slice-outline={n.node_id}
             title={`切图：${n.name} · ${Math.round(n.width)}×${Math.round(n.height)} ${unit ?? ''}`}
-            style={{ left: (n.x + n.width) * zoom, top: n.y * zoom }}
-          >
-            <Scissors size={9} />
-          </div>
+            style={{
+              left: n.x * zoom, top: n.y * zoom,
+              width: n.width * zoom, height: n.height * zoom,
+            }}
+          />
         ))}
 
         {/* 只显示一个真实切图尺寸：内部 Vector 路径的 bbox 不再单独标注，

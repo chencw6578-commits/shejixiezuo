@@ -550,15 +550,14 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .badge-gap { background: var(--measure); }
 .badge-pad { background: var(--brand-600); color: #fff; }
 
-/* 切图角标：有导出预设的图层右上角，中心对齐到角点，白描边保证任意底色可见 */
-.slice-marker {
-  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
-  border-radius: 4px; background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.92), 0 1px 3px rgba(0, 0, 0, 0.25);
-  pointer-events: none; user-select: none; z-index: 6;
+/* 切图区域轻提示：极浅品牌色虚线细框常显，不遮挡内容、不干扰热区；
+   交互态（hover/选中）由 outline 系统提供完整品牌色实线与尺寸徽标 */
+.slice-outline {
+  position: absolute;
+  border: 1px dashed rgba(108, 76, 241, 0.30);
+  border-radius: 2px;
+  pointer-events: none; user-select: none; z-index: 5;
 }
-.slice-marker svg { stroke-width: 2.5; }
 
 .zoombar {
   /* 悬浮在画布左下角：绝对定位，避免 sticky 在非滚动容器里跑到顶部导致弹层超出视口 */
