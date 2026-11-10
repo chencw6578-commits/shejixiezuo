@@ -8,12 +8,19 @@ import { canvasBgStyle, useCanvasBg } from '../canvasBg';
 import CanvasBgPicker from '../components/CanvasBgPicker';
 import RowMenu from '../components/RowMenu';
 import {
-  AlignLeft,
+  AlignFrameBottom,
+  AlignFrameHCenter,
+  AlignFrameLeft,
+  AlignFrameRight,
+  AlignFrameTop,
+  AlignFrameVCenter,
   ArrowLeft,
   Check,
   ChevronDown,
   ChevronRight,
   Copy,
+  DistributeH,
+  DistributeV,
   ExternalLink,
   Folder,
   FolderMinus,
@@ -856,9 +863,10 @@ export default function ProjectCanvasPage() {
 
   // ---------- 对齐 / 等间距（以选区包围盒为基准，一次算一步历史） ----------
   const alignSelection = async (
-    kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom' | 'disth' | 'distv'
+    kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom' | 'disth' | 'distv',
+    idsArg?: string[]
   ) => {
-    const ids = ctxIds();
+    const ids = idsArg ?? ctxIds();
     if (ids.length < 2 || readOnlyRef.current) return;
     const items = ids
       .map((id) => {
@@ -921,6 +929,32 @@ export default function ProjectCanvasPage() {
     flashToast(`已${label}`);
     closeCtxMenu();
   };
+
+  // ---------- 多选浮动对齐工具条：选区包围盒上方浮现（类 Figma），readOnly 不显示 ----------
+  const alignBar = useMemo(() => {
+    if (readOnly || selectedFrames.size < 2) return null;
+    const items = [...selectedFrames]
+      .map((id) => {
+        const f = frames.find((x) => x.id === id);
+        const p = pos.get(id);
+        return f && p ? { id, x: p.x, y: p.y, w: f.width, h: f.height } : null;
+      })
+      .filter((it): it is { id: string; x: number; y: number; w: number; h: number } => !!it);
+    if (items.length < 2) return null;
+    const minX = Math.min(...items.map((i) => i.x));
+    const maxX = Math.max(...items.map((i) => i.x + i.w));
+    const minY = Math.min(...items.map((i) => i.y));
+    const maxY = Math.max(...items.map((i) => i.y + i.h));
+    const aboveTop = minY * zoom - 46;
+    // 选区太靠上放不下时，改到选区下方
+    const top = aboveTop >= 4 ? aboveTop : maxY * zoom + 8;
+    return {
+      ids: items.map((i) => i.id),
+      left: minX * zoom,
+      width: (maxX - minX) * zoom,
+      top,
+    };
+  }, [readOnly, selectedFrames, frames, pos, zoom]);
 
   // ---------- 右键菜单：轻量编组入口（默认界面不常驻任何工具条） ----------
   const ctxFrame = ctxMenu ? frameById.get(ctxMenu.frameId) : undefined;
@@ -2467,6 +2501,35 @@ export default function ProjectCanvasPage() {
                 )}
               </div>
             ))}
+            {alignBar && (
+              <div
+                className="pcanvas-alignbar"
+                style={{ left: alignBar.left, top: alignBar.top, width: Math.max(160, alignBar.width) }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <button title="左对齐" onClick={() => void alignSelection('left', alignBar.ids)}><AlignFrameLeft /></button>
+                <button title="水平居中对齐" onClick={() => void alignSelection('hcenter', alignBar.ids)}><AlignFrameHCenter /></button>
+                <button title="右对齐" onClick={() => void alignSelection('right', alignBar.ids)}><AlignFrameRight /></button>
+                <button title="顶部对齐" onClick={() => void alignSelection('top', alignBar.ids)}><AlignFrameTop /></button>
+                <button title="垂直居中对齐" onClick={() => void alignSelection('vcenter', alignBar.ids)}><AlignFrameVCenter /></button>
+                <button title="底部对齐" onClick={() => void alignSelection('bottom', alignBar.ids)}><AlignFrameBottom /></button>
+                <span className="pcanvas-alignbar-sep" />
+                <button
+                  title="水平等间距"
+                  disabled={alignBar.ids.length < 3}
+                  onClick={() => void alignSelection('disth', alignBar.ids)}
+                >
+                  <DistributeH />
+                </button>
+                <button
+                  title="垂直等间距"
+                  disabled={alignBar.ids.length < 3}
+                  onClick={() => void alignSelection('distv', alignBar.ids)}
+                >
+                  <DistributeV />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -2546,25 +2609,6 @@ export default function ProjectCanvasPage() {
                   <Check /> {pg.name}
                 </button>
               ))}
-            <div className="ctx-sep" />
-            <div className="ctx-sub">
-              <span className="ctx-sub-label"><AlignLeft /> 对齐 <ChevronRight /></span>
-              <div className="ctx-sub-menu">
-                <button onClick={() => void alignSelection('left')}>左对齐</button>
-                <button onClick={() => void alignSelection('hcenter')}>水平居中对齐</button>
-                <button onClick={() => void alignSelection('right')}>右对齐</button>
-                <button onClick={() => void alignSelection('top')}>顶部对齐</button>
-                <button onClick={() => void alignSelection('vcenter')}>垂直居中对齐</button>
-                <button onClick={() => void alignSelection('bottom')}>底部对齐</button>
-                <div className="ctx-sep" />
-                <button disabled={ctxIds().length < 3} onClick={() => void alignSelection('disth')}>
-                  水平等间距
-                </button>
-                <button disabled={ctxIds().length < 3} onClick={() => void alignSelection('distv')}>
-                  垂直等间距
-                </button>
-              </div>
-            </div>
             <div className="ctx-sep" />
             <button onClick={() => { setSelectedFrames(new Set()); closeCtxMenu(); }}><X /> 取消选中</button>
             <button

@@ -1327,20 +1327,23 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .badge-neighbor { background: var(--brand-600); color: #fff; }
 .device-screen { border-color: rgba(108, 76, 241, 0.55); background: rgba(108, 76, 241, 0.06); }
 .device-screen-label { text-shadow: none; }
-/* 右键菜单「对齐 ▸」子菜单 */
-.ctx-sub { position: relative; }
-.ctx-sub-label { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 8px; color: var(--text-dim); font-size: 12px; cursor: default; }
-.ctx-sub-label svg:last-child { margin-left: auto; }
-.ctx-sub-label:hover { background: var(--bg-hover); color: var(--text); }
-.ctx-sub-menu {
-  display: none; position: absolute; left: 100%; top: -6px; min-width: 168px;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: var(--shadow-pop); padding: 6px;
+/* 多选画板浮动对齐工具条（选区上方浮现，随平移移动、不随缩放变形） */
+.pcanvas-alignbar {
+  position: absolute; z-index: 7; height: 34px;
+  display: flex; align-items: center; justify-content: center; gap: 2px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-pop); padding: 0 6px;
+  pointer-events: auto;
 }
-.ctx-sub:hover .ctx-sub-menu,
-.ctx-sub:focus-within .ctx-sub-menu { display: block; }
-.ctx-sub-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 7px 10px; font-size: 12.5px; }
-.ctx-sub-menu button:hover { background: var(--accent-soft); color: var(--accent); }
+.pcanvas-alignbar button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 26px; padding: 0; border: 0; background: transparent;
+  border-radius: 6px; color: var(--text-dim); cursor: pointer;
+}
+.pcanvas-alignbar button svg { width: 16px; height: 16px; }
+.pcanvas-alignbar button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.pcanvas-alignbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pcanvas-alignbar-sep { width: 1px; height: 16px; background: var(--border-strong); margin: 0 3px; flex: none; }
 
 
 /* ===== 线性图标与画布底色（Lucide 风格图标 / 深浅底色适配） ===== */

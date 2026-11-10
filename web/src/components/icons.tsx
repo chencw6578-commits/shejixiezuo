@@ -206,6 +206,71 @@ export const AlignLeft = (p: IconProps) => (
   </Svg>
 );
 
+/** ---------- 画板对齐工具条图标（画板级对齐，非文本对齐） ---------- */
+export const AlignFrameLeft = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 3v18" />
+    <rect x="8" y="6" width="12" height="5" rx="1" />
+    <rect x="8" y="13" width="8" height="5" rx="1" />
+  </Svg>
+);
+
+export const AlignFrameHCenter = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3v18" />
+    <rect x="5" y="6" width="14" height="5" rx="1" />
+    <rect x="8" y="13" width="8" height="5" rx="1" />
+  </Svg>
+);
+
+export const AlignFrameRight = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 3v18" />
+    <rect x="4" y="6" width="12" height="5" rx="1" />
+    <rect x="8" y="13" width="8" height="5" rx="1" />
+  </Svg>
+);
+
+export const AlignFrameTop = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 4h18" />
+    <rect x="6" y="8" width="5" height="12" rx="1" />
+    <rect x="13" y="8" width="5" height="8" rx="1" />
+  </Svg>
+);
+
+export const AlignFrameVCenter = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 12h18" />
+    <rect x="6" y="5" width="5" height="14" rx="1" />
+    <rect x="13" y="8" width="5" height="8" rx="1" />
+  </Svg>
+);
+
+export const AlignFrameBottom = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 20h18" />
+    <rect x="6" y="4" width="5" height="12" rx="1" />
+    <rect x="13" y="8" width="5" height="8" rx="1" />
+  </Svg>
+);
+
+export const DistributeH = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="4" y="6" width="3" height="12" rx="1" />
+    <rect x="10.5" y="6" width="3" height="12" rx="1" />
+    <rect x="17" y="6" width="3" height="12" rx="1" />
+  </Svg>
+);
+
+export const DistributeV = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="6" y="4" width="12" height="3" rx="1" />
+    <rect x="6" y="10.5" width="12" height="3" rx="1" />
+    <rect x="6" y="17" width="12" height="3" rx="1" />
+  </Svg>
+);
+
 export const Mail = (p: IconProps) => (
   <Svg {...p}>
     <rect x="3" y="5" width="18" height="14" rx="2" />
