@@ -35,6 +35,8 @@ interface CtxMenuState {
 export default function ViewerPage() {
   const { fileId = '', frameId = '' } = useParams();
   const [file, setFile] = useState<{ name: string; project_id: string | null; team_id: string | null } | null>(null);
+  // 顶栏标题显示所属项目名称（无项目的设计稿回退为设计稿名）
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [data, setData] = useState<FrameDetail | null>(null);
   const [error, setError] = useState('');
@@ -178,6 +180,16 @@ export default function ViewerPage() {
       })
       .catch((e) => setError(e.message));
   }, [fileId, frameId]);
+
+  // 顶栏标题用项目名称：拿到 file 后按 project_id 查项目
+  useEffect(() => {
+    const pid = file?.project_id ?? null;
+    if (!pid) {
+      setProjectName(null);
+      return;
+    }
+    api.getProject(pid).then((p) => setProjectName(p.name)).catch(() => setProjectName(null));
+  }, [file?.project_id]);
 
   const refreshPages = async () => {
     const f = await api.getFile(fileId).catch(() => null);
@@ -641,7 +653,7 @@ export default function ViewerPage() {
         <button className="icon-btn" onClick={goBack} title="返回画布" aria-label="返回画布">
           <ArrowLeft />
         </button>
-        <h1><Folder /> {file?.name ?? '…'}</h1>
+        <h1><Folder /> {projectName ?? file?.name ?? '…'}</h1>
         <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
