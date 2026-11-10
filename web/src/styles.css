@@ -1062,7 +1062,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .project-card .file-name { font-size: 13.5px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 项目卡片封面：显示设计稿缩略图 */
 .project-cover {
-  display: block; height: 112px; margin: -12px -12px 10px;
+  display: block; height: 96px; margin: -12px -12px 8px;
   /* 卡片圆角 var(--radius-card)=18px，封面贴到边框内缘（-1px），圆角必须对齐内缘弧线，
      否则封面的浅色底会在四角盖住描边、看起来像描边断了 */
   border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
