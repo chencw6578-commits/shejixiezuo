@@ -198,7 +198,7 @@ export default function Canvas({
   const [canvasBg, pickCanvasBg] = useCanvasBg();
   const bg = canvasBgStyle(canvasBg);
   // 画板底图：插件导入时已经保存了 Figma 原生 exportAsync 的整板 PNG（含图片填充、图标、渐变）。
-  // 节点矢量层只是 CSS 近似，还原不了这些，因此默认展示原图，用户可主动切到「图层」看节点渲染。
+  // 节点矢量层只是 CSS 近似，还原不了这些，因此固定展示原图（无原图时回退到节点渲染）。
   const [renderMode, setRenderMode] = useState<'image' | 'vector'>('image');
 
   const setZoom = useCallback((z: number) => {
@@ -463,7 +463,7 @@ export default function Canvas({
   const hasNodes = nodes.length > 0;
   const hasThumb = !!frame.thumb_url;
   // 原图是导入时 Figma 原生导出的整板 PNG，与画板列表缩略图同一份文件，保真度最高。
-  // 无节点数据时无条件用原图；有节点时由用户选择（默认原图）。
+  // 无节点数据时无条件用原图；有节点时也固定用原图（图层模式按钮已按需求移除）。
   const showImage = hasThumb && (!hasNodes || renderMode === 'image');
   const showVector = hasNodes && !showImage;
   const modeBtn = (m: 'image' | 'vector', label: string, title: string) => (
@@ -745,7 +745,6 @@ export default function Canvas({
           <>
             <span aria-hidden="true" style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
             {modeBtn('image', '原图', '原图：与画板列表一致的 Figma 原生导出图，完整还原颜色/图标/图片')}
-            {modeBtn('vector', '图层', '图层：按节点数据 CSS 近似渲染（图片填充与矢量图标无法还原）')}
           </>
         )}
         <CanvasBgPicker token={canvasBg} onPick={pickCanvasBg} />
