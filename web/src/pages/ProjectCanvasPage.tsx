@@ -1469,8 +1469,19 @@ export default function ProjectCanvasPage() {
     };
   };
 
-  /** 抓组名/组框：整组平移（只改位置，不改编组归属） */
+  /** 抓组名/组框：横条上拖 = 整组平移（只改位置，不改编组归属）；组框空白底拖 = 平移画布 */
   const beginGroupDrag = (b: GroupBox, e: React.PointerEvent) => {
+    const inBand = !!(e.target as HTMLElement).closest('.pcanvas-group-band');
+    if (!inBand) {
+      // 编组线框的空白底（大片紫色区域，视觉上是"空画布"）：左键拖拽 = 平移画布
+      if (e.button !== 0 || spaceRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      panRef.current = { x: e.clientX, y: e.clientY };
+      dragMovedRef.current = false;
+      leftPanRef.current = true;
+      return;
+    }
     if (readOnly || e.button !== 0 || spaceRef.current || !b.frameIds.length) return;
     e.preventDefault();
     e.stopPropagation();
@@ -2344,7 +2355,7 @@ export default function ProjectCanvasPage() {
                         width: b.w * zoom,
                         height: b.h * zoom,
                       }}
-                      title={readOnly ? b.name : `${b.name} · 可把画板拖进这个编组`}
+                      title={readOnly ? b.name : `${b.name} · 可把画板拖进这个编组（空白处拖动 = 平移画布，拖顶部横条 = 移动整组）`}
                       data-group-name={b.name}
                       data-page-id={b.pageId ?? ''}
                       onClick={() => {
