@@ -240,12 +240,12 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .pcanvas-world { position: absolute; left: 0; top: 0; }
 .pcanvas-frame {
   position: absolute; cursor: grab;
-  box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.1), 0 8px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.1);
   background: #fff;
 }
 .pcanvas-frame:active { cursor: grabbing; }
 .pcanvas-frame:hover {
-  box-shadow: 0 0 0 2px var(--accent), 0 8px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 2px var(--accent);
   z-index: 3;
 }
 .pcanvas-frame .artboard-img { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; object-fit: cover; }
@@ -1044,9 +1044,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .project-card {
   width: 100%; padding: 16px; text-align: left;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: border-color 0.15s ease;
 }
-.project-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 16px rgba(29, 33, 41, 0.08); }
+.project-card:hover { border-color: var(--border-strong); }
 .project-card .file-name { font-size: 14px; margin-bottom: 6px; }
 /* 项目卡片封面：显示设计稿缩略图 */
 .project-cover {
@@ -1281,7 +1281,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .project-card {
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-card);
 }
 .zoombar {
   background: var(--bg-panel);
@@ -1302,11 +1301,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 14px;
   box-shadow: var(--shadow-pop);
 }
-.pcanvas-frame {
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05), 0 10px 30px rgba(17, 24, 39, 0.1);
-}
 .pcanvas-frame.is-selected {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(108, 76, 241, 0.28), 0 10px 30px rgba(17, 24, 39, 0.12);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(108, 76, 241, 0.28);
 }
 .pcanvas-group-box {
   border-color: rgba(108, 76, 241, 0.4);
