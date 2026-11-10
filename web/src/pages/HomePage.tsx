@@ -23,6 +23,21 @@ interface Project {
 
 type View = 'projects' | 'members';
 
+/** 头像单色：按账号标识稳定散列到一组纯色（同一账号每次一致，不同账号不同色） */
+const AVATAR_COLORS = [
+  '#6c4cf1', '#0d99ff', '#0e9384', '#12b76a',
+  '#f79009', '#f04438', '#ee46bc', '#175cd3',
+  '#7a5af8', '#dd2590', '#475467', '#0e7090',
+] as const;
+
+function avatarColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
 /** 角色显示名 */
 const ROLE_LABEL: Record<string, string> = {
   owner: '所有者',
@@ -358,6 +373,7 @@ export default function HomePage() {
   };
 
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
+  const avatarSeed = authUser?.email ?? identity?.email ?? '主';
 
   return (
     <div className="home-shell">
@@ -409,13 +425,13 @@ export default function HomePage() {
         </details>
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
-            <span className="avatar-dot">{(authUser?.email ?? identity?.email ?? '主').slice(0, 1).toUpperCase()}</span>
+            <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
             <span className="avatar-name">{authUser?.email ?? (identity ? identity.email : '所有者')}</span>
             <span className="caret"><ChevronDown /></span>
           </summary>
           <div className="avatar-pop">
             <div className="avatar-pop-head">
-              <span className="avatar-dot big">{(authUser?.email ?? identity?.email ?? '主').slice(0, 1).toUpperCase()}</span>
+              <span className="avatar-dot big" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
               <div className="avatar-pop-info">
                 <b>{authUser?.email ?? (identity ? identity.email : '所有者')}</b>
                 <div>
