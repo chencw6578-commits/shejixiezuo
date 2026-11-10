@@ -217,7 +217,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .side-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
 .side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
 .home-main { flex: 1; overflow-y: auto; }
-.home-main-inner { max-width: 1040px; margin: 0 auto; padding: 40px 36px 60px; }
+.home-main-inner { max-width: 1400px; margin: 0 auto; padding: 40px 36px 60px; }
 .view-header { margin-bottom: 20px; }
 .view-header h1 { font-size: 22px; }
 .view-header p { color: var(--text-dim); margin-top: 6px; }
@@ -897,8 +897,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-team-switch .team-switch-name { flex: none; max-width: 200px; font-size: 13px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
-/* 团队成员：当前身份条 / 邀请表单 / 邀请结果 / 成员列表统一 720px，右边界对齐 */
-.member-list { list-style: none; max-width: 720px; }
+/* 团队成员：当前身份条 / 邀请表单 / 邀请结果 / 成员列表统一 1120px，右边界对齐 */
+.member-list { list-style: none; max-width: 1120px; }
 .member-row {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -970,10 +970,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .members-empty { text-align: center; margin-top: 80px; }
 .members-empty p { font-size: 15px; }
 .members-empty .dim { margin-top: 8px; }
-.inline-form { display: flex; gap: 8px; margin-bottom: 16px; max-width: 720px; }
+.inline-form { display: flex; gap: 8px; margin-bottom: 16px; max-width: 1120px; }
 .inline-form .compact-input { width: 220px; }
 .inline-form .compact-input.grow { flex: 1; }
-.project-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.project-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .project-card {
   width: 100%; padding: 16px; text-align: left;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
@@ -983,7 +983,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .project-card .file-name { font-size: 14px; margin-bottom: 6px; }
 /* 项目卡片封面：显示设计稿缩略图 */
 .project-cover {
-  display: block; height: 130px; margin: -16px -16px 12px;
+  display: block; height: 160px; margin: -16px -16px 12px;
   border-radius: 10px 10px 0 0; overflow: hidden;
   background:
     linear-gradient(45deg, #eef1f5 25%, transparent 25%, transparent 75%, #eef1f5 75%),
@@ -1026,7 +1026,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .identity-bar {
   display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-  font-size: 13px; color: var(--text-dim); max-width: 720px;
+  font-size: 13px; color: var(--text-dim); max-width: 1120px;
 }
 .identity-bar strong { color: var(--text); }
 .identity-bar .ghost-btn { margin-left: auto; }
@@ -1443,7 +1443,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 
 /* ---------- 邀请链接提示框 ---------- */
 .invite-link-box {
-  margin-top: 10px; padding: 10px 12px; max-width: 720px;
+  margin-top: 10px; padding: 10px 12px; max-width: 1120px;
   background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
   display: flex; flex-direction: column; gap: 6px; font-size: 13px;
 }
