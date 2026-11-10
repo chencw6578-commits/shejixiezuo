@@ -17,7 +17,6 @@ import {
   ExternalLink,
   Folder,
   FolderMinus,
-  FileText,
   Maximize,
   Minus,
   Plus,
@@ -2105,7 +2104,7 @@ export default function ProjectCanvasPage() {
                           }
                         }}
                       >
-                        <FileText className="page-group-icon" size={13} />
+                        <Folder className="page-group-icon" size={14} />
                         {g.name}
                       </span>
                       <span className="page-count">{g.items.length}</span>
@@ -2188,7 +2187,7 @@ export default function ProjectCanvasPage() {
                         }
                       }}
                     >
-                      <FileText className="page-group-icon" size={13} />
+                      <Folder className="page-group-icon" size={14} />
                       未分组
                     </span>
                     <span className="page-count">{ungrouped.length}</span>
