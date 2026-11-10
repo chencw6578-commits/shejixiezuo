@@ -1057,12 +1057,14 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   width: 100%; padding: 16px; text-align: left;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
   transition: border-color 0.15s ease;
+  /* 整卡恒定 4:3（宽:高）：宽度由网格决定，高度 = 宽度 × 3/4 */
+  aspect-ratio: 4 / 3;
 }
 .project-card:hover { border-color: var(--border-strong); }
 .project-card .file-name { font-size: 14px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 项目卡片封面：显示设计稿缩略图 */
 .project-cover {
-  display: block; height: 160px; margin: -16px -16px 12px;
+  display: block; flex: 1 1 0; min-height: 0; margin: -16px -16px 12px;
   /* 卡片圆角 var(--radius-card)=18px，封面贴到边框内缘（-1px），圆角必须对齐内缘弧线，
      否则封面的浅色底会在四角盖住描边、看起来像描边断了 */
   border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
