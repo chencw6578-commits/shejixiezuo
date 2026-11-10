@@ -1481,3 +1481,32 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 .project-card-wrap > .project-card-menu .row-menu-btn { opacity: 0.5; }
 .project-card-wrap:hover > .project-card-menu .row-menu-btn,
 .project-card-wrap:focus-within > .project-card-menu .row-menu-btn { opacity: 1; }
+
+/* ---------- 项目封面：全部画板总览网格（替代「只裁一张画板」的旧封面） ---------- */
+.project-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 4px; padding: 8px;
+  width: 100%; height: 100%; box-sizing: border-box;
+}
+.project-cover-cell {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; min-height: 0; overflow: hidden; padding: 2px;
+  background: #fff; border: 1px solid rgba(29, 33, 41, 0.09); border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(29, 33, 41, 0.06);
+}
+/* 每张画板完整等比显示，不再 object-fit: cover 裁切 */
+.project-cover .project-cover-cell img {
+  width: 100%; height: 100%; object-fit: contain; object-position: center; display: block;
+}
+/* 缩略图资源缺失时的占位：白底 + 画板名 */
+.project-cover-cell-name {
+  font-size: 8px; line-height: 1.3; color: var(--text-dim);
+  text-align: center; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* 只有单张 cover 的兜底分支同样不裁切 */
+.project-cover > img.project-cover-single {
+  width: 100%; height: 100%; object-fit: contain; object-position: center; display: block;
+}

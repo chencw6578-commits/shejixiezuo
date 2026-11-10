@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, type AuthUser } from '../api';
-import type { Identity, ImportToken, Member } from '../api';
+import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
 import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 import RowMenu from '../components/RowMenu';
@@ -20,9 +20,36 @@ interface Project {
   last_file_at: string | null;
   created_at: string;
   cover: string | null;
+  cover_frames: ProjectCoverFrame[] | null;
 }
 
 type View = 'projects' | 'members';
+
+/** 项目封面：把项目内全部画板排成总览网格，而不是只显示第一张画板 */
+function ProjectCover({ frames }: { frames: ProjectCoverFrame[] }) {
+  return (
+    <span className="project-cover-grid">
+      {frames.slice(0, 10).map((f, i) => (
+        <CoverCell key={`${f.name}-${i}`} frame={f} />
+      ))}
+    </span>
+  );
+}
+
+/** 单个画板格子：缩略图加载失败时退回「白底 + 画板名」，封面不会变空 */
+function CoverCell({ frame }: { frame: ProjectCoverFrame }) {
+  const [failed, setFailed] = useState(false);
+  const showImg = !!frame.thumb_url && !failed;
+  return (
+    <span className="project-cover-cell" title={frame.name}>
+      {showImg ? (
+        <img src={frame.thumb_url!} alt={frame.name} loading="lazy" onError={() => setFailed(true)} />
+      ) : (
+        <span className="project-cover-cell-name">{frame.name}</span>
+      )}
+    </span>
+  );
+}
 
 /** 头像单色：按账号标识稳定散列到一组纯色（同一账号每次一致，不同账号不同色） */
 const AVATAR_COLORS = [
@@ -535,8 +562,10 @@ export default function HomePage() {
                   <li key={p.id} className="project-card-wrap">
                     <button className="file-card project-card" onClick={() => navigate(`/projects/${p.id}`)}>
                       <span className="project-cover">
-                        {p.cover ? (
-                          <img src={p.cover} alt={p.name} loading="lazy" />
+                        {p.cover_frames && p.cover_frames.length > 0 ? (
+                          <ProjectCover frames={p.cover_frames} />
+                        ) : p.cover ? (
+                          <img className="project-cover-single" src={p.cover} alt={p.name} loading="lazy" />
                         ) : (
                           <span className="project-cover-empty"><Folder /></span>
                         )}

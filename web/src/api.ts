@@ -1,5 +1,13 @@
 import type { ExportResult, FileDetail, FrameDetail, ProjectFrameRow, ProjectPageRow, SpecData } from './types';
 
+/** 项目卡片封面用：一张画板的缩略图与原始尺寸 */
+export interface ProjectCoverFrame {
+  name: string;
+  thumb_url: string | null;
+  width: number;
+  height: number;
+}
+
 export interface Member {
   id: string;
   team_id: string;
@@ -353,7 +361,7 @@ export const api = {
 
   // ---- 项目 ----
   listProjects: (teamId?: string) =>
-    request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null; cover: string | null }[]>(
+    request<{ id: string; name: string; file_count: string; created_at: string; last_file_at: string | null; cover: string | null; cover_frames: ProjectCoverFrame[] | null }[]>(
       `/api/projects${teamId ? `?teamId=${teamId}` : ''}`
     ),
   createProject: (name: string, teamId?: string) =>

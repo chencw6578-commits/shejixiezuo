@@ -24,7 +24,11 @@ projectsRouter.post('/', async (req, res) => {
   res.json(rows[0]);
 });
 
-/** 项目列表（?teamId= 按团队过滤；不传返回全部项目）。cover 取最新设计稿的第一张画板缩略图 */
+/**
+ * 项目列表（?teamId= 按团队过滤；不传返回全部项目）。
+ * cover 保留单张缩略图以兼容旧客户端；cover_frames 为项目内全部画板（最多 10 张），
+ * 供首页卡片渲染「整个项目的画板总览网格」，而非只显示第一张画板。
+ */
 projectsRouter.get('/', async (req, res) => {
   const { teamId } = req.query;
   const hasTeam = typeof teamId === 'string' && teamId;
@@ -36,7 +40,19 @@ projectsRouter.get('/', async (req, res) => {
              JOIN design_files df2 ON df2.id = fr.file_id
              WHERE df2.project_id = p.id AND df2.status = 'ready' AND fr.thumb_url IS NOT NULL
              ORDER BY df2.created_at DESC, fr.sort_order ASC, fr.id ASC
-             LIMIT 1) AS cover
+             LIMIT 1) AS cover,
+            (SELECT json_agg(s.j ORDER BY s.ord) FROM (
+               SELECT ROW_NUMBER() OVER (
+                        ORDER BY df3.created_at DESC, df3.id, fr2.sort_order, fr2.id
+                      ) AS ord,
+                      json_build_object(
+                        'name', fr2.name, 'thumb_url', fr2.thumb_url,
+                        'width', fr2.width, 'height', fr2.height
+                      ) AS j
+               FROM frames fr2
+               JOIN design_files df3 ON df3.id = fr2.file_id
+               WHERE df3.project_id = p.id AND df3.status = 'ready'
+             ) s WHERE s.ord <= 10) AS cover_frames
      FROM projects p
      LEFT JOIN design_files f ON f.project_id = p.id
      ${hasTeam ? 'WHERE p.team_id = $1' : ''}
