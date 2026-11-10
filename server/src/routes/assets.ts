@@ -4,7 +4,7 @@ import { pool } from '../db.js';
 import { downloadImage, getImages } from '../figma/client.js';
 import { getStorage } from '../storage/index.js';
 import { isLocalFile, renderLocalSlice } from '../export/local.js';
-import { cropSliceFromBoard, loadStoredAsset } from '../export/crop.js';
+import { cropSliceFromBoard, loadStoredAsset, upscaleRealSlice } from '../export/crop.js';
 import { resolveExportTarget, loadNodeIndex, resolveFromIndex } from '../export/preset.js';
 
 export const assetsRouter = Router();
@@ -22,7 +22,8 @@ const safeName = (name: string) => name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 8
 interface PreferredSlice { id: string; url: string; source: string }
 
 /**
- * 只认插件按 Figma Export 预设上传的真实切图。
+ * 精确命中插件按 Figma Export 预设上传的真实切图（source='figma'），
+ * 或此前由「就近真切图放大」产生的缓存（source='upscaled'，同尺寸直接复用）。
  * 整板裁剪（source='crop'）只是兜底产物，绝不能当缓存命中——否则第一次
  * 裁错了尺寸/边缘，之后无论怎么修都会被那条旧记录锁死。
  * source='render' 是服务端近似渲染（常为全透明空白），同样不参与优先链。
@@ -33,9 +34,36 @@ async function findPreferredSlice(
   const { rows } = await pool.query<PreferredSlice>(
     `SELECT id, url, source FROM assets
      WHERE file_id = $1 AND node_id = $2 AND format = $3 AND scale = $4
-       AND source = 'figma'
-     ORDER BY created_at DESC
+       AND source IN ('figma', 'upscaled')
+     ORDER BY CASE source WHEN 'figma' THEN 0 ELSE 1 END, created_at DESC
      LIMIT 1`,
+    [fileId, nodeId, format, scale]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * 就近真实切图：精确倍率没有插件真切图时，找同节点同格式里
+ * 倍率不超过目标的最大一张（SVG 与倍率无关，任意一张都行）。
+ * 之后由调用方解码放大到目标尺寸——透明底 + 图层精确边界，
+ * 画质优于「带画板底色的整板裁剪放大」，尤其是图标类小图层。
+ */
+async function findNearestRealSlice(
+  fileId: string, nodeId: string, format: string, scale: number
+): Promise<{ id: string; url: string; source: string } | null> {
+  if (format === 'SVG') {
+    const { rows } = await pool.query<{ id: string; url: string; source: string }>(
+      `SELECT id, url, source FROM assets
+       WHERE file_id = $1 AND node_id = $2 AND format = 'SVG' AND source = 'figma'
+       ORDER BY created_at DESC LIMIT 1`,
+      [fileId, nodeId]
+    );
+    return rows[0] ?? null;
+  }
+  const { rows } = await pool.query<{ id: string; url: string; source: string }>(
+    `SELECT id, url, source FROM assets
+     WHERE file_id = $1 AND node_id = $2 AND format = $3 AND source = 'figma' AND scale <= $4
+     ORDER BY scale DESC, created_at DESC LIMIT 1`,
     [fileId, nodeId, format, scale]
   );
   return rows[0] ?? null;
@@ -88,6 +116,48 @@ assetsRouter.post('/export', async (req, res) => {
       }
     } catch {
       // 存储文件丢失：继续走下面的兜底，不把用户卡死
+    }
+  }
+
+  // 1b) 精确倍率没有真切图时，用同图层最大可用倍率的真切图放大（仅本地文件——
+  //     Figma 直连的文件走第 3 步 REST 真矢量导出更好）：
+  //     透明底 + 图层精确边界，画质优于整板裁剪放大（尤其图标类小图层）。
+  //     SVG 是矢量，与倍率无关，任何倍率直接复用。
+  if (!real && localOnly) {
+    const near = await findNearestRealSlice(fileId, target?.nodeId ?? nodeId, format, s);
+    if (near) {
+      try {
+        const buf = await loadStoredAsset(near.url);
+        if (buf.length) {
+          if (format === 'SVG') {
+            return res.json({
+              id: near.id, url: near.url, format, scale: s,
+              size: buf.length, source: near.source, resolvedFrom,
+            });
+          }
+          const b = target?.bounds ??
+            (await pool.query<{ width: number; height: number }>(
+              'SELECT width, height FROM nodes WHERE file_id = $1 AND node_id = $2 LIMIT 1',
+              [fileId, nodeId]
+            )).rows[0];
+          if (b && b.width > 0 && b.height > 0) {
+            const up = await upscaleRealSlice(buf, b.width * s, b.height * s);
+            if (up) {
+              const storage = await getStorage();
+              const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.png`;
+              const url = await storage.put(key, up, 'image/png');
+              const { rows } = await pool.query(
+                `INSERT INTO assets (file_id, frame_id, node_id, name, format, scale, url, source)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'upscaled') RETURNING id, url, format, scale, created_at`,
+                [fileId, node.frame_id, target?.nodeId ?? nodeId, name ?? nodeId, format, s, url]
+              );
+              return res.json({ ...rows[0], size: up.length, source: 'upscaled', resolvedFrom });
+            }
+          }
+        }
+      } catch {
+        // 就近放大失败：继续整板裁剪兜底
+      }
     }
   }
 
@@ -253,6 +323,34 @@ assetsRouter.post('/export-zip', async (req, res) => {
         }
       } catch {
         // 存储文件丢失：落到裁剪
+      }
+    }
+    // 就近真切图放大（仅本地文件）：透明底优于整板裁剪放大；SVG 与倍率无关直接复用
+    if (!real && localOnly && t.format !== 'PDF') {
+      const near = await findNearestRealSlice(fileId, target?.nodeId ?? t.nodeId, t.format, t.scale);
+      if (near) {
+        try {
+          const buf = await loadStoredAsset(near.url);
+          if (buf.length) {
+            if (t.format === 'SVG') {
+              resolved.set(i, { buf, ext: 'svg' });
+              continue;
+            }
+            const b = target?.bounds ?? (() => {
+              const n = nodeIndex.byId.get(t.nodeId);
+              return n && n.width > 0 ? { width: n.width, height: n.height } : null;
+            })();
+            if (b && b.width > 0 && b.height > 0) {
+              const up = await upscaleRealSlice(buf, b.width * t.scale, b.height * t.scale);
+              if (up) {
+                resolved.set(i, { buf: up, ext: t.format.toLowerCase() });
+                continue;
+              }
+            }
+          }
+        } catch {
+          // 就近放大失败：落到整板裁剪
+        }
       }
     }
     if (localOnly && t.format !== 'PDF') {

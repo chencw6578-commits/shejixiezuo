@@ -186,6 +186,58 @@ export async function loadStoredAsset(url: string): Promise<Buffer> {
 }
 
 /**
+ * 双线性重采样出 [W×H] RGBA（预乘 alpha 插值，边缘不会出现暗边）。
+ * sx0/sy0 是输出 (0,0) 在源图坐标系中的位置（像素），step 是源/输出像素比。
+ * 放大（step<1）时从最近邻的“糊+锯齿”变成平滑插值，是高倍数切图画质的关键。
+ * 源图外视为全透明（图层超出画板边界的部分）。
+ */
+function resampleBilinear(
+  dec: DecodedPng,
+  W: number,
+  H: number,
+  sx0: number,
+  sy0: number,
+  stepX: number,
+  stepY: number
+): Buffer {
+  const out = Buffer.alloc(W * H * 4);
+  const px = (x: number, y: number): [number, number, number, number] => {
+    if (x < 0 || y < 0 || x >= dec.width || y >= dec.height) return [0, 0, 0, 0];
+    const i = (y * dec.width + x) * 4;
+    return [dec.rgba[i], dec.rgba[i + 1], dec.rgba[i + 2], dec.rgba[i + 3]];
+  };
+  for (let py = 0; py < H; py++) {
+    const fy = sy0 + (py + 0.5) * stepY - 0.5;
+    const y0 = Math.floor(fy);
+    const ty = fy - y0;
+    for (let i = 0; i < W; i++) {
+      const fx = sx0 + (i + 0.5) * stepX - 0.5;
+      const x0 = Math.floor(fx);
+      const tx = fx - x0;
+      const [r00, g00, b00, a00] = px(x0, y0);
+      const [r10, g10, b10, a10] = px(x0 + 1, y0);
+      const [r01, g01, b01, a01] = px(x0, y0 + 1);
+      const [r11, g11, b11, a11] = px(x0 + 1, y0 + 1);
+      // 预乘 alpha 后插值，避免直通 RGBA 插值把半透明边缘的 RGB 拉向黑
+      const p00 = [r00 * a00, g00 * a00, b00 * a00];
+      const p10 = [r10 * a10, g10 * a10, b10 * a10];
+      const p01 = [r01 * a01, g01 * a01, b01 * a01];
+      const p11 = [r11 * a11, g11 * a11, b11 * a11];
+      const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
+      const a = w00 * a00 + w10 * a10 + w01 * a01 + w11 * a11;
+      const o = (py * W + i) * 4;
+      if (a <= 0.5) continue; // 全透明，保持 0
+      const inv = 1 / a;
+      out[o] = Math.min(255, Math.round((w00 * p00[0] + w10 * p10[0] + w01 * p01[0] + w11 * p11[0]) * inv));
+      out[o + 1] = Math.min(255, Math.round((w00 * p00[1] + w10 * p10[1] + w01 * p01[1] + w11 * p11[1]) * inv));
+      out[o + 2] = Math.min(255, Math.round((w00 * p00[2] + w10 * p10[2] + w01 * p01[2] + w11 * p11[2]) * inv));
+      out[o + 3] = Math.min(255, Math.round(a));
+    }
+  }
+  return out;
+}
+
+/**
  * 从整板 PNG 裁出指定区域。scale 是用户/预设要求的倍率，整板倍率由
  * dec.width / frame.width 实测得出（不依赖可能被写错的 frames.scale）。
  *
@@ -238,37 +290,44 @@ export async function cropSliceFromBoard(
 
   const W = Math.max(1, Math.round(b.width * scale));
   const H = Math.max(1, Math.round(b.height * scale));
-  const out = Buffer.alloc(W * H * 4); // 全 0 = 透明（图层超出画板边界的部分）
-  const step = boardScale / scale;
   const sx0 = b.x * boardScale;
   const sy0 = b.y * boardScale;
-  // 降采样时用区域平均而非隔点取样：@1x 从 @2x 整板取图不会丢掉 1px 的描边/角标
-  const average = step > 1.01;
-  for (let py = 0; py < H; py++) {
-    const ya = Math.max(0, Math.floor(sy0 + py * step));
-    const yb = Math.min(dec.height, Math.max(ya + 1, Math.ceil(sy0 + (py + 1) * step)));
-    if (ya >= dec.height || yb <= 0) continue;
-    const dy = average ? Math.max(1, Math.floor((yb - ya) / 4)) : yb - ya;
-    for (let px = 0; px < W; px++) {
-      const xa = Math.max(0, Math.floor(sx0 + px * step));
-      const xb = Math.min(dec.width, Math.max(xa + 1, Math.ceil(sx0 + (px + 1) * step)));
-      if (xa >= dec.width || xb <= 0) continue;
-      const dx = average ? Math.max(1, Math.floor((xb - xa) / 4)) : xb - xa;
-      let r = 0, g = 0, bl = 0, al = 0, cnt = 0;
-      for (let sy = ya; sy < yb; sy += dy) {
-        for (let sx = xa; sx < xb; sx += dx) {
-          const si = (sy * dec.width + sx) * 4;
-          r += dec.rgba[si]; g += dec.rgba[si + 1];
-          bl += dec.rgba[si + 2]; al += dec.rgba[si + 3];
-          cnt++;
+  const step = boardScale / scale;
+  let out: Buffer;
+  if (step < 1.01) {
+    // 放大（目标倍率高于整板倍率，如 2x 整板导 3x 切图）：
+    // 最近邻会糊+锯齿，用预乘 alpha 双线性插值显著更平滑。
+    out = resampleBilinear(dec, W, H, sx0, sy0, step, step);
+  } else {
+    // 降采样用区域平均而非隔点取样：@1x 从 @2x 整板取图不会丢掉 1px 的描边/角标
+    out = Buffer.alloc(W * H * 4); // 全 0 = 透明（图层超出画板边界的部分）
+    const average = step > 1.01;
+    for (let py = 0; py < H; py++) {
+      const ya = Math.max(0, Math.floor(sy0 + py * step));
+      const yb = Math.min(dec.height, Math.max(ya + 1, Math.ceil(sy0 + (py + 1) * step)));
+      if (ya >= dec.height || yb <= 0) continue;
+      const dy = average ? Math.max(1, Math.floor((yb - ya) / 4)) : yb - ya;
+      for (let px = 0; px < W; px++) {
+        const xa = Math.max(0, Math.floor(sx0 + px * step));
+        const xb = Math.min(dec.width, Math.max(xa + 1, Math.ceil(sx0 + (px + 1) * step)));
+        if (xa >= dec.width || xb <= 0) continue;
+        const dx = average ? Math.max(1, Math.floor((xb - xa) / 4)) : xb - xa;
+        let r = 0, g = 0, bl = 0, al = 0, cnt = 0;
+        for (let sy = ya; sy < yb; sy += dy) {
+          for (let sx = xa; sx < xb; sx += dx) {
+            const si = (sy * dec.width + sx) * 4;
+            r += dec.rgba[si]; g += dec.rgba[si + 1];
+            bl += dec.rgba[si + 2]; al += dec.rgba[si + 3];
+            cnt++;
+          }
         }
+        if (!cnt) continue;
+        const di = (py * W + px) * 4;
+        out[di] = Math.round(r / cnt);
+        out[di + 1] = Math.round(g / cnt);
+        out[di + 2] = Math.round(bl / cnt);
+        out[di + 3] = Math.round(al / cnt);
       }
-      if (!cnt) continue;
-      const di = (py * W + px) * 4;
-      out[di] = Math.round(r / cnt);
-      out[di + 1] = Math.round(g / cnt);
-      out[di + 2] = Math.round(bl / cnt);
-      out[di + 3] = Math.round(al / cnt);
     }
   }
   const png = encodePng(W, H, out);
@@ -282,4 +341,28 @@ export async function cropSliceFromBoard(
   }
   // PNG / JPG 都交付 PNG 位图（无 JPEG 编码器，沿用原有行为）
   return { buf: png, contentType: 'image/png', ext: 'png', source: 'crop' };
+}
+
+/**
+ * 把插件上传的真实切图（透明底 PNG）重采样到目标尺寸。
+ * 高倍数导出但插件没传对应倍数时，用它代替「整板裁剪放大」：
+ *  - 透明底：叠在任何背景上都正确（整板裁剪带画板底色）；
+ *  - 内容边界精确对齐图层，不带邻近元素的杂散像素。
+ * 解码失败返回 null，由调用方继续走整板裁剪兜底。
+ */
+export async function upscaleRealSlice(
+  buf: Buffer,
+  targetW: number,
+  targetH: number
+): Promise<Buffer | null> {
+  const dec = decodePng(buf);
+  if (!dec) return null;
+  if (!(targetW > 0) || !(targetH > 0)) return null;
+  const TW = Math.max(1, Math.round(targetW));
+  const TH = Math.max(1, Math.round(targetH));
+  if (dec.width === TW && dec.height === TH) return buf; // 尺寸一致直接用原图
+  const stepX = dec.width / TW;
+  const stepY = dec.height / TH;
+  const out = resampleBilinear(dec, TW, TH, 0, 0, stepX, stepY);
+  return encodePng(TW, TH, out);
 }
