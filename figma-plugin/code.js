@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.5';
+const PLUGIN_VERSION = '1.3.6';
 const BUILD_DATE = '2026-11-08';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -387,7 +387,7 @@ figma.ui.onmessage = async (msg) => {
       return;
     }
     if (type === 'export-board') {
-      const scale = [1, 2, 3].indexOf(Number(msg.scale)) >= 0 ? Number(msg.scale) : 2;
+      const scale = [1, 2, 3, 4].indexOf(Number(msg.scale)) >= 0 ? Number(msg.scale) : 2;
       const ctx = { requestId: msg.requestId, index: Number(msg.index) || 0, total: Number(msg.total) || 1, count: 0 };
       const result = await exportBoard(msg.boardId, scale, !!msg.includeImage, ctx);
       post({ type: 'board-exported', requestId: msg.requestId, ...result });

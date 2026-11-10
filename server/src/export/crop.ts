@@ -8,7 +8,8 @@
  * 边界（必须如实告知用户）：
  *  - 裁出的切图带画板背景，不是透明底的独立图层；
  *  - 只支持 PNG 位图；SVG 请求会返回内嵌该位图的 SVG 包装（不是矢量），PDF 不支持；
- *  - 目标倍率高于整板倍率时为放大，画质会下降。
+ *  - 目标倍率高于整板倍率时为放大：三次卷积 + 非锐化掩模，比双线性明显锐利，
+ *    但放大终究无法凭空补回细节——切图倍率 ≤ 整板倍率时画质最佳（插件导入请选 4x 位图）。
  * 想要透明底 / 真矢量 / 完全按 Figma Export 设置，仍应使用插件逐图层 exportAsync 上传的真实切图。
  */
 import zlib from 'node:zlib';
@@ -68,7 +69,7 @@ interface DecodedPng {
 }
 
 /** 解码 8bit 非隔行 PNG 为 RGBA；不支持的格式返回 null 由调用方降级。 */
-function decodePng(buf: Buffer): DecodedPng | null {
+export function decodePng(buf: Buffer): DecodedPng | null {
   if (buf.length < 33 || !buf.slice(0, 8).equals(PNG_SIG)) return null;
   let off = 8;
   let W = 0;
@@ -155,7 +156,7 @@ function decodePng(buf: Buffer): DecodedPng | null {
   return { width: W, height: H, rgba };
 }
 
-function encodePng(W: number, H: number, rgba: Buffer): Buffer {
+export function encodePng(W: number, H: number, rgba: Buffer): Buffer {
   const raw = Buffer.alloc(H * (1 + W * 4));
   for (let y = 0; y < H; y++) {
     raw[y * (1 + W * 4)] = 0; // filter: none
@@ -191,7 +192,7 @@ export async function loadStoredAsset(url: string): Promise<Buffer> {
  * 放大（step<1）时从最近邻的“糊+锯齿”变成平滑插值，是高倍数切图画质的关键。
  * 源图外视为全透明（图层超出画板边界的部分）。
  */
-function resampleBilinear(
+export function resampleBilinear(
   dec: DecodedPng,
   W: number,
   H: number,
@@ -235,6 +236,135 @@ function resampleBilinear(
     }
   }
   return out;
+}
+
+/** Catmull-Rom 三次卷积权重（a=-0.5）：t 为采样点到源像素的距离 */
+function cubicTap(t: number): number {
+  t = Math.abs(t);
+  if (t < 1) return 1.5 * t * t * t - 2.5 * t * t + 1;
+  if (t < 2) return -0.5 * t * t * t + 2.5 * t * t - 4 * t + 2;
+  return 0;
+}
+
+/**
+ * 三次卷积（Catmull-Rom）重采样，输出**预乘 alpha** RGBA。
+ * 放大路径专用：4×4 邻域插值，边缘过渡比双线性锐利得多（双线性会把
+ * 一条 1px 的边界抹成 2~3px 的渐变带，这正是 3x 切图「糊」的主因）。
+ * 越界源像素视为透明；权重按有效邻域归一化，画板边缘不会发暗。
+ */
+function resampleCubicPM(
+  dec: DecodedPng,
+  W: number,
+  H: number,
+  sx0: number,
+  sy0: number,
+  stepX: number,
+  stepY: number
+): Buffer {
+  const out = Buffer.alloc(W * H * 4);
+  const pm = (x: number, y: number): [number, number, number, number] => {
+    if (x < 0 || y < 0 || x >= dec.width || y >= dec.height) return [0, 0, 0, 0];
+    const i = (y * dec.width + x) * 4;
+    const a = dec.rgba[i + 3];
+    // 预乘到 0..255 尺度：rgb' = rgb × (a/255)，插值后与 alpha 同尺度、可整体锐化
+    const k = a / 255;
+    return [dec.rgba[i] * k, dec.rgba[i + 1] * k, dec.rgba[i + 2] * k, a];
+  };
+  for (let py = 0; py < H; py++) {
+    const fy = sy0 + (py + 0.5) * stepY - 0.5;
+    const y0 = Math.floor(fy);
+    const ty = fy - y0;
+    const wy = [cubicTap(ty + 1), cubicTap(ty), cubicTap(1 - ty), cubicTap(2 - ty)];
+    for (let i = 0; i < W; i++) {
+      const fx = sx0 + (i + 0.5) * stepX - 0.5;
+      const x0 = Math.floor(fx);
+      const tx = fx - x0;
+      const wx = [cubicTap(tx + 1), cubicTap(tx), cubicTap(1 - tx), cubicTap(2 - tx)];
+      let r = 0, g = 0, b = 0, a = 0, wsum = 0;
+      for (let m = 0; m < 4; m++) {
+        const sy = y0 - 1 + m;
+        for (let n = 0; n < 4; n++) {
+          const sx = x0 - 1 + n;
+          const w = wy[m] * wx[n];
+          if (w === 0) continue;
+          wsum += w;
+          const [pr, pg, pb, pa] = pm(sx, sy);
+          r += w * pr; g += w * pg; b += w * pb; a += w * pa;
+        }
+      }
+      if (wsum <= 0) continue;
+      const inv = 1 / wsum;
+      const o = (py * W + i) * 4;
+      out[o] = Math.max(0, Math.min(255, Math.round(r * inv)));
+      out[o + 1] = Math.max(0, Math.min(255, Math.round(g * inv)));
+      out[o + 2] = Math.max(0, Math.min(255, Math.round(b * inv)));
+      out[o + 3] = Math.max(0, Math.min(255, Math.round(a * inv)));
+    }
+  }
+  return out;
+}
+
+/**
+ * 非锐化掩模（在预乘 alpha 上做 3×3 高斯差分）：
+ * out = 原图 + amount × (原图 - 高斯模糊)。
+ * 放大后边缘被插值抹平，锐化把对比拉回来，是 3x 切图「不糊」的第二 half。
+ * 只影响有内容处（透明区保持 0），amount 建议 ≤0.8 防止白边/光晕。
+ */
+function unsharpPM(buf: Buffer, W: number, H: number, amount: number): void {
+  if (amount <= 0) return;
+  const src = Buffer.from(buf);
+  // 3×3 高斯核 [1 2 1; 2 4 2; 1 2 1] / 16
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      let r = 0, g = 0, b = 0, a = 0, wsum = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const sy = y + dy;
+        if (sy < 0 || sy >= H) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const sx = x + dx;
+          if (sx < 0 || sx >= W) continue;
+          const w = dx === 0 ? (dy === 0 ? 4 : 2) : dy === 0 ? 2 : 1;
+          wsum += w;
+          const si = (sy * W + sx) * 4;
+          r += w * src[si]; g += w * src[si + 1]; b += w * src[si + 2]; a += w * src[si + 3];
+        }
+      }
+      if (wsum <= 0) continue;
+      const inv = 1 / wsum;
+      for (let c = 0; c < 4; c++) {
+        const orig = src[o + c];
+        const blurred = (c === 0 ? r : c === 1 ? g : c === 2 ? b : a) * inv;
+        const v = orig + amount * (orig - blurred);
+        buf[o + c] = Math.max(0, Math.min(255, Math.round(v)));
+      }
+    }
+  }
+}
+
+/** 预乘 alpha → 直通 alpha（encodePng 的输入格式） */
+function pmToStraight(buf: Buffer, W: number, H: number): Buffer {
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4;
+    const a = buf[o + 3];
+    if (a <= 0 || a >= 255) continue;
+    const inv = 255 / a;
+    buf[o] = Math.min(255, Math.round(buf[o] * inv));
+    buf[o + 1] = Math.min(255, Math.round(buf[o + 1] * inv));
+    buf[o + 2] = Math.min(255, Math.round(buf[o + 2] * inv));
+  }
+  return buf;
+}
+
+/**
+ * 高倍率放大统一入口：三次卷积 + 非锐化掩模。
+ * factor = 目标尺寸 / 源尺寸（>1）；锐化强度随放大倍数增加，上限 0.8。
+ */
+export function upscaleSharp(dec: DecodedPng, W: number, H: number, sx0: number, sy0: number, stepX: number, stepY: number): Buffer {
+  const factor = 1 / Math.min(stepX, stepY);
+  const pm = resampleCubicPM(dec, W, H, sx0, sy0, stepX, stepY);
+  unsharpPM(pm, W, H, Math.min(0.8, 0.3 * factor));
+  return pmToStraight(pm, W, H);
 }
 
 /**
@@ -296,8 +426,8 @@ export async function cropSliceFromBoard(
   let out: Buffer;
   if (step < 1.01) {
     // 放大（目标倍率高于整板倍率，如 2x 整板导 3x 切图）：
-    // 最近邻会糊+锯齿，用预乘 alpha 双线性插值显著更平滑。
-    out = resampleBilinear(dec, W, H, sx0, sy0, step, step);
+    // 三次卷积 + 非锐化掩模，边缘明显比双线性锐利（双线性是 3x 发糊的主因）。
+    out = upscaleSharp(dec, W, H, sx0, sy0, step, step);
   } else {
     // 降采样用区域平均而非隔点取样：@1x 从 @2x 整板取图不会丢掉 1px 的描边/角标
     out = Buffer.alloc(W * H * 4); // 全 0 = 透明（图层超出画板边界的部分）
@@ -363,6 +493,11 @@ export async function upscaleRealSlice(
   if (dec.width === TW && dec.height === TH) return buf; // 尺寸一致直接用原图
   const stepX = dec.width / TW;
   const stepY = dec.height / TH;
+  if (stepX < 1.01 && stepY < 1.01) {
+    // 放大：三次卷积 + 锐化（与整板裁剪放大同管线，画质一致）
+    return encodePng(TW, TH, upscaleSharp(dec, TW, TH, 0, 0, stepX, stepY));
+  }
+  // 降采样/等尺寸：保持原有双线性（缩小场景锐化意义不大且可能引入振铃）
   const out = resampleBilinear(dec, TW, TH, 0, 0, stepX, stepY);
   return encodePng(TW, TH, out);
 }

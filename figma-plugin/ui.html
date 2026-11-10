@@ -273,6 +273,7 @@
           <label data-scale="1"><input type="radio" name="scale" value="1" /> 1x</label>
           <label data-scale="2"><input type="radio" name="scale" value="2" /> 2x</label>
           <label data-scale="3"><input type="radio" name="scale" value="3" /> 3x</label>
+          <label data-scale="4"><input type="radio" name="scale" value="4" /> 4x</label>
         </div>
         <label class="toggle" for="includeImage"><input type="checkbox" id="includeImage" /> 位图切图</label>
       </div>
@@ -351,7 +352,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.3.4';
+  var UI_VERSION = '1.3.6';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -531,8 +532,8 @@
     $('baseUrl').value = state.baseUrl;
     $('token').value = state.token;
     $('scaleHint').textContent = state.includeImage
-      ? '大画板导出切图较慢（单张最长 90 秒）；单张超过 5MB 自动跳过图片。'
-      : '位图切图已关闭（默认）：只上传画板与节点结构，最快。需要位图时再勾选。';
+      ? '导 3x 切图请选 4x 位图（整板分辨率高于切图倍率时最清晰）；大画板导出较慢（单张最长 90 秒），单张超过 5MB 自动跳过图片。'
+      : '位图切图已关闭（默认）：只上传画板与节点结构，最快。需要位图/高清切图时再勾选，导 3x 切图建议选 4x。';
   }
 
   function pickPlatform(platform) {
@@ -835,7 +836,7 @@
     if (typeof prefs.baseUrl === 'string' && prefs.baseUrl) state.baseUrl = prefs.baseUrl;
     if (typeof prefs.token === 'string') state.token = prefs.token;
     if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
-    if ([1, 2, 3].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
+    if ([1, 2, 3, 4].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
     // 旧版本默认打开位图切图，大画板会长时间阻塞主线程：升级到 v1.3.3 时一次性重置为关闭
     if (!(Number(prefs.version) >= 3)) state.includeImage = false;
     else if (typeof prefs.includeImage === 'boolean') state.includeImage = prefs.includeImage;
