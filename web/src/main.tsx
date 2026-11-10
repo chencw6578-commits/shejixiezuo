@@ -8,6 +8,9 @@ import FilePage from './pages/FilePage';
 import SpecPage from './pages/SpecPage';
 import ViewerPage from './pages/ViewerPage';
 import LoginPage from './pages/LoginPage';
+import VerifyPage from './pages/VerifyPage';
+import InvitePage from './pages/InvitePage';
+import ResetPage from './pages/ResetPage';
 import './styles.css';
 
 /** 登录守卫：未登录跳转 /login 并记录来源页，登录后回跳 */
@@ -29,6 +32,9 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/verify', element: <VerifyPage /> },
+  { path: '/invite', element: <InvitePage /> },
+  { path: '/reset', element: <ResetPage /> },
   { path: '/', element: <Protected><HomePage /></Protected> },
   { path: '/projects', element: <Protected><HomePage /></Protected> },
   { path: '/projects/:projectId', element: <Protected><ProjectCanvasPage /></Protected> },

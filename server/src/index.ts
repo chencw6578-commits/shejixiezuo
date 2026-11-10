@@ -15,6 +15,7 @@ import { importJsonRouter } from './routes/importJson.js';
 import { pluginRouter } from './routes/plugin.js';
 import { mcpRouter } from './routes/mcp.js';
 import { authRouter } from './routes/auth.js';
+import { invitesRouter } from './routes/invites.js';
 import { getStorage } from './storage/index.js';
 import { queueDepth, setConcurrency } from './queue.js';
 
@@ -48,6 +49,7 @@ app.get('/api/import/figma/status', (_req, res) => {
 
 app.use('/api/files', filesRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/invites', invitesRouter);
 app.use('/api/assets', assetsRouter);
 app.use('/api/webhooks', webhooksRouter);
 app.use('/api/comments', commentsRouter);

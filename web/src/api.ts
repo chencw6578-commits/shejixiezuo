@@ -5,13 +5,13 @@ export interface Member {
   team_id: string;
   name: string;
   email: string | null;
-  role: 'admin' | 'collaborator';
+  role: 'owner' | 'admin' | 'collaborator';
   created_at: string;
 }
 
 export interface Identity {
   email: string;
-  role: 'admin' | 'collaborator';
+  role: 'owner' | 'admin' | 'collaborator';
 }
 
 /** 导入令牌（明文只在创建响应里出现一次） */
@@ -93,6 +93,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name?: string;
+  verified?: boolean;
 }
 
 export const api = {
@@ -112,6 +113,53 @@ export const api = {
   logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
 
   me: () => request<AuthUser>('/api/auth/me'),
+
+  /** 邮箱验证：邮件链接落地后凭 token 核验 */
+  verifyEmail: (token: string) =>
+    request<{ ok: boolean }>('/api/auth/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  /** 重发验证邮件；登录态可不传邮箱（未登录传邮箱，响应恒为成功文案，防探测） */
+  resendVerification: (email?: string) =>
+    request<{ ok: boolean }>('/api/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  /** 忘记密码：发送重置邮件（响应恒为成功文案，防探测） */
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  /** 重置密码：邮件链接落地后凭 token 设置新密码 */
+  resetPassword: (token: string, password: string) =>
+    request<{ ok: boolean }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+
+  // ---------- 团队邀请 ----------
+  /** 生成邀请（owner/admin）：返回邀请链接（明文 token 仅此一次） */
+  inviteMember: (teamId: string, email: string, role: 'admin' | 'collaborator') =>
+    request<{ id: string; email: string; role: string; expires_at: string; inviteUrl: string }>(
+      `/api/teams/${teamId}/invites`,
+      { method: 'POST', body: JSON.stringify({ email, role }) }
+    ),
+
+  /** 邀请落地页信息（公开） */
+  inviteInfo: (token: string) =>
+    request<{ teamName: string; email: string; role: string }>(`/api/invites/info?token=${encodeURIComponent(token)}`),
+
+  /** 接受邀请（需登录且邮箱一致） */
+  acceptInvite: (token: string) =>
+    request<{ ok: boolean; teamId: string; teamName: string; role: string }>('/api/invites/accept', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
 
   /** 服务端是否配置了统一 Figma 令牌（只看 true/false，不含令牌本身） */
   figmaImportStatus: () => request<{ configured: boolean }>('/api/import/figma/status'),

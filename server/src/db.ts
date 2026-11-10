@@ -60,10 +60,41 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 邮箱验证（软验证：注册即可登录使用，验证仅作为标识）
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT false;
 
--- 成员邀请（邮箱）与角色：admin=可编辑可删除，collaborator=只读
+-- 邮箱验证 / 找回密码令牌：只存 sha256 哈希，明文仅在邮件链接中出现
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  type       TEXT NOT NULL DEFAULT 'verify',   -- verify | reset
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_email_tokens_hash ON email_tokens(token_hash);
+
+-- 团队邀请：明文 token 只在邀请链接中出现，库里存 sha256；一次性，7 天有效
+CREATE TABLE IF NOT EXISTS team_invites (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id     UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  role        TEXT NOT NULL DEFAULT 'collaborator',  -- admin | collaborator
+  token_hash  TEXT NOT NULL,
+  invited_by  TEXT,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  accepted_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_team_invites_hash ON team_invites(token_hash);
+
+-- 团队成员（邮箱邀请 + 三级角色：owner=所有者 / admin=管理员 / collaborator=协作者只读）
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE team_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
+
+-- 团队所有者（建团队者）。历史遗留 owner_id 为 NULL 的团队走 manageGuard 兜底
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS frames (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

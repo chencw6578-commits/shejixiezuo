@@ -136,11 +136,28 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 10px 28px rgba(16, 24, 40, 0.14); padding: 14px;
 }
-.avatar-pop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.avatar-pop-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.avatar-pop-head {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.avatar-pop-info { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .avatar-pop-info b { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.auth-logout-btn { margin-top: 4px; width: 100%; color: var(--err); border-color: transparent; }
-.auth-logout-btn:hover { background: rgba(242, 72, 34, 0.08); }
+/* 下拉菜单项：统一宽度、间距、hover 与危险色 */
+.avatar-menu-list {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 8px;
+}
+.avatar-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; font-size: 13px;
+  text-align: left; cursor: pointer; white-space: nowrap;
+}
+.avatar-menu-item svg { flex: none; }
+.avatar-menu-item:hover { background: var(--bg-hover); outline: none; }
+.avatar-menu-item.is-danger { color: #d92d20; }
+.avatar-menu-item.is-danger:hover { background: rgba(242, 72, 34, 0.08); }
+.avatar-pop-hint { margin: 10px 2px 0; padding-top: 10px; border-top: 1px dashed var(--border); }
 
 /* ---------- 登录 / 注册页（浅色，与首页一致） ---------- */
 .auth-wrap {
@@ -869,9 +886,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-dim);
   background: rgba(29, 33, 41, 0.06); border-radius: 999px; padding: 1px 8px;
 }
-.team-switch-create { display: flex; gap: 6px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
-.team-switch-create .compact-input { flex: 1; width: auto; padding: 5px 8px; font-size: 12px; }
-.team-switch-create button { padding: 5px 10px; font-size: 12px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.team-switch-create {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 6px; padding: 7px 10px; border: 0; border-top: 1px dashed var(--border);
+  background: transparent; color: var(--accent); font: inherit; font-size: 13px;
+  border-radius: 0 0 8px 8px; cursor: pointer; width: 100%;
+}
+.team-switch-create:hover { background: var(--bg-hover); outline: none; }
 /* 顶栏团队切换器（取代顶部面包屑与侧栏团队下拉） */
 .topbar-team-switch { padding: 0; }
 .topbar-team-switch summary { padding: 4px 8px; border-radius: 8px; gap: 6px; }
@@ -919,7 +940,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .token-modal-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); color: var(--text); }
 .token-modal .settings-head h3 { margin: 0 0 4px; font-size: 14px; }
 /* 头像下拉框里的菜单项 */
-.avatar-menu-item { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-start; }
 .settings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .settings-head h2 { margin: 0 0 4px; font-size: 15px; }
 .settings-head p { margin: 0; max-width: 460px; }
@@ -1014,6 +1034,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .role-badge { border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .role-badge.admin { background: rgba(108, 76, 241, 0.12); color: var(--accent); }
 .role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
+.role-badge.owner { background: #fef3c7; color: #92400e; }
+.member-name .role-badge { margin-left: 8px; vertical-align: 1px; }
 .member-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .member-info .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-role {
@@ -1403,3 +1425,42 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 .ctx-menu button.is-danger:hover:not(:disabled) { background: #fef3f2; color: #d92d20; }
 .ctx-menu button.is-danger:hover:not(:disabled) svg { color: #d92d20; }
 .frame-item-actions { margin-left: auto; display: inline-flex; }
+
+/* ---------- 邮箱验证提示条 ---------- */
+.verify-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 10px 16px 0; padding: 9px 14px;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+  color: #92400e; font-size: 13px;
+}
+.verify-banner button {
+  margin-left: auto; padding: 5px 12px; border-radius: 7px;
+  border: 1px solid #f59e0b; background: #fff; color: #92400e;
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.verify-banner button:hover:not(:disabled) { background: #fef3c7; }
+.verify-banner button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---------- 邀请链接提示框 ---------- */
+.invite-link-box {
+  margin-top: 10px; padding: 10px 12px;
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
+  display: flex; flex-direction: column; gap: 6px; font-size: 13px;
+}
+.invite-link-box .invite-link-url {
+  font-size: 12px; color: #166534; word-break: break-all;
+  background: rgba(255,255,255,0.7); border-radius: 6px; padding: 6px 8px;
+}
+.invite-link-box button {
+  align-self: flex-start; padding: 5px 12px; border-radius: 7px;
+  border: 1px solid #22c55e; background: #fff; color: #166534;
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.invite-link-box button:hover { background: #f0fdf4; }
+
+/* ---------- 登录页底部文字按钮（忘记密码 / 去登录） ---------- */
+.auth-link-btn {
+  border: 0; background: transparent; padding: 0;
+  color: var(--accent); font: inherit; font-size: 13px; cursor: pointer;
+}
+.auth-link-btn:hover { text-decoration: underline; }

@@ -11,3 +11,4 @@ web/dist/
 .tunnel_url
 *.tsbuildinfo
 /*.png
+outbox/

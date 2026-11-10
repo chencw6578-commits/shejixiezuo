@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { pool } from '../db.js';
-import { editGuard } from './authz.js';
+import { editGuard, manageGuard, ownerGuard } from './authz.js';
+import { getSessionUser } from '../auth.js';
+import { createTeamInvite } from './invites.js';
+import { emailConfig } from '../config.js';
 
 export const teamsRouter = Router();
 
@@ -12,16 +15,23 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-/** 创建团队 */
+/** 创建团队（需登录；建团队者自动成为所有者并写入成员表） */
 teamsRouter.post('/', async (req, res) => {
+  const session = getSessionUser(req);
+  if (!session) return res.status(401).json({ error: '请先登录后再创建团队' });
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (!name) return res.status(400).json({ error: '请输入团队名称' });
   if (name.length > 60) return res.status(400).json({ error: '团队名称过长（最多 60 字）' });
-  const { rows } = await pool.query(
-    `INSERT INTO teams (name) VALUES ($1) RETURNING id, name, created_at`,
-    [name]
+  const t = await pool.query(
+    `INSERT INTO teams (name, owner_id) VALUES ($1, $2) RETURNING id, name, created_at`,
+    [name, session.uid]
   );
-  res.json(rows[0]);
+  const team = t.rows[0];
+  await pool.query(
+    `INSERT INTO team_members (team_id, name, email, role) VALUES ($1, $2, $3, 'owner')`,
+    [team.id, session.email.split('@')[0].slice(0, 30) || '所有者', session.email]
+  );
+  res.json(team);
 });
 
 /** 团队列表（含项目数） */
@@ -38,8 +48,10 @@ teamsRouter.get('/', async (_req, res) => {
   res.json(rows);
 });
 
-/** 删除团队（项目与设计稿级联删除） */
+/** 删除团队（仅所有者；项目与设计稿级联删除） */
 teamsRouter.delete('/:id', async (req, res) => {
+  const denied = await ownerGuard(req.params.id, req);
+  if (denied) return res.status(denied === '团队不存在' ? 404 : 403).json({ error: denied });
   const { rowCount } = await pool.query('DELETE FROM teams WHERE id = $1', [req.params.id]);
   res.json({ deleted: rowCount === 1 });
 });
@@ -57,8 +69,10 @@ teamsRouter.get('/:id/members', async (req, res) => {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLES = new Set(['admin', 'collaborator']);
 
-/** 邮箱邀请成员（role: admin=管理员可编辑可删除 / collaborator=协作者只读） */
+/** 邮箱邀请成员（owner/admin 可操作；role: admin=管理员可编辑可删除 / collaborator=协作者只读） */
 teamsRouter.post('/:id/members', async (req, res) => {
+  const denied = await manageGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
   const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   const role = req.body?.role === 'collaborator' ? 'collaborator' : 'admin';
   if (!email) return res.status(400).json({ error: '请输入成员邮箱' });
@@ -76,26 +90,83 @@ teamsRouter.post('/:id/members', async (req, res) => {
   res.json(rows[0]);
 });
 
-/** 修改成员角色 */
+/** 修改成员角色（owner/admin 可操作；所有者角色不可被改动，所有权转让本期不开放） */
 teamsRouter.patch('/:id/members/:memberId', async (req, res) => {
+  const denied = await manageGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
   const role = typeof req.body?.role === 'string' ? req.body.role : '';
   if (!ROLES.has(role)) return res.status(400).json({ error: "role 必须是 'admin' 或 'collaborator'" });
+  const target = await pool.query("SELECT role FROM team_members WHERE id = $1 AND team_id = $2", [
+    req.params.memberId,
+    req.params.id,
+  ]);
+  if (!target.rows[0]) return res.status(404).json({ error: '成员不存在' });
+  if (target.rows[0].role === 'owner') return res.status(403).json({ error: '不能修改团队所有者的角色' });
   const { rows } = await pool.query(
     `UPDATE team_members SET role = $3 WHERE id = $1 AND team_id = $2
      RETURNING id, team_id, name, email, role, created_at`,
     [req.params.memberId, req.params.id, role]
   );
-  if (!rows[0]) return res.status(404).json({ error: '成员不存在' });
   res.json(rows[0]);
 });
 
-/** 移除团队成员 */
+/** 移除团队成员（owner/admin 可操作；所有者不可被移除，可解散团队） */
 teamsRouter.delete('/:id/members/:memberId', async (req, res) => {
+  const denied = await manageGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  const target = await pool.query("SELECT role FROM team_members WHERE id = $1 AND team_id = $2", [
+    req.params.memberId,
+    req.params.id,
+  ]);
+  if (!target.rows[0]) return res.status(404).json({ error: '成员不存在' });
+  if (target.rows[0].role === 'owner') return res.status(403).json({ error: '不能移除团队所有者（可解散团队）' });
   const { rowCount } = await pool.query(
     'DELETE FROM team_members WHERE id = $1 AND team_id = $2',
     [req.params.memberId, req.params.id]
   );
   res.json({ deleted: rowCount === 1 });
+});
+
+// ---------- 团队邀请 ----------
+
+/** 生成邀请（owner/admin）：一次性 token + 邮件；返回邀请链接供前端展示/复制 */
+teamsRouter.post('/:id/invites', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: '非法的团队 ID' });
+  const denied = await manageGuard(req.params.id, req);
+  if (denied) return res.status(403).json({ error: denied });
+
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const role = req.body?.role === 'admin' ? 'admin' : 'collaborator';
+  if (!email) return res.status(400).json({ error: '请输入被邀请邮箱' });
+  if (!EMAIL_RE.test(email) || email.length > 120) return res.status(400).json({ error: '邮箱格式不正确' });
+
+  const t = await pool.query<{ id: string }>('SELECT id FROM teams WHERE id = $1', [req.params.id]);
+  if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
+
+  const member = await pool.query('SELECT 1 FROM team_members WHERE team_id = $1 AND email = $2', [
+    req.params.id,
+    email,
+  ]);
+  if (member.rows[0]) return res.status(409).json({ error: '该邮箱已在团队中，无需邀请' });
+
+  const pending = await pool.query(
+    `SELECT 1 FROM team_invites WHERE team_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at > now()`,
+    [req.params.id, email]
+  );
+  if (pending.rows[0]) return res.status(409).json({ error: '该邮箱已有待接受的邀请，无需重复发送' });
+
+  const session = getSessionUser(req);
+  const { token, invite } = await createTeamInvite(
+    req.params.id,
+    email,
+    role,
+    session?.email ?? '',
+    emailConfig.webBaseUrl
+  );
+  res.status(201).json({
+    ...invite,
+    inviteUrl: `${emailConfig.webBaseUrl}/invite?token=${token}`,
+  });
 });
 
 // ---------- 团队级「导入令牌」（Figma 插件用） ----------

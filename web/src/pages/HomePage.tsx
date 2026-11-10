@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member } from '../api';
-import { ChevronDown, Folder, KeyRound, Mail, Plus, Users, X } from '../components/icons';
+import { ChevronDown, Folder, KeyRound, LogOut, Mail, Plus, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 
 interface Team {
@@ -23,6 +23,13 @@ interface Project {
 
 type View = 'projects' | 'members';
 
+/** 角色显示名 */
+const ROLE_LABEL: Record<string, string> = {
+  owner: '所有者',
+  admin: '管理员',
+  collaborator: '协作 · 只读',
+};
+
 /** 最近访问的团队：无 team 参数时优先用它，避免总落到列表第一个团队 */
 const LAST_TEAM_KEY = 'shejixiezuo:last-team';
 
@@ -42,9 +49,11 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
-  const [teamName, setTeamName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
+  // 最近一次生成的邀请：链接只展示给操作者，可复制
+  const [inviteLink, setInviteLink] = useState<{ email: string; role: string; inviteUrl: string } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [identity, setIdentityState] = useState<Identity | null>(null);
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -52,6 +61,23 @@ export default function HomePage() {
   // 导入令牌从侧栏页改为头像下拉入口 + 弹窗展示
   const [tokenModal, setTokenModal] = useState(false);
   const avatarMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const teamSwitchRef = useRef<HTMLDetailsElement | null>(null);
+
+  // 首页所有浮层统一支持「点击其他区域自动关闭」：
+  // 团队切换下拉 / 头像下拉（details 元素）；弹窗类（dlg-overlay）已有遮罩点击关闭
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(t)) {
+        avatarMenuRef.current.open = false;
+      }
+      if (teamSwitchRef.current && !teamSwitchRef.current.contains(t)) {
+        if (teamSwitchRef.current.open) setSwitchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   // 团队导入令牌：newToken 只在生成后展示一次
@@ -67,6 +93,20 @@ export default function HomePage() {
     api.me().then(setAuthUser).catch(() => undefined);
   }, []);
 
+  // 邮箱验证：未验证时顶部提示条；重发 60s 冷却
+  const [resendState, setResendState] = useState<'idle' | 'sent' | 'cool'>('idle');
+  const resendVerification = async () => {
+    if (resendState === 'cool') return;
+    try {
+      await api.resendVerification();
+      setResendState('sent');
+      setTimeout(() => setResendState('cool'), 60_000);
+      setTimeout(() => setResendState('idle'), 6_000);
+    } catch {
+      /* 模糊响应，静默失败 */
+    }
+  };
+
   const doLogout = async () => {
     try {
       await api.logout();
@@ -74,6 +114,12 @@ export default function HomePage() {
       navigate('/login', { replace: true });
     }
   };
+
+  // 当前登录账号在当前团队的真实角色：体验身份（identity）优先，否则按成员表匹配，
+  // 都没有 = 协作者（与服务端 teamRole 的最小权限默认一致）
+  const myMember = authUser ? members.find((m) => m.email === authUser.email) : undefined;
+  const myRole: 'owner' | 'admin' | 'collaborator' = identity?.role ?? myMember?.role ?? 'collaborator';
+  const canManage = myRole === 'owner' || myRole === 'admin';
 
   const loadTeams = useCallback(() => {
     api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
@@ -202,22 +248,26 @@ export default function HomePage() {
     }
   };
 
-  const createTeam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!teamName.trim() || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const t = await api.createTeam(teamName.trim());
-      setTeamName('');
-      setSwitchOpen(false);
-      await loadTeams();
-      switchTeam(t.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
+  /** 创建团队：弹出与「新建项目」一致的弹窗（Enter 确认 / Esc 取消 / 点遮罩关闭） */
+  const openCreateTeam = () => {
+    setSwitchOpen(false);
+    void dialogs.prompt({
+      title: '创建团队',
+      label: '团队名称',
+      placeholder: '输入团队名称，如 移动设计组',
+      maxLength: 60,
+      confirmText: '创建',
+      onSubmit: async (name) => {
+        try {
+          const t = await api.createTeam(name);
+          await loadTeams();
+          switchTeam(t.id);
+          return null;
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err);
+        }
+      },
+    });
   };
 
   const addMember = async (e: React.FormEvent) => {
@@ -226,14 +276,25 @@ export default function HomePage() {
     setBusy(true);
     setError('');
     try {
-      await api.addMember(activeTeam, memberEmail.trim(), memberRole);
+      // 邀请流：生成一次性邀请链接（7 天有效），并发送邀请邮件；对方接受后才入队
+      const inv = await api.inviteMember(activeTeam, memberEmail.trim(), memberRole);
+      setInviteLink(inv);
       setMemberEmail('');
-      const rows = await api.listMembers(activeTeam);
-      setMembers(Array.isArray(rows) ? rows : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink.inviteUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      /* 剪贴板不可用时用户可手动选中复制 */
     }
   };
 
@@ -298,10 +359,20 @@ export default function HomePage() {
 
   return (
     <div className="home-shell">
+      {/* 邮箱未验证提示条（软验证：不阻断使用） */}
+      {authUser && authUser.verified === false && (
+        <div className="verify-banner">
+          <span>📧 邮箱尚未验证，验证后可确保账号安全与找回密码。</span>
+          <button onClick={resendVerification} disabled={resendState === 'cool'}>
+            {resendState === 'cool' ? '请 1 分钟后再试' : resendState === 'sent' ? '已重新发送 ✓' : '重新发送验证邮件'}
+          </button>
+        </div>
+      )}
       {/* 顶部状态栏：左侧上下文面包屑，右侧身份头像 */}
       <header className="home-topbar">
         <details
           className="team-switch topbar-team-switch"
+          ref={teamSwitchRef}
           open={switchOpen}
           onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
         >
@@ -324,15 +395,14 @@ export default function HomePage() {
                 <em>{t.project_count}</em>
               </button>
             ))}
-            <form className="team-switch-create" onSubmit={createTeam}>
-              <input
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                placeholder="新团队名称"
-                className="compact-input"
-              />
-              <button type="submit" disabled={busy || !teamName.trim()}><Plus /> 创建</button>
-            </form>
+            <button
+              type="button"
+              className="team-switch-create"
+              onClick={openCreateTeam}
+              title="创建新团队"
+            >
+              <Plus /> 新建团队
+            </button>
           </div>
         </details>
         <details className="avatar-menu" ref={avatarMenuRef}>
@@ -347,34 +417,41 @@ export default function HomePage() {
               <div className="avatar-pop-info">
                 <b>{authUser?.email ?? (identity ? identity.email : '所有者')}</b>
                 <div>
-                  {identity ? (
-                    <span className={`role-badge ${identity.role}`}>
-                      {identity.role === 'admin' ? '管理员' : '协作 · 只读'}
-                    </span>
-                  ) : (
-                    <span className="dim small">最高权限</span>
-                  )}
+                  <span className={`role-badge ${identity?.role ?? myRole}`}>
+                    {ROLE_LABEL[identity?.role ?? myRole] ?? '成员'}
+                  </span>
                 </div>
               </div>
             </div>
-            <button
-              className="ghost-btn avatar-menu-item"
-              onClick={() => {
-                setTokenModal(true);
-                if (avatarMenuRef.current) avatarMenuRef.current.open = false;
-              }}
-            >
-              <KeyRound /> 导入令牌
-            </button>
-            {authUser && (
-              <button className="ghost-btn auth-logout-btn" onClick={() => void doLogout()}>
-                退出登录
+            <div className="avatar-menu-list">
+              <button
+                className="avatar-menu-item"
+                onClick={() => {
+                  setTokenModal(true);
+                  if (avatarMenuRef.current) avatarMenuRef.current.open = false;
+                }}
+              >
+                <KeyRound /> 导入令牌
               </button>
-            )}
-            {identity && activeTeam ? (
-              <button className="ghost-btn" onClick={exitIdentity}>退出身份（回到所有者）</button>
-            ) : (
-              <p className="dim small">可在「团队成员」页选择成员身份体验权限差异</p>
+              {identity && activeTeam && (
+                <button
+                  className="avatar-menu-item"
+                  onClick={() => {
+                    exitIdentity();
+                    if (avatarMenuRef.current) avatarMenuRef.current.open = false;
+                  }}
+                >
+                  <X /> 退出身份体验
+                </button>
+              )}
+              {authUser && (
+                <button className="avatar-menu-item is-danger" onClick={() => void doLogout()}>
+                  <LogOut /> 退出登录
+                </button>
+              )}
+            </div>
+            {!identity && (
+              <p className="dim small avatar-pop-hint">可在「团队成员」页选择成员身份体验权限差异</p>
             )}
           </div>
         </details>
@@ -442,7 +519,7 @@ export default function HomePage() {
             <>
               <header className="view-header">
                 <h1>团队成员 · {activeTeamName}</h1>
-                <p>通过邮箱邀请成员。管理员可编辑与删除设计稿，协作者为只读（仅查看与评论）</p>
+                <p>所有者 / 管理员可邀请与移除成员、增删项目、上传设计稿；协作者为只读（仅查看）</p>
               </header>
 
               <div className="identity-bar">
@@ -450,30 +527,48 @@ export default function HomePage() {
                 {identity ? (
                   <>
                     <strong>{identity.email}</strong>
-                    <span className={`role-badge ${identity.role}`}>
-                      {identity.role === 'admin' ? '管理员' : '协作 · 只读'}
-                    </span>
+                    <span className={`role-badge ${identity.role}`}>{ROLE_LABEL[identity.role] ?? identity.role}</span>
                     <button className="ghost-btn" onClick={exitIdentity}>退出身份</button>
                   </>
                 ) : (
-                  <strong>所有者（最高权限）</strong>
+                  <>
+                    <strong>{authUser?.email ?? '未登录'}</strong>
+                    <span className={`role-badge ${myRole}`}>{ROLE_LABEL[myRole] ?? myRole}</span>
+                  </>
                 )}
               </div>
 
-              <form className="inline-form" onSubmit={addMember}>
-                <input
-                  value={memberEmail}
-                  onChange={(e) => setMemberEmail(e.target.value)}
-                  placeholder="输入成员邮箱，如 design@company.com"
-                  className="compact-input grow"
-                  type="email"
-                />
-                <select value={memberRole} onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')} className="compact-input">
-                  <option value="collaborator">协作 · 只读</option>
-                  <option value="admin">管理员</option>
-                </select>
-                <button type="submit" disabled={busy || !memberEmail.trim()}><Mail /> 邀请成员</button>
-              </form>
+              {canManage ? (
+                <>
+                  <form className="inline-form" onSubmit={addMember}>
+                    <input
+                      value={memberEmail}
+                      onChange={(e) => setMemberEmail(e.target.value)}
+                      placeholder="输入被邀请邮箱，如 design@company.com"
+                      className="compact-input grow"
+                      type="email"
+                    />
+                    <select value={memberRole} onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')} className="compact-input">
+                      <option value="collaborator">协作 · 只读</option>
+                      <option value="admin">管理员</option>
+                    </select>
+                    <button type="submit" disabled={busy || !memberEmail.trim()}><Mail /> 发送邀请</button>
+                  </form>
+                  {inviteLink && (
+                    <div className="invite-link-box">
+                      <span className="small dim">
+                        已向 <b>{inviteLink.email}</b> 发送邀请邮件（{ROLE_LABEL[inviteLink.role] ?? inviteLink.role}，7 天有效）。对方也可通过链接接受：
+                      </span>
+                      <code className="invite-link-url">{inviteLink.inviteUrl}</code>
+                      <button type="button" onClick={() => void copyInviteLink()}>
+                        {inviteCopied ? '已复制 ✓' : '复制链接'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="empty">你是协作者身份，仅可查看设计稿；邀请与管理成员需要管理员权限</p>
+              )}
 
               <ul className="member-list">
                 {members.length === 0 && <p className="empty">还没有成员，输入邮箱邀请第一个吧</p>}
@@ -481,28 +576,39 @@ export default function HomePage() {
                   <li key={m.id} className="member-row">
                     <span className="member-avatar">{(m.email ?? m.name).slice(0, 1).toUpperCase()}</span>
                     <div className="member-info">
-                      <span className="member-name">{m.email ?? m.name}</span>
+                      <span className="member-name">
+                        {m.email ?? m.name}
+                        {m.role === 'owner' && <span className="role-badge owner">所有者</span>}
+                      </span>
                       <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
                     </div>
                     <select
                       className="member-role"
                       value={m.role}
                       onChange={(e) => void changeRole(m.id, e.target.value as 'admin' | 'collaborator')}
-                      disabled={!m.email}
-                      title={m.email ? '修改角色' : '历史成员（无邮箱），角色不可切换'}
+                      disabled={!canManage || m.role === 'owner' || !m.email}
+                      title={
+                        !canManage ? '需要管理员权限'
+                        : m.role === 'owner' ? '所有者角色不可修改'
+                        : !m.email ? '历史成员（无邮箱），角色不可切换'
+                        : '修改角色'
+                      }
                     >
                       <option value="admin">管理员</option>
                       <option value="collaborator">协作 · 只读</option>
                     </select>
-                    <button
-                      className="ghost-btn"
-                      disabled={!m.email}
-                      onClick={() => enterAs(m)}
-                      title={m.email ? '以该成员身份体验权限差异' : '历史成员（无邮箱）不可切换'}
-                    >
-                      以此身份体验
-                    </button>
-                    <button className="member-remove" onClick={() => void removeMember(m.id)}>移除</button>
+                    {canManage && m.email && m.role !== 'owner' && (
+                      <button
+                        className="ghost-btn"
+                        onClick={() => enterAs(m)}
+                        title="以该成员身份体验权限差异"
+                      >
+                        以此身份体验
+                      </button>
+                    )}
+                    {canManage && m.role !== 'owner' && (
+                      <button className="member-remove" onClick={() => void removeMember(m.id)}>移除</button>
+                    )}
                   </li>
                 ))}
               </ul>
