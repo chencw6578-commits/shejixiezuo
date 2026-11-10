@@ -1054,15 +1054,15 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 @media (max-width: 960px) { .project-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .project-card {
-  width: 100%; padding: 16px; text-align: left;
+  width: 100%; padding: 12px; text-align: left;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
   transition: border-color 0.15s ease;
 }
 .project-card:hover { border-color: var(--border-strong); }
-.project-card .file-name { font-size: 14px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-card .file-name { font-size: 13.5px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 项目卡片封面：显示设计稿缩略图 */
 .project-cover {
-  display: block; height: 150px; margin: -16px -16px 12px;
+  display: block; height: 112px; margin: -12px -12px 10px;
   /* 卡片圆角 var(--radius-card)=18px，封面贴到边框内缘（-1px），圆角必须对齐内缘弧线，
      否则封面的浅色底会在四角盖住描边、看起来像描边断了 */
   border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
@@ -1552,10 +1552,10 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   padding-right: 36px; line-height: 18px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* ⋯ 按钮 32px 高：文字行中心距卡片底 16(padding)+9(行高一半)=25px → bottom = 25-16 = 9px，
+/* ⋯ 按钮 32px 高：文字行中心距卡片底 12(padding)+9(行高一半)=21px → bottom = 21-16 = 5px，
    使按钮中心与「1 份设计稿 · 最后更新」文字中心垂直对齐 */
 .project-card-wrap > .project-card-menu.row-menu {
-  position: absolute; right: 6px; bottom: 9px;
+  position: absolute; right: 4px; bottom: 5px;
 }
 /* 常显但低调；hover / 键盘聚焦时完全显现，沿用侧栏 ⋯ 的交互 */
 .project-card-wrap > .project-card-menu .row-menu-btn { opacity: 0.5; }
