@@ -1490,10 +1490,12 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 
 /* ---------- 项目卡片「更多操作」（⋯）：与卡片 button 同级，绝对定位到右下角 ---------- */
 .project-card-wrap { position: relative; }
-/* 给右下角按钮预留空间，避免压住「最后更新」文字 */
-.project-card-wrap .file-meta { padding-right: 36px; }
+/* 给右下角按钮预留空间，避免压住「最后更新」文字；行高固定 18px 便于精确对齐 */
+.project-card-wrap .file-meta { padding-right: 36px; line-height: 18px; }
+/* ⋯ 按钮 32px 高：文字行中心距卡片底 16(padding)+9(行高一半)=25px → bottom = 25-16 = 9px，
+   使按钮中心与「1 份设计稿 · 最后更新」文字中心垂直对齐 */
 .project-card-wrap > .project-card-menu.row-menu {
-  position: absolute; right: 6px; bottom: 6px;
+  position: absolute; right: 6px; bottom: 9px;
 }
 /* 常显但低调；hover / 键盘聚焦时完全显现，沿用侧栏 ⋯ 的交互 */
 .project-card-wrap > .project-card-menu .row-menu-btn { opacity: 0.5; }
