@@ -199,7 +199,6 @@ export default function Canvas({
   const bg = canvasBgStyle(canvasBg);
   // 画板底图：插件导入时已经保存了 Figma 原生 exportAsync 的整板 PNG（含图片填充、图标、渐变）。
   // 节点矢量层只是 CSS 近似，还原不了这些，因此固定展示原图（无原图时回退到节点渲染）。
-  const [renderMode, setRenderMode] = useState<'image' | 'vector'>('image');
 
   const setZoom = useCallback((z: number) => {
     z = clamp(z, MIN_ZOOM, MAX_ZOOM);
@@ -464,24 +463,9 @@ export default function Canvas({
   const hasNodes = nodes.length > 0;
   const hasThumb = !!frame.thumb_url;
   // 原图是导入时 Figma 原生导出的整板 PNG，与画板列表缩略图同一份文件，保真度最高。
-  // 无节点数据时无条件用原图；有节点时也固定用原图（图层模式按钮已按需求移除）。
-  const showImage = hasThumb && (!hasNodes || renderMode === 'image');
+  // 无节点数据时无条件用原图；有节点时也固定用原图（模式切换按钮已全部移除）。
+  const showImage = hasThumb;
   const showVector = hasNodes && !showImage;
-  const modeBtn = (m: 'image' | 'vector', label: string, title: string) => (
-    <button
-      key={m}
-      title={title}
-      onClick={() => setRenderMode(m)}
-      style={{
-        fontSize: 12,
-        borderRadius: 4,
-        background: renderMode === m ? 'rgba(108, 76, 241, 0.14)' : 'transparent',
-        color: renderMode === m ? 'var(--accent)' : undefined,
-      }}
-    >
-      {label}
-    </button>
-  );
   // 缩放是把每个坐标手动乘 zoom（.artboard 只有 translate，没有 transform: scale），
   // 所以标注层的 DOM / SVG 本身就是屏幕像素坐标系。以前按「外层 scale(zoom)」的假设
   // 用 1/zoom 反向补偿，结果 zoom 越大字号、描边越细 —— 即「越放大文字越小」。
@@ -743,12 +727,6 @@ export default function Canvas({
         <span className="zoom-value">{Math.round(zoom * 100)}%</span>
         <button onClick={() => zoomCenter(zoom * 1.25)} title="放大" aria-label="放大"><Plus /></button>
         <button onClick={fit} title="适应画布"><Maximize /><span>适应</span></button>
-        {hasThumb && hasNodes && (
-          <>
-            <span aria-hidden="true" style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
-            {modeBtn('image', '原图', '原图：与画板列表一致的 Figma 原生导出图，完整还原颜色/图标/图片')}
-          </>
-        )}
         <CanvasBgPicker token={canvasBg} onPick={pickCanvasBg} />
       </div>
     </div>
