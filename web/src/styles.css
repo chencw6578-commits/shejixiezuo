@@ -447,7 +447,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .sidebar-section { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
 /* 左侧栏分区标题（画板页「画板 · N」/ 查看器页「画板 N 个画板」）：统一 16px。
    仅这两处使用 .sidebar-section，改这一条即可两页同步，不影响 .prop-section 等其它 h3。 */
-.sidebar-section h3 { font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 12px 8px; }
+.sidebar-section h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 12px 8px; }
 .sidebar-grow { flex: 1; overflow-y: auto; border-bottom: none; }
 /* 左侧只保留页面列表：占满整个侧栏高度 */
 .sidebar-grow .page-list { max-height: none; overflow: visible; }
