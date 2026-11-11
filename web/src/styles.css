@@ -1043,19 +1043,22 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   background: var(--bg-panel); color: var(--accent); font-weight: 600;
   box-shadow: 0 1px 4px rgba(29, 33, 41, 0.10);
 }
-/* 项目列表 Tab（全部项目 / 最近使用 / 最近更新）：下划线式极简 Tab */
+/* 项目列表 Tab（全部项目 / 最近使用 / 最近更新）：下划线式极简 Tab；首项文字与页标题左对齐 */
 .project-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
 .project-tab {
-  position: relative; padding: 7px 12px 10px; font-size: 13px; color: var(--text-dim);
+  position: relative; padding: 7px 12px 10px; font-size: 14px; color: var(--text-dim);
   background: transparent; border: none; cursor: pointer;
   border-radius: 6px 6px 0 0; transition: color 0.12s ease, background 0.12s ease;
 }
+/* 首项去掉左内边距，使「全部项目」文字与上方「项目」标题左边缘对齐 */
+.project-tab:first-child { padding-left: 0; }
 .project-tab:hover { color: var(--text); background: var(--bg-elevated); }
 .project-tab.active { color: var(--text); font-weight: 600; }
 .project-tab.active::after {
   content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px;
   background: var(--accent); border-radius: 1px;
 }
+.project-tab.active:first-child::after { left: 0; }
 
 /* 项目网格：一行固定 5 个（窄屏逐级降到 4/3/2） */
 .project-grid { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
