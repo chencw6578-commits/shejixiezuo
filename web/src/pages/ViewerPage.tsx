@@ -837,7 +837,9 @@ export default function ViewerPage() {
                     role="button"
                     tabIndex={0}
                     aria-expanded={openPages.has('__none:global')}
-                    onClick={() => {
+                    onClick={(e) => {
+                      // 与画板页保持一致：只由文字自身切换一次，避免冒泡造成双重 toggle
+                      e.stopPropagation();
                       togglePage('__none:global');
                     }}
                     onKeyDown={(e) => {

@@ -2245,7 +2245,9 @@ export default function ProjectCanvasPage() {
                       tabIndex={0}
                       aria-expanded={openPages.has('__none:global')}
                       title={`未分组（${ungrouped.length} 个画板）· 点击折叠/展开`}
-                      onClick={() => {
+                      onClick={(e) => {
+                        // 父 .page-row 也有展开逻辑：不阻断冒泡会连续 toggle 两次而互相抵消
+                        e.stopPropagation();
                         togglePage('__none:global');
                       }}
                       onKeyDown={(e) => {
