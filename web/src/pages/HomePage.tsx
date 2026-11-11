@@ -845,7 +845,7 @@ export default function HomePage() {
                       </span>
                       <span className="file-name"><Folder /> {p.name}</span>
                       <span className="file-meta">
-                        {p.file_count} 份设计稿 · 最后更新{' '}
+                        最后更新{' '}
                         {p.last_file_at
                           ? new Date(p.last_file_at).toLocaleString('zh-CN')
                           : new Date(p.created_at).toLocaleString('zh-CN')}

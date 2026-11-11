@@ -1553,7 +1553,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* ⋯ 按钮 32px 高：文字行中心距卡片底 16(padding)+9(行高一半)=25px → bottom = 25-16 = 9px，
-   使按钮中心与「1 份设计稿 · 最后更新」文字中心垂直对齐 */
+   使按钮中心与「最后更新」文字中心垂直对齐 */
 .project-card-wrap > .project-card-menu.row-menu {
   position: absolute; right: 6px; bottom: 9px;
 }
