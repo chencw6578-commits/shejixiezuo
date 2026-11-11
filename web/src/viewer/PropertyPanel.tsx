@@ -216,25 +216,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         <h3>位置与尺寸</h3>
         <div className="size-grid">
           <div className="size-cell">
-            <span className="cell-label">X（相对父级）</span>
-            <CopyChip text={String(coords?.relative.x ?? selected.x)}>
-              <b>{coords?.relative.x ?? selected.x} {unit}</b>
-            </CopyChip>
-          </div>
-          <div className="size-cell">
-            <span className="cell-label">Y（相对父级）</span>
-            <CopyChip text={String(coords?.relative.y ?? selected.y)}>
-              <b>{coords?.relative.y ?? selected.y} {unit}</b>
-            </CopyChip>
-          </div>
-          <div className="size-cell">
-            <span className="cell-label">X（绝对）</span>
+            <span className="cell-label">X</span>
             <CopyChip text={String(coords?.absolute.x ?? selected.x)}>
               <b>{coords?.absolute.x ?? selected.x} {unit}</b>
             </CopyChip>
           </div>
           <div className="size-cell">
-            <span className="cell-label">Y（绝对）</span>
+            <span className="cell-label">Y</span>
             <CopyChip text={String(coords?.absolute.y ?? selected.y)}>
               <b>{coords?.absolute.y ?? selected.y} {unit}</b>
             </CopyChip>

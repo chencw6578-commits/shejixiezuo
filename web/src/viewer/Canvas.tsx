@@ -457,6 +457,35 @@ export default function Canvas({
     return measureBetween(a, b).map((m) => ({ ...m, peerId: hovered.node_id }));
   }, [selected, hovered, fmt]);
 
+  // 画板边缘测距：选中元素后鼠标移到画板边边（<=10px）时，显示元素到画板左边/上边的距离。
+  // 与节点间距标注同一套视觉（品牌色虚线 + 胶囊标签），标签只显示数值 + 单位。
+  const [frameEdgeHover, setFrameEdgeHover] = useState(false);
+  const frameMeasures = useMemo<Measure[]>(() => {
+    if (!frameEdgeHover || !selected) return [];
+    const a = fmt(selected);
+    const cx = a.x + a.w / 2;
+    const cy = a.y + a.h / 2;
+    const out: Measure[] = [];
+    // 元素飞出画板（负坐标）不画；贴边显示 0
+    if (a.y >= 0) out.push({ side: 'top', axis: 'v', gap: a.y, x1: cx, y1: 0, x2: cx, y2: a.y, peerId: '__frame__' });
+    if (a.x >= 0) out.push({ side: 'left', axis: 'h', gap: a.x, x1: 0, y1: cy, x2: a.x, y2: cy, peerId: '__frame__' });
+    return out;
+  }, [frameEdgeHover, selected, fmt]);
+
+  const FRAME_EDGE_PX = 10;
+  const onArtboardMouseMove = (e: React.MouseEvent) => {
+    const ab = artboardRef.current;
+    if (!ab || !selectedId) {
+      if (frameEdgeHover) setFrameEdgeHover(false);
+      return;
+    }
+    const r = ab.getBoundingClientRect();
+    const near =
+      Math.min(e.clientX - r.left, r.right - e.clientX, e.clientY - r.top, r.bottom - e.clientY) <=
+      FRAME_EDGE_PX;
+    if (near !== frameEdgeHover) setFrameEdgeHover(near);
+  };
+
   const W = frame.width * zoom;
   const H = frame.height * zoom;
   // 有节点数据 → 节点矢量渲染；否则回退到位图 + 热区（两条路径共用同一套热区命中逻辑）
@@ -518,6 +547,8 @@ export default function Canvas({
         data-bg="1"
         style={{ width: W, height: H, transform: `translate(${pan.x}px, ${pan.y}px)` }}
         ref={artboardRef}
+        onMouseMove={onArtboardMouseMove}
+        onMouseLeave={() => { if (frameEdgeHover) setFrameEdgeHover(false); }}
       >
         {showImage && (
           /* 原图模式：直接用导入时保存的整板 PNG，与画板列表缩略图同源，完整还原设计稿 */
@@ -616,6 +647,17 @@ export default function Canvas({
               strokeDasharray={`${4 * lw} ${3 * lw}`}
             />
           ))}
+          {/* 画板边缘测距引线：元素到画板上边（竖线）/ 左边（横线） */}
+          {frameMeasures.map((m) => (
+            <line
+              key={`fgap-${m.side}`}
+              data-frame-gap-line={m.side}
+              x1={m.x1 * zoom} y1={m.y1 * zoom}
+              x2={m.x2 * zoom} y2={m.y2 * zoom}
+              stroke="#6c4cf1" strokeWidth={lw}
+              strokeDasharray={`${4 * lw} ${3 * lw}`}
+            />
+          ))}
         </svg>
 
         {/* 切图区域轻提示：极浅虚线细框常显（不遮挡、不弹字），hover/选中时另有完整品牌色描边与尺寸徽标 */}
@@ -663,6 +705,26 @@ export default function Canvas({
                   : m.side === 'right' ? 'translate(0, -50%)'
                     : m.side === 'top' ? 'translate(-50%, -100%)'
                       : 'translate(-140%, -50%)',
+              fontSize: fs,
+              padding: '2px 6px',
+              borderRadius: 999,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {Math.round(m.gap)} {unit}
+          </div>
+        ))}
+        {/* 画板边缘测距标签：数值 = 元素到画板上边/左边的距离，锚在引线中点 */}
+        {frameMeasures.map((m) => (
+          <div
+            key={`fgapb-${m.side}`}
+            className="badge badge-gap"
+            data-frame-gap={m.side}
+            style={{
+              position: 'absolute',
+              left: ((m.x1 + m.x2) / 2) * zoom,
+              top: ((m.y1 + m.y2) / 2) * zoom,
+              transform: 'translate(-50%, -50%)',
               fontSize: fs,
               padding: '2px 6px',
               borderRadius: 999,

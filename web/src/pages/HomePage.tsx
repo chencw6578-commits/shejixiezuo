@@ -27,6 +27,48 @@ interface Project {
 
 type View = 'projects' | 'members';
 
+/** 品牌图形 Logo（纯图形无文字）：圆角方块内「画板 + 向右上出图箭头」——设计稿从画板向外交付，对应网站「设计交付」核心 */
+function BrandMark() {
+  return (
+    <svg className="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="brand-mark-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#7d5ef7" />
+          <stop offset="1" stopColor="#5b3fe0" />
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#brand-mark-g)" />
+      {/* 画板：设计载体 */}
+      <rect x="4" y="4.5" width="11.5" height="11.5" rx="2" fill="none" stroke="#fff" strokeWidth="1.7" />
+      {/* 画板内容示意线 */}
+      <path d="M7 8.2h5.5M7 11h3.5" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" opacity="0.55" fill="none" />
+      {/* 交付箭头：从画板右下角穿出、指向右上（导出/交付） */}
+      <path d="M13 16 19.5 9.5" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+      <path d="M16.2 9.5h3.3v3.3" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
+/* 项目卡片图形标识：品牌渐变小方块 + 前实后虚两层画板（一个项目 = 一叠设计稿），
+   与顶栏 BrandMark 同族视觉，替代通用文件夹图标 */
+function ProjectMark() {
+  return (
+    <svg className="project-mark" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="project-mark-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#8b6cff" />
+          <stop offset="1" stopColor="#5b3fe0" />
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#project-mark-g)" />
+      {/* 后层画板：半透明，示意项目内更多设计稿 */}
+      <rect x="9.6" y="4.9" width="9.5" height="9.5" rx="1.8" fill="none" stroke="#fff" strokeWidth="1.5" opacity="0.45" />
+      {/* 前层画板：实心填充遮住后层交叠部分，形成清晰的前后层叠 */}
+      <rect x="4.9" y="9.6" width="9.5" height="9.5" rx="1.8" fill="#6a4ff0" stroke="#fff" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
 /** 项目封面：把项目内全部画板排成总览网格，而不是只显示第一张画板 */
 function ProjectCover({ frames }: { frames: ProjectCoverFrame[] }) {
   return (
@@ -732,6 +774,7 @@ export default function HomePage() {
           onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
         >
           <summary title="切换团队">
+            <BrandMark />
             <span className="team-switch-name">{activeTeamName ?? '当前团队'}</span>
             <span className="caret"><ChevronDown /></span>
           </summary>
@@ -924,7 +967,7 @@ export default function HomePage() {
                           <img className="project-cover-single" src={p.cover} alt={p.name} loading="lazy" />
                         ) : null}
                       </span>
-                      <span className="file-name"><Folder /> {p.name}</span>
+                      <span className="file-name"><ProjectMark /> {p.name}</span>
                       <span className="file-meta">
                         最后更新{' '}
                         {p.last_file_at
@@ -1043,7 +1086,6 @@ export default function HomePage() {
                     <div className="member-info">
                       <span className="member-name">
                         {m.name || m.email || '未命名成员'}
-                        {m.role === 'owner' && <span className="role-badge owner">所有者</span>}
                       </span>
                       <span className="dim small">
                         {m.email && m.email !== m.name ? `${m.email} · ` : ''}加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}

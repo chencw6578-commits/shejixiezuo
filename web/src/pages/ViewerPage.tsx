@@ -715,10 +715,9 @@ export default function ViewerPage() {
         )}
         <aside className={`sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
           <div className="sidebar-section sidebar-grow">
-            <h3>
-              画板
-              <span className="sidebar-hspacer" />
-              <span className="dim small">{frames.length} 个画板</span>
+            {/* 与项目画布页同一结构：sidebar-head（标题左 + 加号右），计数格式统一为「画板 · N」 */}
+            <div className="sidebar-head">
+              <h3>画板 · {frames.length}</h3>
               {!readOnly && (
                 <button
                   className="pcanvas-edit-btn sidebar-add-group"
@@ -728,7 +727,7 @@ export default function ViewerPage() {
                   <Plus />
                 </button>
               )}
-            </h3>
+            </div>
             <div className="page-list">
               {flatGroups.map(({ pg, fileId: fid, fileName }) => {
                 const list = pageFrames(fid, pg.id);

@@ -83,7 +83,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* ---------- 首页（侧边栏布局，浅色主题：作用域覆盖变量，画布页保持深色不受影响） ---------- */
 .home-shell {
   display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%;
-  --bg: #f5f6f8;
+  --bg: #ffffff;
   --bg-panel: #ffffff;
   --bg-elevated: #f7f8fa;
   --border: #e4e7ec;
@@ -197,7 +197,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .home-sidebar {
   width: 216px; flex-shrink: 0; display: flex; flex-direction: column;
-  background: var(--bg-panel); border-right: 1px solid var(--border); padding: 18px 12px;
+  /* v1.4 极简化：侧栏加一层浅浅的底色，与纯白主区形成分区（比选中态 #eef1f5 更浅） */
+  background: #f8f9fb; border-right: 1px solid var(--border); padding: 18px 12px;
 }
 .home-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; }
 .home-brand .logo { font-size: 26px; color: var(--accent); }
@@ -213,7 +214,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   font-size: 14px;
 }
 .side-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
-.side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
+.side-nav-item.active { background: #eef1f5; color: var(--text); }
 .home-main { flex: 1; overflow-y: auto; }
 .home-main-inner { max-width: 1760px; margin: 0 auto; padding: 28px 28px 56px; }
 .view-header { margin-bottom: 20px; }
@@ -413,6 +414,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   position: relative; z-index: 10;
 }
 .topbar h1 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+/* 项目画布页与画板详情页（根类 .viewer）的顶栏项目名：不加粗（用户指定这两处；FilePage 不受影响） */
+.viewer .topbar h1 { font-weight: 400; }
 .topbar .crumb { color: var(--text-dim); font-size: 12px; }
 .topbar .spacer { flex: 1; }
 .back { color: var(--text-dim); text-decoration: none; white-space: nowrap; }
@@ -445,9 +448,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: flex; flex-direction: column; min-height: 0;
 }
 .sidebar-section { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
-/* 左侧栏分区标题（画板页「画板 · N」/ 查看器页「画板 N 个画板」）：统一 16px。
+/* 左侧栏分区标题（画板页「画板 · N」/ 查看器页「画板 · N」）：结构与字号统一，不加粗。
    仅这两处使用 .sidebar-section，改这一条即可两页同步，不影响 .prop-section 等其它 h3。 */
-.sidebar-section h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 12px 8px; }
+.sidebar-section h3 { font-size: 14px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 4px 12px 8px; }
 .sidebar-grow { flex: 1; overflow-y: auto; border-bottom: none; }
 /* 左侧只保留页面列表：占满整个侧栏高度 */
 .sidebar-grow .page-list { max-height: none; overflow: visible; }
@@ -458,7 +461,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px;
 }
 .frame-item:hover { background: var(--bg-elevated); }
-.frame-item.is-current { background: rgba(108, 76, 241, 0.18); color: var(--accent); }
+.frame-item.is-current { background: #eef1f5; color: var(--text); }
 
 /* 页面列表（画板编组） */
 .page-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; padding: 0 6px; }
@@ -511,7 +514,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 6px; width: 20px; height: 20px; line-height: 1; cursor: pointer; font-size: 12px;
 }
 .page-add-btn:hover { color: var(--accent); border-color: var(--accent); }
-.sidebar-hspacer { flex: 1; }
 .sidebar-section h3 { display: flex; align-items: center; gap: 6px; }
 
 .layer-tree { font-size: 12px; }
@@ -521,13 +523,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-radius: 6px; /* 选中/hover 底纹统一 6px 圆角 */
 }
 .tree-item:hover, .tree-item.is-hover { background: var(--bg-elevated); }
-.tree-item.is-selected { background: rgba(108, 76, 241, 0.2); color: var(--accent); }
+.tree-item.is-selected { background: #eef1f5; color: var(--text); }
 .tree-icon {
   width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 700; border-radius: 3px;
   background: var(--bg-elevated); color: var(--text-dim); border: 1px solid var(--border);
 }
-.tree-item.is-selected .tree-icon { border-color: var(--accent); color: var(--accent); }
+.tree-item.is-selected .tree-icon { border-color: var(--text); color: var(--text); }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
 .tree-size { margin-left: auto; color: var(--text-dim); font-size: 11px; padding-right: 8px; }
 .tree-empty { color: var(--text-dim); padding: 8px 12px; }
@@ -561,7 +563,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 
 /* 设备预览（iOS / Android / Web 尺寸规范） */
-.device-select { max-width: 200px; font-size: 12px; padding: 5px 8px; }
+.device-select { max-width: 200px; font-size: 12px; padding: 5px 8px; border-radius: 6px; /* 与顶栏按钮（评论等）同圆角 */ }
 .device-screen {
   position: absolute; left: 0; top: 0;
   border-style: solid; border-color: rgba(108, 76, 241, 0.65);
@@ -608,9 +610,11 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .zoombar .zoom-value { min-width: 48px; text-align: center; font-size: 12px; }
 
 /* 属性面板 */
+/* 右侧属性栏文字统一 12px（用户要求）：基础字号 + 各显式字号对齐 */
 .inspector {
   width: 300px; background: var(--bg-panel); border-left: 1px solid var(--border);
   overflow-y: auto; min-height: 0;
+  font-size: 12px;
 }
 /* 顶部「容器 + 名称」标题行已移除（PropertyPanel 不再渲染 prop-header） */
 .prop-hint { color: var(--text-dim); padding: 8px 14px 20px; line-height: 1.6; }
@@ -618,7 +622,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .prop-import-link:hover { text-decoration: underline; }
 
 .prop-section { padding: 8px 14px 10px; border-bottom: 1px solid var(--border); }
-.prop-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
+.prop-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
 
 .kv { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; min-width: 0; }
 .kv span { color: var(--text-dim); flex: none; }
@@ -629,12 +633,12 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
 }
 .size-cell .cell-label {
-  display: block; flex: none; max-width: 60%; font-size: 11px; color: var(--text-dim);
+  display: block; flex: none; max-width: 60%; font-size: 12px; color: var(--text-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .size-cell .cell-value,
 .size-cell .copy-chip b {
-  display: block; min-width: 0; font-weight: 500; font-size: 12.5px;
+  display: block; min-width: 0; font-weight: 500; font-size: 12px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
 }
 .size-cell .copy-chip { width: auto; flex: 0 1 auto; min-width: 0; padding: 2px 5px; margin: -2px -5px; border-radius: 6px; justify-content: flex-end; }
@@ -720,7 +724,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   list-style: none;
   display: inline-flex; align-items: center; gap: 6px;
   font: inherit; color: var(--text); background: var(--bg-panel);
-  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); border-radius: 6px; /* 与顶栏按钮（评论等）同圆角 */
   padding: 6px 14px; cursor: pointer; user-select: none;
 }
 .export-menu summary:hover { background: var(--bg-hover); }
@@ -793,9 +797,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   background: transparent; border-color: transparent; color: var(--text-dim);
 }
 .snippet-tab:hover { color: var(--text); background: var(--bg-elevated); }
-.snippet-tab.active { background: rgba(108, 76, 241, 0.16); color: var(--accent); }
+.snippet-tab.active { background: #eef1f5; color: var(--accent); }
 .snippet-code {
-  font-family: 'SF Mono', Consolas, Menlo, monospace; font-size: 11px; line-height: 1.45;
+  font-family: 'SF Mono', Consolas, Menlo, monospace; font-size: 12px; line-height: 1.45;
   background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 8px; overflow-x: auto; white-space: pre; max-height: 150px; overflow-y: auto;
 }
@@ -904,6 +908,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch summary::-webkit-details-marker { display: none; }
 .team-switch summary:hover { background: var(--bg-elevated); }
 .team-switch .logo { font-size: 22px; color: var(--accent); }
+/* 品牌 Logo（纯图形）：与团队名同高对齐， flex 布局由 summary 的 gap 控制间距 */
+.brand-mark { display: block; flex: none; border-radius: 6px; }
 .team-switch-name {
   font-size: 16px; font-weight: 600; flex: 1; max-width: 130px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -911,7 +917,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch .caret { color: var(--text-dim); font-size: 10px; }
 .team-switch-pop {
   position: absolute; top: calc(100% + 4px); left: 4px; width: 240px;
-  background: var(--bg-elevated); border: 1px solid var(--border-strong);
+  background: var(--bg-panel); border: none;
   border-radius: 8px; padding: 6px; z-index: 60;
   box-shadow: 0 12px 32px rgba(29, 33, 41, 0.12);
 }
@@ -921,7 +927,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 /* 选中行整行上底色（包含右侧「⋯ 更多」按钮），按钮自身保持透明不叠色 */
 .team-switch-row.active {
-  background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600;
+  background: #eef1f5; color: var(--accent); font-weight: 600;
 }
 .team-switch-row.active .team-switch-item,
 .team-switch-row.active .team-switch-item:hover {
@@ -984,6 +990,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   min-width: 150px; cursor: pointer;
   appearance: none; -webkit-appearance: none; padding-right: 32px;
 }
+/* 团队管理页：搜索框/角色下拉圆角 6px（覆盖全局 10px）；作用域内覆盖边框变量，整页描边调浅 */
+.team-view { --border: #eef0f4; --border-strong: #dfe3e8; }
+.team-view .member-search input,
+.team-view .member-role-filter { border-radius: 6px; }
 .member-count { white-space: nowrap; }
 .empty .member-filter-reset {
   margin-left: 10px; padding: 2px 8px; background: transparent;
@@ -994,10 +1004,19 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   .member-toolbar { flex-wrap: wrap; }
   .member-search { flex: 1 1 100%; }
 }
+/* 成员行：网格布局，徽标列与两个操作列全部固定宽度。
+   每行是独立 grid 容器（轨道不共享），但固定列总宽一致，
+   所有者行没有操作按钮也按空占位 → 各行角色徽标左边缘严格对齐。
+   列宽取值：徽标（3 字 + 内边距）≈56px<64；编辑身份 ≈90px<190；移除 ≈75px<84 */
 .member-row {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) 64px 190px 84px;
+  gap: 12px; align-items: center; padding: 12px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
   margin-bottom: 8px;
+}
+@media (max-width: 640px) {
+  /* 小屏回退为原有 flex 流式布局，避免固定操作列挤压成员名 */
+  .member-row { display: flex; }
 }
 .member-avatar {
   width: 32px; height: 32px; border-radius: 50%; background: rgba(108, 76, 241, 0.18);
@@ -1094,7 +1113,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   box-shadow: 0 1px 4px rgba(29, 33, 41, 0.10);
 }
 /* 项目列表 Tab（全部项目 / 最近使用 / 最近更新）：下划线式极简 Tab；首项文字与页标题左对齐 */
-.project-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.project-tabs { display: flex; gap: 2px; margin-bottom: 18px; }
 .project-tab {
   position: relative; padding: 7px 12px 10px; font-size: 14px; color: var(--text-dim);
   background: transparent; border: none; cursor: pointer;
@@ -1105,7 +1124,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .project-tab:hover { color: var(--text); background: var(--bg-elevated); }
 .project-tab.active { color: var(--text); font-weight: 600; }
 .project-tab.active::after {
-  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px;
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px;
   background: var(--accent); border-radius: 1px;
 }
 .project-tab.active:first-child::after { left: 0; }
@@ -1134,8 +1153,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .project-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
 /* 批量切图倍数选择 */
-.export-scale { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 13px; color: var(--text-dim); }
-.export-scale select { flex: 1; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-panel); color: var(--text); font-size: 13px; }
+.export-scale { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 12px; color: var(--text-dim); }
+.export-scale select { flex: 1; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-panel); color: var(--text); font-size: 12px; }
 .team-crumb {
   display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
   font-size: 12px; color: var(--text-dim); background: var(--bg-panel);
@@ -1159,14 +1178,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 /* ---------- 原型交互（属性面板） ---------- */
 .prop-section select { width: 100%; background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
-.prop-section .hint { margin-top: 3px; font-size: 11px; }
+.prop-section .hint { margin-top: 3px; font-size: 12px; }
 
 /* ---------- 成员邀请 / 角色 / 只读标识 ---------- */
 .role-badge { border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .role-badge.admin { background: rgba(108, 76, 241, 0.12); color: var(--accent); }
 .role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
 .role-badge.owner { background: #fef3c7; color: #92400e; }
-.member-name .role-badge { margin-left: 8px; vertical-align: 1px; }
 /* 信息区吃掉剩余空间，把身份徽章/体验/移除推到右侧形成整齐的操作列 */
 .member-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .member-info .member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1180,8 +1198,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .member-action svg { flex: 0 0 auto; }
 .home-shell .member-action:hover { background: #eef1f5; color: var(--text); }
-.member-action.is-active { color: var(--accent); background: rgba(108, 76, 241, 0.08); }
-.home-shell .member-action.is-active:hover { background: rgba(108, 76, 241, 0.14); }
+.member-action.is-active { color: var(--accent); background: #eef1f5; }
+.home-shell .member-action.is-active:hover { background: #e7eaef; }
 .readonly-tag {
   display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 10px;
   font-size: 12px; background: rgba(122, 125, 138, 0.14); color: var(--text-dim);
@@ -1329,11 +1347,11 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pcanvas-frame-item { padding: 6px 10px; }
-.pcanvas-frame-item.is-selected { background: rgba(108, 76, 241, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
+.pcanvas-frame-item.is-selected { background: #eef1f5; }
 .pcanvas-frame-item.is-drop-target {
   outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(108, 76, 241, 0.1);
 }
-.page-row.is-selected { background: rgba(108, 76, 241, 0.16); box-shadow: inset 2px 0 0 var(--accent); }
+.page-row.is-selected { background: #eef1f5; }
 /* 框选矩形与对齐参考线（画布交互） */
 .pcanvas-marquee {
   position: absolute; border: 1px solid var(--accent); border-radius: 2px;
@@ -1350,7 +1368,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-bottom: 1px solid var(--border);
 }
 .home-topbar { background: rgba(255, 255, 255, 0.9); border-bottom: 1px solid var(--border); }
-.home-sidebar, .sidebar, .inspector { background: var(--bg-panel); }
+.sidebar, .inspector { background: var(--bg-panel); }
 .sidebar-section { border-bottom: 1px solid var(--border); }
 .project-card {
   border-radius: var(--radius-card);
@@ -1484,9 +1502,12 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch-item svg { color: var(--text-dim); flex: none; }
 .side-nav-item { display: inline-flex; align-items: center; gap: 8px; }
 .side-nav-item svg { color: var(--text-dim); flex: none; }
-.side-nav-item.active svg { color: var(--accent); }
+.side-nav-item.active svg { color: var(--text); }
 .file-name { display: inline-flex; align-items: center; gap: 6px; }
 .file-name svg { color: var(--text-dim); flex: none; }
+/* 项目卡片图形标识：品牌渐变小方块 + 层叠画板（与顶栏 BrandMark 同族），
+   覆盖 .file-name svg 的灰色（其只影响 currentColor，渐变 fill 不受影响，但需 flex:none 防压缩） */
+.file-name .project-mark { flex: none; display: block; border-radius: 4px; }
 
 /* ===== 主色体系（brand tokens）：主按钮 / 禁用 / 选中 / focus ===== */
 button[type='submit'], .dlg-btn.is-primary {
@@ -1509,7 +1530,7 @@ button[type='submit']:disabled, .dlg-btn.is-primary:disabled,
 a, .back { color: var(--brand-600); }
 :focus-visible { outline: 2px solid var(--brand-200); outline-offset: 1px; }
 input:focus, select:focus { outline-color: var(--brand-200); border-color: var(--brand-600); }
-.side-nav-item.active { background: var(--brand-100); color: var(--brand-600); }
+.side-nav-item.active { background: #eef1f5; color: var(--text); }
 .page-row.is-selected .page-name, .page-name.is-active {
   background: var(--brand-100); color: var(--brand-600); box-shadow: inset 2px 0 0 var(--brand-600);
 }
@@ -1670,7 +1691,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   border: 1px solid var(--border-strong); background: var(--bg-panel);
   color: var(--text); cursor: pointer; font-size: var(--fs-body);
 }
-.share-btn svg { color: var(--accent); }
+/* 图标与文字同色（currentColor）：原来的品牌紫已按用户要求去掉 */
 .share-btn:hover, .share-btn.is-active { border-color: var(--accent); background: var(--accent-soft-2); }
 .share-popover {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 80;

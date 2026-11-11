@@ -1,6 +1,10 @@
 import type { ReactNode, SVGProps } from 'react';
 
-/** Lucide 风格线性图标：size 16、stroke 1.75、currentColor、fill none、圆角端点 */
+/**
+ * Remix Icon（https://remixicon.com/）官方路径，v4.x，Apache 2.0 许可。
+ * 线性图标用 *-line 变体，填充图标用 *-fill 变体；viewBox 0 0 24 24、fill currentColor。
+ * API 与旧版一致（size + 标准 SVG props），全站组件零改动换装。
+ */
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   size?: number;
 }
@@ -10,11 +14,7 @@ const Svg = ({ size = 16, children, ...rest }: IconProps & { children: ReactNode
     width={size}
     height={size}
     viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.75}
-    strokeLinecap="round"
-    strokeLinejoin="round"
+    fill="currentColor"
     aria-hidden="true"
     focusable="false"
     {...rest}
@@ -25,318 +25,262 @@ const Svg = ({ size = 16, children, ...rest }: IconProps & { children: ReactNode
 
 export const ChevronRight = (p: IconProps) => (
   <Svg {...p}>
-    <path d="m9 18 6-6-6-6" />
+    <path d="M13.1717 12.0007L8.22192 7.05093L9.63614 5.63672L16.0001 12.0007L9.63614 18.3646L8.22192 16.9504L13.1717 12.0007Z"/>
   </Svg>
 );
 
 export const ChevronDown = (p: IconProps) => (
   <Svg {...p}>
-    <path d="m6 9 6 6 6-6" />
+    <path d="M11.9999 13.1714L16.9497 8.22168L18.3639 9.63589L11.9999 15.9999L5.63599 9.63589L7.0502 8.22168L11.9999 13.1714Z"/>
   </Svg>
 );
 
-/** 搜索（Lucide search） */
 export const Search = (p: IconProps) => (
   <Svg {...p}>
-    <circle cx="11" cy="11" r="8" />
-    <path d="m21 21-4.3-4.3" />
+    <path d="M18.031 16.6168L22.3137 20.8995L20.8995 22.3137L16.6168 18.031C15.0769 19.263 13.124 20 11 20C6.032 20 2 15.968 2 11C2 6.032 6.032 2 11 2C15.968 2 20 6.032 20 11C20 13.124 19.263 15.0769 18.031 16.6168ZM16.0247 15.8748C17.2475 14.6146 18 12.8956 18 11C18 7.1325 14.8675 4 11 4C7.1325 4 4 7.1325 4 11C4 14.8675 7.1325 18 11 18C12.8956 18 14.6146 17.2475 15.8748 16.0247L16.0247 15.8748Z"/>
   </Svg>
 );
 
 export const Pencil = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M12 20h9" />
-    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    <path d="M15.7279 9.57627L14.3137 8.16206L5 17.4758V18.89H6.41421L15.7279 9.57627ZM17.1421 8.16206L18.5563 6.74785L17.1421 5.33363L15.7279 6.74785L17.1421 8.16206ZM7.24264 20.89H3V16.6473L16.435 3.21231C16.8256 2.82179 17.4587 2.82179 17.8492 3.21231L20.6777 6.04074C21.0682 6.43126 21.0682 7.06443 20.6777 7.45495L7.24264 20.89Z"/>
   </Svg>
 );
 
 export const MoreHorizontal = (p: IconProps) => (
   <Svg {...p}>
-    <circle cx="5" cy="12" r="1" />
-    <circle cx="12" cy="12" r="1" />
-    <circle cx="19" cy="12" r="1" />
+    <path d="M4.5 10.5C3.675 10.5 3 11.175 3 12C3 12.825 3.675 13.5 4.5 13.5C5.325 13.5 6 12.825 6 12C6 11.175 5.325 10.5 4.5 10.5ZM19.5 10.5C18.675 10.5 18 11.175 18 12C18 12.825 18.675 13.5 19.5 13.5C20.325 13.5 21 12.825 21 12C21 11.175 20.325 10.5 19.5 10.5ZM12 10.5C11.175 10.5 10.5 11.175 10.5 12C10.5 12.825 11.175 13.5 12 13.5C12.825 13.5 13.5 12.825 13.5 12C13.5 11.175 12.825 10.5 12 10.5Z"/>
   </Svg>
 );
 
 export const Trash2 = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M3 6h18" />
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    <path d="M10 11v6" />
-    <path d="M14 11v6" />
+    <path d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"/>
   </Svg>
 );
 
 export const Plus = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M5 12h14" />
-    <path d="M12 5v14" />
+    <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"/>
   </Svg>
 );
 
 export const Minus = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M5 12h14" />
+    <path d="M5 11V13H19V11H5Z"/>
   </Svg>
 );
 
 export const Maximize = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-    <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-    <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    <path d="M8 3V5H4V9H2V3H8ZM2 21V15H4V19H8V21H2ZM22 21H16V19H20V15H22V21ZM22 9H20V5H16V3H22V9Z"/>
   </Svg>
 );
 
 export const Menu = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M4 6h16" />
-    <path d="M4 12h16" />
-    <path d="M4 18h16" />
+    <path d="M3 4H21V6H3V4ZM3 11H21V13H3V11ZM3 18H21V20H3V18Z"/>
   </Svg>
 );
 
 export const ArrowLeft = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M19 12H5" />
-    <path d="M12 19l-7-7 7-7" />
+    <path d="M7.82843 10.9999H20V12.9999H7.82843L13.1924 18.3638L11.7782 19.778L4 11.9999L11.7782 4.22168L13.1924 5.63589L7.82843 10.9999Z"/>
   </Svg>
 );
 
 export const PanelRight = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <path d="M15 3v18" />
+    <path d="M21 3C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H21ZM15 5H4V19H15V5ZM20 5H17V19H20V5Z"/>
   </Svg>
 );
 
 export const Folder = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+    <path d="M4 5V19H20V7H11.5858L9.58579 5H4ZM12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5Z"/>
+  </Svg>
+);
+
+export const FolderFilled = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5Z"/>
   </Svg>
 );
 
 export const FolderMinus = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-    <path d="M9 13h6" />
+    <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5ZM4 5V19H20V7H11.5858L9.58579 5H4ZM8 12H16V14H8V12Z"/>
   </Svg>
 );
 
 export const FileText = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-    <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-    <path d="M10 9H8" />
-    <path d="M16 13H8" />
-    <path d="M16 17H8" />
+    <path d="M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z"/>
   </Svg>
 );
 
 export const Scissors = (p: IconProps) => (
   <Svg {...p}>
-    <circle cx="6" cy="6" r="3" />
-    <path d="M8.12 8.12 12 12" />
-    <path d="M20 4 8.12 15.88" />
-    <circle cx="6" cy="18" r="3" />
-    <path d="M14.8 14.8 20 20" />
+    <path d="M9.44618 8.02867L12 10.5825L18.7279 3.85457C19.509 3.07352 20.7753 3.07352 21.5563 3.85457L9.44618 15.9647C9.79807 16.5603 10 17.2549 10 17.9967C10 20.2058 8.20914 21.9967 6 21.9967C3.79086 21.9967 2 20.2058 2 17.9967C2 15.7876 3.79086 13.9967 6 13.9967C6.74181 13.9967 7.43645 14.1986 8.03197 14.5505L10.5858 11.9967L8.03197 9.44289C7.43645 9.79478 6.74181 9.9967 6 9.9967C3.79086 9.9967 2 8.20584 2 5.9967C2 3.78756 3.79086 1.9967 6 1.9967C8.20914 1.9967 10 3.78756 10 5.9967C10 6.73851 9.79807 7.43316 9.44618 8.02867ZM14.8255 13.408L21.5563 20.1388C20.7753 20.9199 19.509 20.9199 18.7279 20.1388L13.4113 14.8222L14.8255 13.408ZM7.41421 16.5825C7.05228 16.2206 6.55228 15.9967 6 15.9967C4.89543 15.9967 4 16.8921 4 17.9967C4 19.1013 4.89543 19.9967 6 19.9967C7.10457 19.9967 8 19.1013 8 17.9967C8 17.4444 7.77614 16.9444 7.41421 16.5825ZM7.41421 7.41092C7.77614 7.04899 8 6.54899 8 5.9967C8 4.89213 7.10457 3.9967 6 3.9967C4.89543 3.9967 4 4.89213 4 5.9967C4 7.10127 4.89543 7.9967 6 7.9967C6.55228 7.9967 7.05228 7.77285 7.41421 7.41092Z"/>
   </Svg>
 );
 
 export const KeyRound = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
-    <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+    <path d="M10.7577 11.8281L18.6066 3.97919L20.0208 5.3934L18.6066 6.80761L21.0815 9.28249L19.6673 10.6967L17.1924 8.22183L15.7782 9.63604L17.8995 11.7574L16.4853 13.1716L14.364 11.0503L12.1719 13.2423C13.4581 15.1837 13.246 17.8251 11.5355 19.5355C9.58291 21.4882 6.41709 21.4882 4.46447 19.5355C2.51184 17.5829 2.51184 14.4171 4.46447 12.4645C6.17493 10.754 8.81633 10.5419 10.7577 11.8281ZM10.1213 18.1213C11.2929 16.9497 11.2929 15.0503 10.1213 13.8787C8.94975 12.7071 7.05025 12.7071 5.87868 13.8787C4.70711 15.0503 4.70711 16.9497 5.87868 18.1213C7.05025 19.2929 8.94975 19.2929 10.1213 18.1213Z"/>
   </Svg>
 );
 
 export const Users = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    <path d="M2 22C2 17.5817 5.58172 14 10 14C14.4183 14 18 17.5817 18 22H16C16 18.6863 13.3137 16 10 16C6.68629 16 4 18.6863 4 22H2ZM10 13C6.685 13 4 10.315 4 7C4 3.685 6.685 1 10 1C13.315 1 16 3.685 16 7C16 10.315 13.315 13 10 13ZM10 11C12.21 11 14 9.21 14 7C14 4.79 12.21 3 10 3C7.79 3 6 4.79 6 7C6 9.21 7.79 11 10 11ZM18.2837 14.7028C21.0644 15.9561 23 18.752 23 22H21C21 19.564 19.5483 17.4671 17.4628 16.5271L18.2837 14.7028ZM17.5962 3.41321C19.5944 4.23703 21 6.20361 21 8.5C21 11.3702 18.8042 13.7252 16 13.9776V11.9646C17.6967 11.7222 19 10.264 19 8.5C19 7.11935 18.2016 5.92603 17.041 5.35635L17.5962 3.41321Z"/>
   </Svg>
 );
 
 export const Upload = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <path d="m17 8-5-5-5 5" />
-    <path d="M12 3v12" />
+    <path d="M4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19ZM13 9V16H11V9H6L12 3L18 9H13Z"/>
   </Svg>
 );
 
 export const Download = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <path d="m7 10 5 5 5-5" />
-    <path d="M12 15V3" />
+    <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
   </Svg>
 );
 
 export const MessageSquare = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <path d="M6.45455 19L2 22.5V4C2 3.44772 2.44772 3 3 3H21C21.5523 3 22 3.44772 22 4V18C22 18.5523 21.5523 19 21 19H6.45455ZM5.76282 17H20V5H4V18.3851L5.76282 17ZM8 10H16V12H8V10Z"/>
   </Svg>
 );
 
 export const Palette = (p: IconProps) => (
   <Svg {...p}>
-    <circle cx="13.5" cy="6.5" r=".6" />
-    <circle cx="17.5" cy="10.5" r=".6" />
-    <circle cx="8.5" cy="7.5" r=".6" />
-    <circle cx="6.5" cy="12.5" r=".6" />
-    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1a1.64 1.64 0 0 1 1.6-1.7h2c3 0 5.6-2.5 5.6-5.5C21.9 6 17.4 2 12 2Z" />
+    <path d="M12 2C17.5222 2 22 5.97778 22 10.8889C22 13.9556 19.5111 16.4444 16.4444 16.4444H14.4778C13.5556 16.4444 12.8111 17.1889 12.8111 18.1111C12.8111 18.5333 12.9778 18.9222 13.2333 19.2111C13.5 19.5111 13.6667 19.9 13.6667 20.3333C13.6667 21.2556 12.9 22 12 22C6.47778 22 2 17.5222 2 12C2 6.47778 6.47778 2 12 2ZM10.8111 18.1111C10.8111 16.0843 12.451 14.4444 14.4778 14.4444H16.4444C18.4065 14.4444 20 12.851 20 10.8889C20 7.1392 16.4677 4 12 4C7.58235 4 4 7.58235 4 12C4 16.19 7.2226 19.6285 11.324 19.9718C10.9948 19.4168 10.8111 18.7761 10.8111 18.1111ZM7.5 12C6.67157 12 6 11.3284 6 10.5C6 9.67157 6.67157 9 7.5 9C8.32843 9 9 9.67157 9 10.5C9 11.3284 8.32843 12 7.5 12ZM16.5 12C15.6716 12 15 11.3284 15 10.5C15 9.67157 15.6716 9 16.5 9C17.3284 9 18 9.67157 18 10.5C18 11.3284 17.3284 12 16.5 12ZM12 9C11.1716 9 10.5 8.32843 10.5 7.5C10.5 6.67157 11.1716 6 12 6C12.8284 6 13.5 6.67157 13.5 7.5C13.5 8.32843 12.8284 9 12 9Z"/>
   </Svg>
 );
 
 export const Check = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M20 6 9 17l-5-5" />
+    <path d="M9.9997 15.1709L19.1921 5.97852L20.6063 7.39273L9.9997 17.9993L3.63574 11.6354L5.04996 10.2212L9.9997 15.1709Z"/>
   </Svg>
 );
 
 export const X = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M18 6 6 18" />
-    <path d="m6 6 12 12" />
+    <path d="M11.9997 10.5865L16.9495 5.63672L18.3637 7.05093L13.4139 12.0007L18.3637 16.9504L16.9495 18.3646L11.9997 13.4149L7.04996 18.3646L5.63574 16.9504L10.5855 12.0007L5.63574 7.05093L7.04996 5.63672L11.9997 10.5865Z"/>
   </Svg>
 );
 
 export const AlignLeft = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M4 3v18" />
-    <path d="M8 8h9" />
-    <path d="M8 16h6" />
-  </Svg>
-);
-
-/** ---------- 画板对齐工具条图标（画板级对齐，非文本对齐） ---------- */
-export const AlignFrameLeft = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4 3v18" />
-    <rect x="8" y="6" width="12" height="5" rx="1" />
-    <rect x="8" y="13" width="8" height="5" rx="1" />
-  </Svg>
-);
-
-export const AlignFrameHCenter = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12 3v18" />
-    <rect x="5" y="6" width="14" height="5" rx="1" />
-    <rect x="8" y="13" width="8" height="5" rx="1" />
-  </Svg>
-);
-
-export const AlignFrameRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M20 3v18" />
-    <rect x="4" y="6" width="12" height="5" rx="1" />
-    <rect x="8" y="13" width="8" height="5" rx="1" />
-  </Svg>
-);
-
-export const AlignFrameTop = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 4h18" />
-    <rect x="6" y="8" width="5" height="12" rx="1" />
-    <rect x="13" y="8" width="5" height="8" rx="1" />
-  </Svg>
-);
-
-export const AlignFrameVCenter = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 12h18" />
-    <rect x="6" y="5" width="5" height="14" rx="1" />
-    <rect x="13" y="8" width="5" height="8" rx="1" />
-  </Svg>
-);
-
-export const AlignFrameBottom = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 20h18" />
-    <rect x="6" y="4" width="5" height="12" rx="1" />
-    <rect x="13" y="8" width="5" height="8" rx="1" />
-  </Svg>
-);
-
-export const DistributeH = (p: IconProps) => (
-  <Svg {...p}>
-    <rect x="4" y="6" width="3" height="12" rx="1" />
-    <rect x="10.5" y="6" width="3" height="12" rx="1" />
-    <rect x="17" y="6" width="3" height="12" rx="1" />
-  </Svg>
-);
-
-export const DistributeV = (p: IconProps) => (
-  <Svg {...p}>
-    <rect x="6" y="4" width="12" height="3" rx="1" />
-    <rect x="6" y="10.5" width="12" height="3" rx="1" />
-    <rect x="6" y="17" width="12" height="3" rx="1" />
+    <path d="M3 4H21V6H3V4ZM3 19H17V21H3V19ZM3 14H21V16H3V14ZM3 9H17V11H3V9Z"/>
   </Svg>
 );
 
 export const Mail = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="5" width="18" height="14" rx="2" />
-    <path d="m3.5 7 8.5 6 8.5-6" />
+    <path d="M3 3H21C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3ZM20 7.23792L12.0718 14.338L4 7.21594V19H20V7.23792ZM4.51146 5L12.0619 11.662L19.501 5H4.51146Z"/>
   </Svg>
 );
 
 export const Layers = (p: IconProps) => (
   <Svg {...p}>
-    <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
-    <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
-    <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+    <path d="M20.0833 15.1999L21.2854 15.9212C21.5221 16.0633 21.5989 16.3704 21.4569 16.6072C21.4146 16.6776 21.3557 16.7365 21.2854 16.7787L12.5144 22.0412C12.1977 22.2313 11.8021 22.2313 11.4854 22.0412L2.71451 16.7787C2.47772 16.6366 2.40093 16.3295 2.54301 16.0927C2.58523 16.0223 2.64413 15.9634 2.71451 15.9212L3.9166 15.1999L11.9999 20.0499L20.0833 15.1999ZM20.0833 10.4999L21.2854 11.2212C21.5221 11.3633 21.5989 11.6704 21.4569 11.9072C21.4146 11.9776 21.3557 12.0365 21.2854 12.0787L11.9999 17.6499L2.71451 12.0787C2.47772 11.9366 2.40093 11.6295 2.54301 11.3927C2.58523 11.3223 2.64413 11.2634 2.71451 11.2212L3.9166 10.4999L11.9999 15.3499L20.0833 10.4999ZM12.5144 1.30864L21.2854 6.5712C21.5221 6.71327 21.5989 7.0204 21.4569 7.25719C21.4146 7.32757 21.3557 7.38647 21.2854 7.42869L11.9999 12.9999L2.71451 7.42869C2.47772 7.28662 2.40093 6.97949 2.54301 6.7427C2.58523 6.67232 2.64413 6.61343 2.71451 6.5712L11.4854 1.30864C11.8021 1.11864 12.1977 1.11864 12.5144 1.30864ZM11.9999 3.33233L5.88723 6.99995L11.9999 10.6676L18.1126 6.99995L11.9999 3.33233Z"/>
   </Svg>
 );
 
-/** 退出登录（Lucide log-out） */
 export const LogOut = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <path d="m16 17 5-5-5-5" />
-    <path d="M21 12H9" />
+    <path d="M5 22C4.44772 22 4 21.5523 4 21V3C4 2.44772 4.44772 2 5 2H19C19.5523 2 20 2.44772 20 3V6H18V4H6V20H18V18H20V21C20 21.5523 19.5523 22 19 22H5ZM18 16V13H11V11H18V8L23 12L18 16Z"/>
   </Svg>
 );
 
-/** 移交（Lucide arrow-left-right） */
 export const ArrowLeftRight = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M8 3 4 7l4 4" />
-    <path d="M4 7h16" />
-    <path d="m16 21 4-4-4-4" />
-    <path d="M20 17H4" />
+    <path d="M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z"/>
   </Svg>
 );
 
-/** 分享（Lucide share-2） */
 export const Share2 = (p: IconProps) => (
   <Svg {...p}>
-    <circle cx="18" cy="5" r="3" />
-    <circle cx="6" cy="12" r="3" />
-    <circle cx="18" cy="19" r="3" />
-    <path d="m8.59 13.51 6.83 3.98" />
-    <path d="m15.41 6.51-6.82 3.98" />
+    <path d="M12 2.58582L18.2071 8.79292L16.7929 10.2071L13 6.41424V16H11V6.41424L7.20711 10.2071L5.79289 8.79292L12 2.58582ZM3 18V14H5V18C5 18.5523 5.44772 19 6 19H18C18.5523 19 19 18.5523 19 18V14H21V18C21 19.6569 19.6569 21 18 21H6C4.34315 21 3 19.6569 3 18Z"/>
   </Svg>
 );
 
-/** 复制（Lucide copy） */
 export const Copy = (p: IconProps) => (
   <Svg {...p}>
-    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    <path d="M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z"/>
   </Svg>
 );
 
-/** 新标签打开（Lucide external-link） */
 export const ExternalLink = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M15 3h6v6" />
-    <path d="M10 14 21 3" />
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19L18.9999 6.413L11.2071 14.2071L9.79289 12.7929L17.5849 5H13V3H21Z"/>
+  </Svg>
+);
+
+export const AlignFrameLeft = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="3" width="2" height="18" rx="1" />
+    <rect x="7" y="6" width="13" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <rect x="7" y="13" width="9" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </Svg>
+);
+
+export const AlignFrameHCenter = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="11" y="3" width="2" height="18" rx="1" />
+    <rect x="5" y="6" width="14" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <rect x="8" y="13" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </Svg>
+);
+
+export const AlignFrameRight = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="19" y="3" width="2" height="18" rx="1" />
+    <rect x="4" y="6" width="13" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <rect x="8" y="13" width="9" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </Svg>
+);
+
+export const AlignFrameTop = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="3" width="18" height="2" rx="1" />
+    <rect x="6" y="7" width="5" height="13" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <rect x="13" y="7" width="5" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </Svg>
+);
+
+export const AlignFrameVCenter = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="11" width="18" height="2" rx="1" />
+    <rect x="6" y="5" width="5" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <rect x="13" y="8" width="5" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </Svg>
+);
+
+export const AlignFrameBottom = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="19" width="18" height="2" rx="1" />
+    <rect x="6" y="4" width="5" height="13" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <rect x="13" y="8" width="5" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+  </Svg>
+);
+
+export const DistributeH = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="6" width="2" height="12" rx="1" />
+    <rect x="11" y="6" width="2" height="12" rx="1" />
+    <rect x="19" y="6" width="2" height="12" rx="1" />
+  </Svg>
+);
+
+export const DistributeV = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="6" y="3" width="12" height="2" rx="1" />
+    <rect x="6" y="11" width="12" height="2" rx="1" />
+    <rect x="6" y="19" width="12" height="2" rx="1" />
   </Svg>
 );
