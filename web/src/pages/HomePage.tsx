@@ -68,10 +68,10 @@ function avatarColor(seed: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-/** 项目列表 Tab：全部项目 / 最近浏览 / 最近更新 */
+/** 项目列表 Tab：全部项目 / 最近使用 / 最近更新 */
 type ProjectTab = 'all' | 'viewed' | 'updated';
 
-/** 最近浏览记录存 localStorage：{ projectId: 最后进入时间戳 }，纯客户端行为 */
+/** 最近使用记录存 localStorage：{ projectId: 最后进入时间戳 }，纯客户端行为 */
 const RECENT_VIEWS_KEY = 'recentProjectViews';
 
 function readRecentViews(): Record<string, number> {
@@ -116,7 +116,7 @@ export default function HomePage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  // 项目列表 Tab：全部项目 / 最近浏览 / 最近更新
+  // 项目列表 Tab：全部项目 / 最近使用 / 最近更新
   const [projectTab, setProjectTab] = useState<ProjectTab>('all');
   // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
@@ -231,7 +231,7 @@ export default function HomePage() {
       .catch((e) => setError(e.message));
   }, [activeTeam]);
 
-  // 按 Tab 过滤/排序：全部=原顺序；最近浏览=localStorage 记录倒序；最近更新=按最后更新时间倒序
+  // 按 Tab 过滤/排序：全部=原顺序；最近使用=localStorage 记录倒序；最近更新=按最后更新时间倒序
   const visibleProjects = useMemo(() => {
     if (projectTab === 'viewed') {
       const views = readRecentViews();
@@ -796,12 +796,12 @@ export default function HomePage() {
                 </div>
               </header>
 
-              {/* 列表 Tab：全部项目 / 最近浏览 / 最近更新 */}
+              {/* 列表 Tab：全部项目 / 最近使用 / 最近更新 */}
               <div className="project-tabs" role="tablist" aria-label="项目筛选">
                 {(
                   [
                     ['all', '全部项目'],
-                    ['viewed', '最近浏览'],
+                    ['viewed', '最近使用'],
                     ['updated', '最近更新'],
                   ] as const
                 ).map(([key, label]) => (
