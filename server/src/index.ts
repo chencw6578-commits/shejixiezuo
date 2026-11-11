@@ -64,6 +64,16 @@ app.use(mcpRouter);
 // 本地存储静态服务（S3/MinIO 模式下不需要）
 if (config.storage.driver === 'local') {
   const dir = path.resolve(config.storage.localDir);
+  // 历史 DB 的 URL 含 Figma node id 冒号（frames/301:680@2x.png），这些文件
+  // 已按「冒号→下划线」落盘。请求路径在此做等价映射，避免 Windows 把它当成
+  // NTFS 备用数据流而 404。只改 pathname，不影响查询串。
+  app.use('/storage', (req, _res, next) => {
+    const q = req.url.indexOf('?');
+    const raw = q >= 0 ? req.url.slice(0, q) : req.url;
+    const tail = q >= 0 ? req.url.slice(q) : '';
+    req.url = raw.replace(/%3a/gi, '_').replace(/:/g, '_') + tail;
+    next();
+  });
   app.use('/storage', express.static(dir, { maxAge: '7d', fallthrough: false }));
   void getStorage(); // 预热并确保目录存在
 }

@@ -10,12 +10,21 @@ export interface Storage {
   get(key: string): Promise<Buffer>;
 }
 
+/**
+ * 清洗 key 中的 Windows 非法字符（尤其 Figma node id 的冒号，如 301:680@2x.png）。
+ * 含冒号的路径在 NTFS 上会被写成「备用数据流」：表面是 0 字节文件，数据藏在
+ * 流里，普通复制/备份会静默丢失——曾导致整板位图与切图全部读不到、导出退化成空图。
+ * 读写入口统一映射后，历史 DB 里的冒号 URL 仍可读，新写入的 URL 不再含冒号。
+ */
+const safeKey = (key: string) =>
+  key.split('/').map((seg) => seg.replace(/[:<>"\\|?*]/g, '_')).join('/');
+
 class LocalStorage implements Storage {
   constructor(private dir: string) {}
 
   private abs(key: string) {
     // 防目录穿越
-    const p = path.resolve(this.dir, key);
+    const p = path.resolve(this.dir, safeKey(key));
     if (!p.startsWith(path.resolve(this.dir))) throw new Error('invalid storage key');
     return p;
   }
@@ -24,7 +33,7 @@ class LocalStorage implements Storage {
     const p = this.abs(key);
     await mkdir(path.dirname(p), { recursive: true });
     await writeFile(p, data);
-    return `/storage/${key}`;
+    return `/storage/${safeKey(key)}`;
   }
 
   async get(key: string): Promise<Buffer> {

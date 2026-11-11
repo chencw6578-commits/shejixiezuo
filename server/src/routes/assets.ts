@@ -4,10 +4,13 @@ import { pool } from '../db.js';
 import { downloadImage, getImages } from '../figma/client.js';
 import { getStorage } from '../storage/index.js';
 import { isLocalFile, renderLocalSlice } from '../export/local.js';
-import { cropSliceFromBoard, loadStoredAsset, upscaleRealSlice } from '../export/crop.js';
+import { cropSliceFromBoard, hasVisiblePixels, loadStoredAsset, upscaleRealSlice } from '../export/crop.js';
 import { resolveExportTarget, loadNodeIndex, resolveFromIndex } from '../export/preset.js';
 
 export const assetsRouter = Router();
+
+/** 全透明 PNG 绝不交付：下载后在 Windows 缩略图里就是一块黑。非 PNG 沿用原逻辑。 */
+const usableSlice = (buf: Buffer) => buf.length > 0 && hasVisiblePixels(buf);
 
 const FORMATS = new Set(['PNG', 'SVG', 'PDF', 'JPG']);
 const CONTENT_TYPES: Record<string, string> = {
@@ -108,7 +111,7 @@ assetsRouter.post('/export', async (req, res) => {
   if (real) {
     try {
       const buf = await loadStoredAsset(real.url);
-      if (buf.length) {
+      if (usableSlice(buf)) {
         return res.json({
           id: real.id, url: real.url, format, scale: s,
           size: buf.length, source: real.source, resolvedFrom,
@@ -128,7 +131,7 @@ assetsRouter.post('/export', async (req, res) => {
     if (near) {
       try {
         const buf = await loadStoredAsset(near.url);
-        if (buf.length) {
+        if (usableSlice(buf)) {
           if (format === 'SVG') {
             return res.json({
               id: near.id, url: near.url, format, scale: s,
@@ -142,7 +145,7 @@ assetsRouter.post('/export', async (req, res) => {
             )).rows[0];
           if (b && b.width > 0 && b.height > 0) {
             const up = await upscaleRealSlice(buf, b.width * s, b.height * s);
-            if (up) {
+            if (up && usableSlice(up)) {
               const storage = await getStorage();
               const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.png`;
               const url = await storage.put(key, up, 'image/png');
@@ -166,7 +169,7 @@ assetsRouter.post('/export', async (req, res) => {
   //    而不是用户点中的内部子路径 bbox，避免把四角/描边切掉。
   if (localOnly && format !== 'PDF') {
     const cropped = await cropSliceFromBoard(fileId, node.frame_id, nodeId, format, s, target?.bounds);
-    if (cropped) {
+    if (cropped && usableSlice(cropped.buf)) {
       const storage = await getStorage();
       const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.${cropped.ext}`;
       const url = await storage.put(key, cropped.buf, cropped.contentType);
@@ -183,7 +186,12 @@ assetsRouter.post('/export', async (req, res) => {
   if (localOnly) {
     if (format === 'PDF') return res.status(400).json({ error: '本地文件暂只支持 PNG / SVG / JPG 导出' });
     const slice = await renderLocalSlice(fileId, node.frame_id, nodeId, format, s);
-    if (!slice) return res.status(404).json({ error: '图层不存在或不可导出' });
+    if (!slice || !usableSlice(slice.buf)) {
+      // 源图缺失 + 服务端渲染画不出 VECTOR 时，宁可明确报错，也不交付全透明「黑图」
+      return res.status(422).json({
+        error: '该图层没有可用的源图（整板位图或插件上传的切图缺失），无法导出。请用 Figma 插件重新导入该画板或为该图层上传切图后重试。',
+      });
+    }
     const storage = await getStorage();
     const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.${slice.ext}`;
     const storedUrl = await storage.put(key, slice.buf, slice.contentType);
@@ -201,6 +209,9 @@ assetsRouter.post('/export', async (req, res) => {
     return res.status(502).json({ error: `Figma 导出失败：${result.err ?? '节点不可导出'}` });
   }
   const buf = await downloadImage(url);
+  if (!usableSlice(buf)) {
+    return res.status(422).json({ error: 'Figma 返回了空白切图，请检查该图层的导出设置' });
+  }
   const storage = await getStorage();
   const key = `assets/${fileId}/${Date.now()}-${safeName(name ?? nodeId)}${s !== 1 ? `@${s}x` : ''}.${ext}`;
   const storedUrl = await storage.put(key, buf, CONTENT_TYPES[format]);
@@ -317,7 +328,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
     if (real) {
       try {
         const buf = await loadStoredAsset(real.url);
-        if (buf.length) {
+        if (usableSlice(buf)) {
           resolved.set(i, { buf, ext: t.format.toLowerCase() });
           continue;
         }
@@ -331,7 +342,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
       if (near) {
         try {
           const buf = await loadStoredAsset(near.url);
-          if (buf.length) {
+          if (usableSlice(buf)) {
             if (t.format === 'SVG') {
               resolved.set(i, { buf, ext: 'svg' });
               continue;
@@ -342,7 +353,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
             })();
             if (b && b.width > 0 && b.height > 0) {
               const up = await upscaleRealSlice(buf, b.width * t.scale, b.height * t.scale);
-              if (up) {
+              if (up && usableSlice(up)) {
                 resolved.set(i, { buf: up, ext: t.format.toLowerCase() });
                 continue;
               }
@@ -355,7 +366,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
     }
     if (localOnly && t.format !== 'PDF') {
       const cropped = await cropSliceFromBoard(fileId, frameId, t.nodeId, t.format, t.scale, target?.bounds);
-      if (cropped) resolved.set(i, { buf: cropped.buf, ext: cropped.ext });
+      if (cropped && usableSlice(cropped.buf)) resolved.set(i, { buf: cropped.buf, ext: cropped.ext });
     }
   }
   const rest: ZipTask[] = [];
@@ -383,7 +394,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
       }
       try {
         const slice = await renderLocalSlice(fileId, frameId, t.nodeId, t.format, t.scale);
-        if (!slice) {
+        if (!slice || !usableSlice(slice.buf)) {
           failures.push(t.name);
           continue;
         }
@@ -460,10 +471,23 @@ assetsRouter.post('/export-zip', async (req, res) => {
 
 /** 某文件的切图历史 */
 assetsRouter.get('/file/:fileId', async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT id, node_id, name, format, scale, url, created_at
+  const { rows } = await pool.query<{ source: string; format: string; url: string }>(
+    `SELECT id, node_id, name, format, scale, url, source, created_at
      FROM assets WHERE file_id = $1 ORDER BY created_at DESC LIMIT 200`,
     [req.params.fileId]
   );
-  res.json(rows);
+  // 历史遗留的全透明 render 产物不再展示：点开会下载到一块「黑图」。
+  // 只复查服务端近似渲染的小文件，插件真切图 / 裁剪 / 放大不重复读盘。
+  const visible: typeof rows = [];
+  for (const row of rows) {
+    if (row.source === 'render' && (row.format === 'PNG' || row.format === 'JPG')) {
+      try {
+        if (!hasVisiblePixels(await loadStoredAsset(row.url))) continue;
+      } catch {
+        continue; // 源图已丢失，也不展示成死链
+      }
+    }
+    visible.push(row);
+  }
+  res.json(visible);
 });

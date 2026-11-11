@@ -501,3 +501,20 @@ export async function upscaleRealSlice(
   const out = resampleBilinear(dec, TW, TH, 0, 0, stepX, stepY);
   return encodePng(TW, TH, out);
 }
+
+/**
+ * 判断导出产物是否含可见像素。
+ * 服务端近似渲染画不出 VECTOR 路径时会输出「全透明」PNG，Windows 缩略图把
+ * 它显示成一块黑——这正是「导出的切图是黑色的」的根因。所有导出链路在
+ * 交付前都要过这一关，空图绝不入库、绝不返回下载链接。
+ * 非 PNG（SVG / JPG / PDF）交由原逻辑处理；PNG 但解码失败同样视为可疑产物。
+ */
+export function hasVisiblePixels(buf: Buffer): boolean {
+  if (!buf.slice(0, 8).equals(PNG_SIG)) return true;
+  const dec = decodePng(buf);
+  if (!dec) return false;
+  for (let i = 3; i < dec.rgba.length; i += 4) {
+    if (dec.rgba[i] > 0) return true;
+  }
+  return false;
+}
