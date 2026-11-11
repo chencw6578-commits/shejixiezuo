@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.9';
+const PLUGIN_VERSION = '1.4.0';
 const BUILD_DATE = '2026-11-11';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -14,6 +14,11 @@ const ARTBOARD_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
 // exportAsync 是主线程同步阻塞的，这段时间发不出任何消息，用一个统一阈值会误杀。
 const SILENCE_NODES_MS = 60000;
 const SILENCE_IMAGE_MS = 120000;
+// 任务代际：每次「导出并上传/重试」+1。旧代次的导出循环检测到代次变化立即放弃，
+// 防止上次看门狗超时后主线程残留的导出任务与新任务并发抢占、叠加拖慢
+let runGen = 0;
+// 主线程是否正在执行导出任务（供 UI 心跳回声诊断「主线程卡死 vs 消息丢失」）
+let busyExport = false;
 // base64 分片：每片 256KB 源字节，取 3 的整数倍（262143）保证各片编码可直接拼接
 const IMAGE_CHUNK_BYTES = 262143;
 // 逐图层高清切图：单板上传的切片数上限（与服务端 MAX_SLICES_PER_REQUEST 对齐）
@@ -85,6 +90,15 @@ function nextTask() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** 代次检查：旧导出任务发现已有更新任务启动时立即放弃，不再抢主线程 */
+function checkGen(ctx) {
+  if (ctx && ctx.gen !== undefined && ctx.gen !== runGen) {
+    const err = new Error('EXPORT_CANCELLED');
+    err.cancelled = true;
+    throw err;
+  }
+}
+
 /** 时间戳（毫秒）：用于把每个阶段的真实耗时回传 UI */
 function nowMs() {
   return Date.now();
@@ -108,6 +122,7 @@ function postProgress(ctx, stage, done, message, silenceMs) {
 async function exportNodeAsync(node, parentId, ctx) {
   ctx.count = (ctx.count || 0) + 1;
   if (ctx.count % 100 === 0) {
+    checkGen(ctx);
     postProgress(ctx, 'nodes', ctx.index, '读取节点…（已 ' + ctx.count + ' 个）', SILENCE_NODES_MS);
     await nextTask();
   }
@@ -253,6 +268,7 @@ async function sendImageChunks(ctx, boardId, bytes, timings) {
     const data = bytesToBase64(slice);
     timings.base64Ms += nowMs() - t0;
     const t1 = nowMs();
+    checkGen(ctx);
     post({ type: 'image-chunk', requestId: ctx.requestId, boardId: boardId, seq: seq, total: total, data: data });
     timings.postMs += nowMs() - t1;
     await nextTask();
@@ -304,6 +320,7 @@ async function sendSliceChunks(ctx, bufferKey, bytes) {
     const end = Math.min(bytes.length, start + IMAGE_CHUNK_BYTES);
     const slice = typeof bytes.subarray === 'function' ? bytes.subarray(start, end) : bytes.slice(start, end);
     const data = bytesToBase64(slice);
+    checkGen(ctx);
     post({ type: 'image-chunk', requestId: ctx.requestId, bufferKey: bufferKey, boardId: null, seq: seq, total: total, data: data });
     await nextTask();
   }
@@ -321,6 +338,7 @@ async function exportSlices(rootNode, ctx, timings) {
   const slices = [];
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
+    checkGen(ctx);
     const label = '逐图层切图 ' + (i + 1) + '/' + nodes.length + '：「' + n.name + '」';
     const vector = !hasImageFill(n, MAX_WALK_DEPTH);
     const wanted = vector
@@ -485,6 +503,12 @@ async function savePrefs(prefs) {
 
 figma.ui.onmessage = async (msg) => {
   const type = msg && msg.type;
+  // 心跳回声：UI 每 10 秒 ping 一次，主线程立即回 pong——
+  // 用于诊断「无响应」到底是主线程卡死（pong 停止）还是消息链路问题（pong 正常）
+  if (type === 'ping') {
+    post({ type: 'pong', t: msg.t, gen: runGen, busy: busyExport, pluginVersion: PLUGIN_VERSION });
+    return;
+  }
   try {
     if (type === 'ready') {
       const prefs = await loadPrefs();
@@ -505,8 +529,14 @@ figma.ui.onmessage = async (msg) => {
     }
     if (type === 'export-board') {
       const scale = [1, 2, 3, 4].indexOf(Number(msg.scale)) >= 0 ? Number(msg.scale) : 2;
-      const ctx = { requestId: msg.requestId, index: Number(msg.index) || 0, total: Number(msg.total) || 1, count: 0 };
-      const result = await exportBoard(msg.boardId, scale, !!msg.includeImage, !!msg.includeSlices, ctx);
+      const ctx = { requestId: msg.requestId, index: Number(msg.index) || 0, total: Number(msg.total) || 1, count: 0, gen: ++runGen };
+      busyExport = true;
+      let result;
+      try {
+        result = await exportBoard(msg.boardId, scale, !!msg.includeImage, !!msg.includeSlices, ctx);
+      } finally {
+        busyExport = false;
+      }
       post({ type: 'board-exported', requestId: msg.requestId, ...result });
       return;
     }
@@ -535,6 +565,8 @@ figma.ui.onmessage = async (msg) => {
       figma.closePlugin();
     }
   } catch (err) {
+    // 旧任务被新任务取代：静默放弃，不弹错误（对应 ask 已被 UI 超时拒绝）
+    if (err && err.cancelled) return;
     // 必须把真实异常回传 UI，否则界面只会报「主线程无响应」
     reportError(err, '操作失败', (msg && msg.requestId) || null);
   }

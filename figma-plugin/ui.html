@@ -356,7 +356,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.3.9';
+  var UI_VERSION = '1.4.0';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -388,6 +388,12 @@
     uploaded: {},
     boardKey: '',
     progressPct: 0,
+    // 黑匣子：区分「主线程卡死」vs「消息丢失」——10 秒一次 ping，主线程立即回 pong
+    pingTimer: null,
+    lastPongAt: 0,
+    mainBusy: false,
+    lastProgressMsg: '',
+    lastProgressAt: 0,
   };
 
   var pending = new Map();
@@ -411,8 +417,22 @@
   var STAGE_TIMEOUT_MS = { nodes: 120000, images: 120000, upload: 60000 };
   var HEARTBEAT_TIMEOUT_MS = STAGE_TIMEOUT_MS.nodes;
   function timeoutText(ms) {
-    return '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：' +
+    var now = Date.now();
+    var lines = '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：' +
       '请点「重试」，仍不行再关闭插件重新打开';
+    // 黑匣子：把卡死位置带进错误报告——最后一条进度消息 + 主线程回声状态
+    if (state.lastProgressMsg) {
+      lines += '\n最后进度消息：' + state.lastProgressMsg + '（' + Math.round((now - state.lastProgressAt) / 1000) + ' 秒前）';
+    } else {
+      lines += '\n最后进度消息：（本次上传未收到任何进度消息）';
+    }
+    if (state.lastPongAt) {
+      lines += '\n主线程回声：' + Math.round((now - state.lastPongAt) / 1000) + ' 秒前' +
+        (state.mainBusy ? '（主线程自报：仍在执行任务）' : '（主线程自报：空闲）');
+    } else {
+      lines += '\n主线程回声：从未收到（主线程从上传开始就没响应过任何 ping）';
+    }
+    return lines;
   }
   function ask(message, timeoutMs) {
     var requestId = 'r' + (++seq);
@@ -964,6 +984,12 @@
     clearError();
     state.busy = true;
     state.progressPct = 0;
+    // 黑匣子：上传期间每 10 秒 ping 一次主线程，回声用于判定卡死 vs 消息丢失
+    state.lastPongAt = 0;
+    state.lastProgressMsg = '';
+    state.lastProgressAt = 0;
+    if (state.pingTimer) clearInterval(state.pingTimer);
+    state.pingTimer = setInterval(function () { postToPlugin({ type: 'ping', t: Date.now() }); }, 10000);
     // 只有全新一次上传才清空「已成功画板」；重试保留，跳过已入库的
     if (!isRetry) state.uploaded = {};
     updateUploadButton();
@@ -1095,6 +1121,7 @@
       showProgressFail(failMsg + failHint + (netLine ? '\n诊断：' + netLine : ''));
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
+      if (state.pingTimer) { clearInterval(state.pingTimer); state.pingTimer = null; }
       state.busy = false;
       updateUploadButton();
     }
@@ -1324,7 +1351,11 @@
     if (msg.type === 'progress') {
       // 心跳：收到任何 progress 都重置「无响应」计时（按消息里的阶段上限）
       if (msg.requestId) heartbeat(msg.requestId, msg.silenceMs);
-      if (msg.message) $('progressStage').textContent = msg.message;
+      if (msg.message) {
+        $('progressStage').textContent = msg.message;
+        state.lastProgressMsg = msg.message;
+        state.lastProgressAt = Date.now();
+      }
       if (typeof msg.done === 'number' && typeof msg.total === 'number' && msg.total > 0) {
         var pct = Math.max(0, Math.min(100, Math.round((msg.done / msg.total) * 100)));
         if (pct > state.progressPct) {
@@ -1333,6 +1364,12 @@
           $('progressBar').style.width = pct + '%';
         }
       }
+      return;
+    }
+    if (msg.type === 'pong') {
+      // 主线程回声：能收到 pong 说明消息链路通、主线程没死死阻塞
+      state.lastPongAt = Date.now();
+      state.mainBusy = !!msg.busy;
       return;
     }
     if (msg.type === 'image-chunk') {
