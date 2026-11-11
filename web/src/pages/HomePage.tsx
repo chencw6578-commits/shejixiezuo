@@ -788,7 +788,7 @@ export default function HomePage() {
               <header className="view-header">
                 <div className="view-header-row">
                   <div className="view-header-text">
-                    <h1>项目</h1>
+                    <h1 className="project-view-title">项目</h1>
                   </div>
                   <button type="button" className="new-project-btn" onClick={openCreateProject}>
                     <Plus /> 新建项目

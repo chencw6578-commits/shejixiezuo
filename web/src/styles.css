@@ -214,6 +214,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .home-main-inner { max-width: 1760px; margin: 0 auto; padding: 28px 28px 56px; }
 .view-header { margin-bottom: 20px; }
 .view-header h1 { font-size: 22px; }
+/* 项目页大标题放大到 28px；团队成员页沿用上面的 22px */
+.view-header h1.project-view-title { font-size: 28px; }
 .view-header p { color: var(--text-dim); margin-top: 6px; }
 /* 标题行：左侧「标题+副标题」为一块，右侧按钮相对整块垂直居中（不是只与第一行标题齐平）；右边缘贴内容区右边界 */
 .view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
