@@ -35,6 +35,14 @@ export const ChevronDown = (p: IconProps) => (
   </Svg>
 );
 
+/** 搜索（Lucide search） */
+export const Search = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.3-4.3" />
+  </Svg>
+);
+
 export const Pencil = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 20h9" />

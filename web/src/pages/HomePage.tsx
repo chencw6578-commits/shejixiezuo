@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
-import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Trash2, Users, X } from '../components/icons';
+import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 import { canvasBgColor, isDarkCanvas, readCanvasBg } from '../canvasBg';
 import RowMenu from '../components/RowMenu';
@@ -133,6 +133,18 @@ export default function HomePage() {
   const [roleDraft, setRoleDraft] = useState<'admin' | 'collaborator'>('collaborator');
   // 移除成员二次确认弹窗：点「移除」先弹窗，确认后才真正调用接口
   const [removeModal, setRemoveModal] = useState<{ id: string; email: string } | null>(null);
+  // 团队管理：搜索昵称/邮箱 + 按角色筛选（纯前端过滤，不改接口与成员数据）
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | 'owner' | 'admin' | 'collaborator'>('all');
+  const isMemberFiltering = memberQuery.trim() !== '' || memberRoleFilter !== 'all';
+  const filteredMembers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    return members.filter((m) => {
+      if (memberRoleFilter !== 'all' && m.role !== memberRoleFilter) return false;
+      if (!q) return true;
+      return (m.name ?? '').toLowerCase().includes(q) || (m.email ?? '').toLowerCase().includes(q);
+    });
+  }, [members, memberQuery, memberRoleFilter]);
   const [identity, setIdentityState] = useState<Identity | null>(null);
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -295,6 +307,9 @@ export default function HomePage() {
 
   // 当前团队的成员列表 + 身份（协作者只读 / 管理员可编辑）
   useEffect(() => {
+    // 切换团队时清空搜索与角色筛选，避免新团队沿用旧条件而显示「没有匹配的成员」
+    setMemberQuery('');
+    setMemberRoleFilter('all');
     if (!activeTeam) {
       setMembers([]);
       setIdentityState(null);
@@ -316,7 +331,7 @@ export default function HomePage() {
       .listImportTokens(activeTeam)
       .then((rows) => setTokens(Array.isArray(rows) ? rows : []))
       // 后台加载失败（如体验协作者身份时令牌列表返回 403）不弹全局错误条，
-      // 避免权限说明常驻在项目 / 团队成员页。
+      // 避免权限说明常驻在项目 / 团队管理页。
       .catch(() => setTokens([]));
   }, [activeTeam]);
 
@@ -475,7 +490,7 @@ export default function HomePage() {
       others = [];
     }
     if (!others.length) {
-      void dialogs.alert('团队里还没有其他成员，先在「团队成员」页邀请成员后再移交所有权。', '无法移交');
+      void dialogs.alert('团队里还没有其他成员，先在「团队管理」页邀请成员后再移交所有权。', '无法移交');
       return;
     }
     const picked = await dialogs.choose({
@@ -796,7 +811,7 @@ export default function HomePage() {
               )}
             </div>
             {!identity && (
-              <p className="dim small avatar-pop-hint">可在「团队成员」页选择成员身份体验权限差异</p>
+              <p className="dim small avatar-pop-hint">可在「团队管理」页选择成员身份体验权限差异</p>
             )}
           </div>
         </details>
@@ -816,7 +831,7 @@ export default function HomePage() {
             className={`side-nav-item ${view === 'members' ? 'active' : ''}`}
             onClick={() => setView('members')}
           >
-            <Users /> 团队成员
+            <Users /> 团队管理
           </button>
         </nav>
       </aside>
@@ -909,7 +924,7 @@ export default function HomePage() {
               <header className="view-header">
                 <div className="view-header-row">
                   <div className="view-header-text">
-                    <h1>团队成员</h1>
+                    <h1>团队管理</h1>
                   </div>
                   {canManage && (
                     <button type="button" className="new-project-btn" onClick={() => setInviteModal(true)}>
@@ -918,6 +933,49 @@ export default function HomePage() {
                   )}
                 </div>
               </header>
+
+              {/* 搜索昵称/邮箱 + 按角色筛选：与成员列表同宽，顶部「邀请成员」按钮位置不变 */}
+              <div className="member-toolbar">
+                <div className="member-search">
+                  <Search size={15} />
+                  <input
+                    type="search"
+                    value={memberQuery}
+                    onChange={(e) => setMemberQuery(e.target.value)}
+                    placeholder="搜索昵称或邮箱"
+                    aria-label="搜索成员"
+                  />
+                  {memberQuery && (
+                    <button
+                      type="button"
+                      className="member-search-clear"
+                      onClick={() => setMemberQuery('')}
+                      title="清空搜索"
+                      aria-label="清空搜索"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="member-toolbar-right">
+                  <select
+                    className="member-role-filter"
+                    value={memberRoleFilter}
+                    onChange={(e) => setMemberRoleFilter(e.target.value as 'all' | 'owner' | 'admin' | 'collaborator')}
+                    aria-label="按角色筛选"
+                  >
+                    <option value="all">全部角色</option>
+                    <option value="owner">{ROLE_LABEL.owner}</option>
+                    <option value="admin">{ROLE_LABEL.admin}</option>
+                    <option value="collaborator">{ROLE_LABEL.collaborator}</option>
+                  </select>
+                  <span className="dim small member-count">
+                    {isMemberFiltering
+                      ? `显示 ${filteredMembers.length} / ${members.length} 位成员`
+                      : `共 ${members.length} 位成员`}
+                  </span>
+                </div>
+              </div>
 
               {canManage && inviteLink && (
                 <div className="invite-link-box">
@@ -938,7 +996,19 @@ export default function HomePage() {
 
               <ul className="member-list">
                 {members.length === 0 && <p className="empty">还没有成员，点击右上角「邀请成员」邀请第一个吧</p>}
-                {members.map((m) => (
+                {members.length > 0 && filteredMembers.length === 0 && (
+                  <p className="empty">
+                    没有匹配的成员
+                    <button
+                      type="button"
+                      className="member-filter-reset"
+                      onClick={() => { setMemberQuery(''); setMemberRoleFilter('all'); }}
+                    >
+                      清空筛选
+                    </button>
+                  </p>
+                )}
+                {filteredMembers.map((m) => (
                   <li key={m.id} className="member-row">
                     <span className="member-avatar">{(m.name || m.email || '?').slice(0, 1).toUpperCase()}</span>
                     <div className="member-info">

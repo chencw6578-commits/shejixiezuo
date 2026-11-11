@@ -947,10 +947,36 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-team-switch .team-switch-name { flex: none; max-width: 200px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
-/* 团队成员：整页视图限宽 1120px 并左右居中（头部按钮右缘 = 列表右缘） */
+/* 团队管理：整页视图限宽 1120px 并左右居中（头部按钮右缘 = 列表右缘） */
 .team-view { max-width: 1120px; margin: 0 auto; }
 /* 邀请表单 / 邀请结果 / 成员列表统一 1120px，右边界对齐 */
 .member-list { list-style: none; }
+/* 搜索 + 角色筛选工具条：与列表同宽，左侧搜索框、右侧筛选与结果计数 */
+.member-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.member-search { position: relative; display: inline-flex; align-items: center; flex: 0 1 320px; min-width: 200px; }
+.member-search > svg { position: absolute; left: 11px; color: var(--text-dim); pointer-events: none; }
+.member-search input { width: 100%; padding-left: 34px; padding-right: 32px; }
+.member-search input[type='search']::-webkit-search-cancel-button { display: none; }
+.member-search-clear {
+  position: absolute; right: 5px; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--text-dim);
+}
+.member-search-clear:hover { background: transparent; color: var(--text); }
+.member-toolbar-right { display: flex; align-items: center; gap: 12px; }
+.member-role-filter { min-width: 150px; cursor: pointer; }
+.member-count { white-space: nowrap; }
+.empty .member-filter-reset {
+  margin-left: 10px; padding: 2px 8px; background: transparent;
+  border-color: var(--accent); color: var(--accent);
+}
+.empty .member-filter-reset:hover { background: rgba(108, 76, 241, 0.1); }
+@media (max-width: 640px) {
+  .member-toolbar { flex-wrap: wrap; }
+  .member-search { flex: 1 1 100%; }
+}
 .member-row {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
