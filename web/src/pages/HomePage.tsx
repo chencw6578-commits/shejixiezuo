@@ -788,7 +788,7 @@ export default function HomePage() {
               <header className="view-header">
                 <div className="view-header-row">
                   <div className="view-header-text">
-                    <h1 className="project-view-title">项目</h1>
+                    <h1>项目</h1>
                   </div>
                   <button type="button" className="new-project-btn" onClick={openCreateProject}>
                     <Plus /> 新建项目
@@ -868,8 +868,7 @@ export default function HomePage() {
               <header className="view-header">
                 <div className="view-header-row">
                   <div className="view-header-text">
-                    <h1>团队成员 · {activeTeamName}</h1>
-                    <p>所有者 / 管理员可邀请与移除成员、增删项目、上传设计稿；协作者为只读（仅查看）</p>
+                    <h1>团队成员</h1>
                   </div>
                   {canManage && (
                     <button type="button" className="new-project-btn" onClick={() => setInviteModal(true)}>
