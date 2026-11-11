@@ -25,12 +25,6 @@ interface Props {
   onNodeUpdated?: () => void;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  FRAME: '容器', GROUP: '编组', COMPONENT: '组件', INSTANCE: '实例', TEXT: '文本',
-  RECTANGLE: '矩形', ELLIPSE: '椭圆', VECTOR: '矢量', LINE: '直线', SLICE: '切片',
-  BOOLEAN_OPERATION: '布尔', REGULAR_POLYGON: '多边形', STAR: '星形',
-};
-
 function CopyChip({ text, children }: { text: string; children: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -98,9 +92,10 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
     }
   }, [selected?.node_id, selected?.exportPresetAncestor]);
 
-  const allScaleValues = new Set(
-    (Object.keys(EXPORT_SCALES) as PlatformId[]).flatMap((pid) => EXPORT_SCALES[pid].map((s) => s.value))
-  );
+  // 倍率分组跟随顶栏单位平台：pt→iOS / dp→Android / px→Web，其它平台分组不再显示
+  //（用户要求：单位选 iOS 时，切图倍率下拉只保留 iOS 的 1x/2x/3x）
+  const UNIT_PLATFORM: Record<Unit, PlatformId> = { pt: 'ios', dp: 'android', px: 'web' };
+  const scaleGroups = EXPORT_SCALES[UNIT_PLATFORM[unit]];
 
   // 原型交互（跳转到画板）
   const [protoFrames, setProtoFrames] = useState<{ id: string; name: string }[]>([]);
@@ -180,7 +175,6 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
     effects: selected.props.effects ?? [],
     exportPresets: selected.props.exportPresets ?? [],
   };
-  const anc = selected.exportPresetAncestor ?? null;
   const isSvg = format === 'SVG' || format === 'PDF';
 
   // Figma 插件导入的文本度量可能是 {unit,value} 对象（PERCENT 相对字号）。
@@ -215,10 +209,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
 
   return (
     <div className="prop-panel">
-      <div className="prop-header">
-        <span className="prop-type">{TYPE_LABEL[selected.type] ?? selected.type}</span>
-        <b className="prop-name" title={selected.name}>{selected.name}</b>
-      </div>
+      {/* 顶部「容器/文本 + 名称」标题行已按需求移除：面板直接从「位置与尺寸」开始 */}
 
       {/* 位置尺寸 */}
       <div className="prop-section">
@@ -414,9 +405,6 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
               ))}
           </select>
         </div>
-        <p className="dim small hint">
-          {readOnly ? '协作者身份为只读，交互配置需管理员。' : '导出原型后，点击该图层区域会跳转到所选画板。'}
-        </p>
       </div>
 
       {/* 切图导出：任意图层均可按自选格式与倍率导出（服务端渲染） */}
@@ -437,24 +425,17 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
             <option>PNG</option><option>SVG</option><option>JPG</option><option>PDF</option>
           </select>
           <select value={scale} onChange={(e) => setScale(e.target.value)} disabled={isSvg}>
-            {!allScaleValues.has(scale) && <option value={scale}>{scale}x</option>}
-            {(Object.keys(EXPORT_SCALES) as PlatformId[]).map((pid) => (
-              <optgroup key={pid} label={PLATFORM_LABEL[pid]}>
-                {EXPORT_SCALES[pid].map((s) => (
-                  <option key={`${pid}-${s.value}`} value={s.value}>{s.label}</option>
-                ))}
-              </optgroup>
-            ))}
+            {!scaleGroups.some((s) => s.value === scale) && <option value={scale}>{scale}x</option>}
+            <optgroup label={PLATFORM_LABEL[UNIT_PLATFORM[unit]]}>
+              {scaleGroups.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </optgroup>
           </select>
           <button className="primary-btn" disabled={exporting} onClick={() => doExport()}>
             {exporting ? '导出中…' : '导出切图'}
           </button>
         </div>
-        {anc && (
-          <p className="dim small hint">
-            该图层是「{anc.name}」的内部路径；Figma 的导出标记设在父级（{Math.round(anc.width)}×{Math.round(anc.height)} · {anc.format} {anc.scale}x），导出会按这个完整图标输出，不会裁掉四边。
-          </p>
-        )}
         {p.hasImageFill && (
           <p className="dim small hint">该图层含图像填充，整板裁剪会如实带出填充图。</p>
         )}

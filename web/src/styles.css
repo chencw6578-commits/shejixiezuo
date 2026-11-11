@@ -52,7 +52,7 @@ body {
 
 button {
   font: inherit; color: var(--text); background: var(--bg-panel);
-  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); border-radius: 6px;
   padding: 6px 14px; cursor: pointer;
 }
 button:hover { background: var(--bg-hover); }
@@ -105,7 +105,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-crumb b { color: var(--text); font-size: 14px; }
 .crumb-home {
   border: 0; background: transparent; padding: 0; font-family: inherit;
-  color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 4px;
+  color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 6px;
 }
 .crumb-home:hover { color: var(--brand-600); }
 .crumb-home:focus-visible { outline: 2px solid var(--brand-200); outline-offset: 2px; }
@@ -144,7 +144,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .avatar-menu-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 8px 10px; border: 0; border-radius: 8px;
+  padding: 8px 10px; border: 0; border-radius: 6px;
   background: transparent; color: var(--text); font: inherit; font-size: 13px;
   text-align: left; cursor: pointer; white-space: nowrap;
 }
@@ -207,8 +207,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .side-nav-item {
   display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
   padding: 9px 12px; background: transparent; border-color: transparent; color: var(--text-dim);
-  /* 覆盖全局 button 的 999px 胶囊圆角：选中/hover 背景统一为 4px 小圆角 */
-  border-radius: 4px;
+  /* 覆盖全局 button 圆角：选中/hover 背景统一为 6px 圆角 */
+  border-radius: 6px;
   /* 导航文字统一 14px（不跟随 body 的 13px） */
   font-size: 14px;
 }
@@ -226,8 +226,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; white-space: nowrap;
   background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
-  /* 与侧栏选中态一致：主按钮统一 4px 小圆角（新建项目 / 邀请成员 / 创建 Token） */
-  border-radius: 4px;
+  /* 与侧栏选中态一致：主按钮统一 6px 圆角（新建项目 / 邀请成员 / 创建 Token） */
+  border-radius: 6px;
 }
 .new-project-btn:hover { background: var(--accent-hover); }
 /* 覆盖 .home-shell button:hover（优先级更高，否则悬停变成浅灰底、白字不可见） */
@@ -285,7 +285,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .pcanvas-edit-btn {
   border: 0; background: transparent; color: var(--text-dim); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0; border-radius: 8px; flex: none;
+  width: 32px; height: 32px; padding: 0; border-radius: 6px; flex: none;
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .pcanvas-file-group:hover .pcanvas-edit-btn,
@@ -298,7 +298,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .pcanvas-frame-item {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
   width: 100%; text-align: left; border: 0; background: transparent;
-  color: var(--text); font-size: 14px; padding: 5px 8px; border-radius: 4px; cursor: pointer;
+  color: var(--text); font-size: 14px; padding: 5px 8px; border-radius: 6px; cursor: pointer;
 }
 .pcanvas-frame-item:hover { background: var(--bg-elevated); }
 .pcanvas-frame-item-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -454,7 +454,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 .frame-list { max-height: 180px; overflow-y: auto; padding: 0 6px; }
 .frame-item {
-  display: block; padding: 5px 8px; border-radius: 4px; text-decoration: none;
+  display: block; padding: 5px 8px; border-radius: 6px; text-decoration: none;
   color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px;
 }
 .frame-item:hover { background: var(--bg-elevated); }
@@ -463,14 +463,14 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* 页面列表（画板编组） */
 .page-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; padding: 0 6px; }
 .page-row {
-  display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px;
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px;
   cursor: pointer; font-size: 14px; user-select: none; position: relative;
 }
 .page-row:hover { background: var(--bg-elevated); }
 .page-row.is-droptarget { outline: 1.5px dashed var(--accent); background: rgba(108, 76, 241, 0.12); }
 .page-caret {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px;
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px;
   background: transparent; color: var(--text-dim); font-size: 12px; line-height: 1; cursor: pointer;
 }
 .page-caret:hover { background: rgba(17, 24, 39, 0.08); color: var(--text); }
@@ -508,7 +508,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .page-group-unassigned .page-name { color: var(--text-dim); }
 .page-add-btn {
   border: 1px solid var(--border); background: transparent; color: var(--text-dim);
-  border-radius: 4px; width: 20px; height: 20px; line-height: 1; cursor: pointer; font-size: 12px;
+  border-radius: 6px; width: 20px; height: 20px; line-height: 1; cursor: pointer; font-size: 12px;
 }
 .page-add-btn:hover { color: var(--accent); border-color: var(--accent); }
 .sidebar-hspacer { flex: 1; }
@@ -518,6 +518,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .tree-item {
   display: flex; align-items: center; gap: 6px; padding: 3px 8px; cursor: pointer;
   white-space: nowrap; overflow: hidden;
+  border-radius: 6px; /* 选中/hover 底纹统一 6px 圆角 */
 }
 .tree-item:hover, .tree-item.is-hover { background: var(--bg-elevated); }
 .tree-item.is-selected { background: rgba(108, 76, 241, 0.2); color: var(--accent); }
@@ -603,7 +604,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 10;
 }
-.zoombar button { border: none; background: transparent; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; }
+.zoombar button { border: none; background: transparent; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; }
 .zoombar .zoom-value { min-width: 48px; text-align: center; font-size: 12px; }
 
 /* 属性面板 */
@@ -611,12 +612,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   width: 300px; background: var(--bg-panel); border-left: 1px solid var(--border);
   overflow-y: auto; min-height: 0;
 }
-.prop-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px 8px; }
-.prop-type {
-  font-size: 11px; padding: 2px 8px; border-radius: 4px; flex: none;
-  background: rgba(108, 76, 241, 0.15); color: var(--accent);
-}
-.prop-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 顶部「容器 + 名称」标题行已移除（PropertyPanel 不再渲染 prop-header） */
 .prop-hint { color: var(--text-dim); padding: 8px 14px 20px; line-height: 1.6; }
 .prop-import-link { color: var(--accent); text-decoration: none; font-weight: 600; }
 .prop-import-link:hover { text-decoration: underline; }
@@ -641,7 +637,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: block; min-width: 0; font-weight: 500; font-size: 12.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
 }
-.size-cell .copy-chip { width: auto; flex: 0 1 auto; min-width: 0; padding: 2px 5px; margin: -2px -5px; border-radius: 4px; justify-content: flex-end; }
+.size-cell .copy-chip { width: auto; flex: 0 1 auto; min-width: 0; padding: 2px 5px; margin: -2px -5px; border-radius: 6px; justify-content: flex-end; }
 
 .text-content {
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px;
@@ -651,7 +647,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 .copy-chip {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  background: transparent; border: none; border-radius: 4px; padding: 4px 6px; text-align: left;
+  background: transparent; border: none; border-radius: 6px; padding: 4px 6px; text-align: left;
 }
 .copy-chip:hover { background: var(--bg-elevated); }
 .kv .copy-chip { width: auto; padding: 2px 6px; gap: 6px; }
@@ -793,7 +789,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* ---------- P3: 代码片段 ---------- */
 .snippet-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .snippet-tab {
-  padding: 3px 10px; font-size: 12px; border-radius: 999px;
+  padding: 3px 10px; font-size: 12px; border-radius: 6px;
   background: transparent; border-color: transparent; color: var(--text-dim);
 }
 .snippet-tab:hover { color: var(--text); background: var(--bg-elevated); }
@@ -950,12 +946,12 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: flex; align-items: center; justify-content: center; gap: 6px;
   margin-top: 6px; padding: 7px 10px; border: 0; border-top: 1px dashed var(--border);
   background: transparent; color: var(--accent); font: inherit; font-size: 13px;
-  border-radius: 0 0 8px 8px; cursor: pointer; width: 100%;
+  border-radius: 0 0 6px 6px; cursor: pointer; width: 100%;
 }
 .team-switch-create:hover { background: var(--bg-hover); outline: none; }
 /* 顶栏团队切换器（取代顶部面包屑与侧栏团队下拉） */
 .topbar-team-switch { padding: 0; }
-.topbar-team-switch summary { padding: 4px 8px; border-radius: 8px; gap: 6px; }
+.topbar-team-switch summary { padding: 4px 8px; border-radius: 6px; gap: 6px; }
 .topbar-team-switch .team-switch-name { flex: none; max-width: 200px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
@@ -978,7 +974,16 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .member-search-clear:hover { background: transparent; color: var(--text); }
 .member-toolbar-right { display: flex; align-items: center; gap: 12px; }
-.member-role-filter { min-width: 150px; cursor: pointer; }
+/* 角色筛选下拉：与全站下拉按钮统一风格 —— 隐藏原生黑色三角，右侧用 Lucide 线性 ChevronDown */
+.member-role-filter-wrap { position: relative; display: inline-flex; align-items: center; }
+.member-role-filter-wrap > svg {
+  position: absolute; right: 10px; pointer-events: none;
+  width: 14px; height: 14px; color: var(--text-dim);
+}
+.member-role-filter {
+  min-width: 150px; cursor: pointer;
+  appearance: none; -webkit-appearance: none; padding-right: 32px;
+}
 .member-count { white-space: nowrap; }
 .empty .member-filter-reset {
   margin-left: 10px; padding: 2px 8px; background: transparent;
@@ -1080,7 +1085,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .invite-mode-tabs button {
   flex: 1; border: none; background: transparent; cursor: pointer;
-  font-size: 13px; color: var(--text-dim); padding: 7px 0; border-radius: 8px;
+  font-size: 13px; color: var(--text-dim); padding: 7px 0; border-radius: 6px;
   transition: background 0.15s ease, color 0.15s ease;
 }
 .invite-mode-tabs button:hover { color: var(--text); }
@@ -1147,7 +1152,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   box-shadow: var(--shadow-pop);
 }
 .paste-toast.err { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
-.paste-toast button { background: var(--accent); border: none; color: #fff; border-radius: var(--radius-pill); padding: 5px 12px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.paste-toast button { background: var(--accent); border: none; color: #fff; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 12px; white-space: nowrap; }
 .paste-toast button:hover { background: var(--accent-hover); }
 .paste-toast button.ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--text-dim); }
 .paste-toast button.ghost:hover { background: rgba(17, 24, 39, 0.06); }
@@ -1250,7 +1255,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .ctx-menu button {
   display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; padding: 7px 10px;
-  background: none; border: none; border-radius: 5px;
+  background: none; border: none; border-radius: 6px;
   color: var(--text); font-size: 12px; cursor: pointer;
 }
 .ctx-menu button svg { flex: none; color: var(--text-dim); }
@@ -1523,7 +1528,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 .row-menu-btn {
   width: 32px; height: 32px; min-width: 32px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 8px; background: transparent; color: var(--text-dim);
+  border: 0; border-radius: 6px; background: transparent; color: var(--text-dim);
   cursor: pointer; opacity: 0; transition: opacity .12s, background .12s, color .12s;
 }
 .row-menu-btn:hover { background: var(--bg-hover); color: var(--text); }
@@ -1547,7 +1552,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   box-shadow: var(--shadow-pop); z-index: 60;
 }
 .row-menu-item {
-  display: block; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px;
+  display: block; width: 100%; padding: 7px 10px; border: 0; border-radius: 6px;
   background: transparent; color: var(--text); font: inherit; font-size: var(--fs-body);
   text-align: left; cursor: pointer; white-space: nowrap;
 }
@@ -1569,7 +1574,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   color: #92400e; font-size: 13px;
 }
 .verify-banner button {
-  margin-left: auto; padding: 5px 12px; border-radius: 7px;
+  margin-left: auto; padding: 5px 12px; border-radius: 6px;
   border: 1px solid #f59e0b; background: #fff; color: #92400e;
   font: inherit; font-size: 12px; cursor: pointer;
 }
@@ -1582,7 +1587,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   margin-left: 0;
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0;
-  border: 0; background: transparent; border-radius: 7px; color: #b45309;
+  border: 0; background: transparent; border-radius: 6px; color: #b45309;
 }
 .verify-banner button.verify-banner-close:hover:not(:disabled) { background: rgba(245, 158, 11, 0.18); }
 .verify-banner button.verify-banner-close svg { width: 14px; height: 14px; }
@@ -1598,7 +1603,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
   background: rgba(255,255,255,0.7); border-radius: 6px; padding: 6px 8px;
 }
 .invite-link-box button {
-  align-self: flex-start; padding: 5px 12px; border-radius: 7px;
+  align-self: flex-start; padding: 5px 12px; border-radius: 6px;
   border: 1px solid #22c55e; background: #fff; color: #166534;
   font: inherit; font-size: 12px; cursor: pointer;
 }
@@ -1661,7 +1666,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 /* ===== 顶栏「分享」按钮与弹窗 ===== */
 .share-wrap { position: relative; flex: none; }
 .share-btn {
-  gap: 6px; padding: 6px 12px; border-radius: 8px;
+  gap: 6px; padding: 6px 12px; border-radius: 6px;
   border: 1px solid var(--border-strong); background: var(--bg-panel);
   color: var(--text); cursor: pointer; font-size: var(--fs-body);
 }
@@ -1688,7 +1693,7 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 }
 .share-copy-btn, .share-enable-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex: none;
-  padding: 7px 11px; border-radius: 7px; border: 1px solid var(--brand-600);
+  padding: 7px 11px; border-radius: 6px; border: 1px solid var(--brand-600);
   background: var(--brand-600); color: #fff; font-size: 12px; cursor: pointer;
 }
 .share-copy-btn:hover, .share-enable-btn:hover { background: var(--brand-700); border-color: var(--brand-700); }

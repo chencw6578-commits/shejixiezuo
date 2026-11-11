@@ -983,17 +983,21 @@ export default function HomePage() {
                   )}
                 </div>
                 <div className="member-toolbar-right">
-                  <select
-                    className="member-role-filter"
-                    value={memberRoleFilter}
-                    onChange={(e) => setMemberRoleFilter(e.target.value as 'all' | 'owner' | 'admin' | 'collaborator')}
-                    aria-label="按角色筛选"
-                  >
-                    <option value="all">全部角色</option>
-                    <option value="owner">{ROLE_LABEL.owner}</option>
-                    <option value="admin">{ROLE_LABEL.admin}</option>
-                    <option value="collaborator">{ROLE_LABEL.collaborator}</option>
-                  </select>
+                  {/* 与全站下拉按钮统一风格：隐藏原生黑色三角，改用 Lucide 线性 ChevronDown */}
+                  <span className="member-role-filter-wrap">
+                    <select
+                      className="member-role-filter"
+                      value={memberRoleFilter}
+                      onChange={(e) => setMemberRoleFilter(e.target.value as 'all' | 'owner' | 'admin' | 'collaborator')}
+                      aria-label="按角色筛选"
+                    >
+                      <option value="all">全部角色</option>
+                      <option value="owner">{ROLE_LABEL.owner}</option>
+                      <option value="admin">{ROLE_LABEL.admin}</option>
+                      <option value="collaborator">{ROLE_LABEL.collaborator}</option>
+                    </select>
+                    <ChevronDown />
+                  </span>
                   <span className="dim small member-count">
                     {isMemberFiltering
                       ? `显示 ${filteredMembers.length} / ${members.length} 位成员`
