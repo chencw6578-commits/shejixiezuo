@@ -174,13 +174,38 @@ authRouter.post('/logout', (_req, res) => {
 authRouter.get('/me', async (req, res) => {
   const user = getSessionUser(req);
   if (!user) return res.status(401).json({ error: '未登录' });
+  const fallbackName = user.email.split('@')[0];
   try {
-    const { rows } = await pool.query<{ verified: boolean }>(
-      'SELECT verified FROM users WHERE id = $1 LIMIT 1',
+    const { rows } = await pool.query<{ name: string | null; verified: boolean }>(
+      'SELECT name, verified FROM users WHERE id = $1 LIMIT 1',
       [user.uid]
     );
-    res.json({ id: user.uid, email: user.email, verified: rows[0]?.verified ?? false });
+    res.json({
+      id: user.uid,
+      email: user.email,
+      name: rows[0]?.name || fallbackName,
+      verified: rows[0]?.verified ?? false,
+    });
   } catch {
-    res.json({ id: user.uid, email: user.email, verified: false });
+    res.json({ id: user.uid, email: user.email, name: fallbackName, verified: false });
+  }
+});
+
+/** 修改当前账号昵称：users.name 是头像下拉与团队成员列表共用的唯一真源 */
+authRouter.patch('/me', async (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ error: '未登录' });
+  const name = String(req.body?.name ?? '').trim();
+  if (!name) return res.status(400).json({ error: '请输入昵称' });
+  if (name.length > 30) return res.status(400).json({ error: '昵称最多 30 个字符' });
+  try {
+    const { rows } = await pool.query<{ name: string; verified: boolean }>(
+      'UPDATE users SET name = $1 WHERE id = $2 RETURNING name, verified',
+      [name, user.uid]
+    );
+    if (!rows[0]) return res.status(404).json({ error: '账号不存在' });
+    res.json({ id: user.uid, email: user.email, name: rows[0].name, verified: rows[0].verified });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : '修改昵称失败' });
   }
 });

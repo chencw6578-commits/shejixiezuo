@@ -148,6 +148,13 @@ export const api = {
 
   me: () => request<AuthUser>('/api/auth/me'),
 
+  /** 修改当前账号昵称（users.name 为头像下拉与团队成员列表共用的唯一真源） */
+  updateMe: (name: string) =>
+    request<AuthUser>('/api/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
   /** 邮箱验证：邮件链接落地后凭 token 核验 */
   verifyEmail: (token: string) =>
     request<{ ok: boolean }>('/api/auth/verify', {

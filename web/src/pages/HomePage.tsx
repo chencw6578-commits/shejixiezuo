@@ -434,6 +434,36 @@ export default function HomePage() {
     });
   };
 
+  /** 修改当前账号昵称：保存后同步刷新登录态与当前团队成员列表 */
+  const openEditNickname = () => {
+    if (!authUser) return;
+    if (avatarMenuRef.current) avatarMenuRef.current.open = false;
+    void dialogs.prompt({
+      title: '修改昵称',
+      label: '昵称',
+      initialValue: authUser.name ?? '',
+      placeholder: '昵称将显示在头像下拉与团队成员列表',
+      maxLength: 30,
+      confirmText: '保存',
+      validate: (v) => (v.trim() ? null : '请输入昵称'),
+      onSubmit: async (name) => {
+        const trimmed = name.trim();
+        if (trimmed === (authUser.name ?? '')) return null;
+        try {
+          const updated = await api.updateMe(trimmed);
+          setAuthUser(updated);
+          if (activeTeam) {
+            const rows = await api.listMembers(activeTeam);
+            setMembers(Array.isArray(rows) ? rows : []);
+          }
+          return null;
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err);
+        }
+      },
+    });
+  };
+
   /** 移交所有权（仅所有者可用）：拉取该团队其他成员 → 选择 → 二次确认 → 后端互改角色 */
   const openTransferTeam = async (teamId: string, teamName: string) => {
     setSwitchOpen(false);
@@ -626,6 +656,9 @@ export default function HomePage() {
 
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
   const avatarSeed = authUser?.email ?? identity?.email ?? '主';
+  // 昵称以登录账号 users.name 为准；未登录 / 未设昵称时回退邮箱（与改动前显示一致）
+  const accountEmail = authUser?.email ?? identity?.email ?? '';
+  const accountName = authUser?.name || accountEmail || '所有者';
   // 项目封面底色跟随画布底色（与编辑器同一个 localStorage 偏好），不再用透明棋盘格
   const coverBg = canvasBgColor(readCanvasBg());
   const coverDark = isDarkCanvas(coverBg);
@@ -719,7 +752,10 @@ export default function HomePage() {
             <div className="avatar-pop-head">
               <span className="avatar-dot big" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
               <div className="avatar-pop-info">
-                <b>{authUser?.email ?? (identity ? identity.email : '所有者')}</b>
+                <b title={accountName}>{accountName}</b>
+                {accountEmail && accountEmail !== accountName && (
+                  <span className="dim small">{accountEmail}</span>
+                )}
                 <div>
                   <span className={`role-badge ${identity?.role ?? myRole}`}>
                     {ROLE_LABEL[identity?.role ?? myRole] ?? '成员'}
@@ -728,6 +764,11 @@ export default function HomePage() {
               </div>
             </div>
             <div className="avatar-menu-list">
+              {authUser && (
+                <button className="avatar-menu-item" onClick={openEditNickname}>
+                  <Pencil /> 修改昵称
+                </button>
+              )}
               <button
                 className="avatar-menu-item"
                 onClick={() => {
@@ -899,13 +940,15 @@ export default function HomePage() {
                 {members.length === 0 && <p className="empty">还没有成员，点击右上角「邀请成员」邀请第一个吧</p>}
                 {members.map((m) => (
                   <li key={m.id} className="member-row">
-                    <span className="member-avatar">{(m.email ?? m.name).slice(0, 1).toUpperCase()}</span>
+                    <span className="member-avatar">{(m.name || m.email || '?').slice(0, 1).toUpperCase()}</span>
                     <div className="member-info">
                       <span className="member-name">
-                        {m.email ?? m.name}
+                        {m.name || m.email || '未命名成员'}
                         {m.role === 'owner' && <span className="role-badge owner">所有者</span>}
                       </span>
-                      <span className="dim small">加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}</span>
+                      <span className="dim small">
+                        {m.email && m.email !== m.name ? `${m.email} · ` : ''}加入于 {new Date(m.created_at).toLocaleDateString('zh-CN')}
+                      </span>
                     </div>
                     <span className={`role-badge ${m.role}`}>{ROLE_LABEL[m.role] ?? m.role}</span>
                     {canManage && m.email && m.role !== 'owner' && (

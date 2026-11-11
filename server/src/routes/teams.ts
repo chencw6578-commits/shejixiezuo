@@ -136,11 +136,17 @@ teamsRouter.post('/:id/leave', async (req, res) => {
   res.json({ left: true });
 });
 
-/** 团队成员列表 */
+/** 团队成员列表：昵称优先取账号表 users.name（与头像下拉同源），未注册的邀请成员回退成员表历史值 */
 teamsRouter.get('/:id/members', async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT id, team_id, name, email, role, created_at FROM team_members
-     WHERE team_id = $1 ORDER BY created_at DESC LIMIT 500`,
+    `SELECT tm.id, tm.team_id,
+            COALESCE(
+              (SELECT u.name FROM users u WHERE LOWER(u.email) = LOWER(tm.email) LIMIT 1),
+              tm.name
+            ) AS name,
+            tm.email, tm.role, tm.created_at
+     FROM team_members tm
+     WHERE tm.team_id = $1 ORDER BY tm.created_at DESC LIMIT 500`,
     [req.params.id]
   );
   res.json(rows);
