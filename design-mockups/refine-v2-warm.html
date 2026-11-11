@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>现有 UI 精修 · V2 纸感画廊</title>
+<style>
+  /* ============ V2 纸感画廊 ============
+     思路：结构不动，把「工具灰」换成「暖纸白」——
+     · 底色 #f6f4f0、面板暖白、边线暖灰，整体温度上来
+     · 卡片去边框去阴影，封面变主角（更高、出血更满）
+     · 品牌紫保留在选中点与按钮上，形成唯一彩色焦点
+     · 标题区更舒展，副标题与标题拉开呼吸 */
+  :root{
+    --brand:#6c4cf1; --brand-soft:#f1edff;
+    --bg:#f6f4f0; --panel:#fffefc; --hover:#efece6;
+    --line:#e7e3da; --text:#211e19; --dim:#8f897d;
+    --r-card:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);
+    font-family:-apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;font-size:14px}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+  .topbar{display:flex;align-items:center;height:52px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .team-switch{display:flex;align-items:center;gap:7px;height:34px;padding:0 10px;border-radius:9px;font-size:13.5px;font-weight:600}
+  .team-switch:hover{background:var(--hover)}
+  .team-switch svg{color:var(--dim)}
+  .topbar .right{margin-left:auto}
+  .avatar{width:30px;height:30px;border-radius:50%;background:#b0885e;color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600}
+
+  .body{display:flex;height:calc(100vh - 52px)}
+  .sidebar{width:204px;flex:none;background:var(--panel);border-right:1px solid var(--line);padding:16px 12px}
+  .nav{display:flex;flex-direction:column;gap:3px}
+  .nav-item{display:flex;align-items:center;gap:9px;height:35px;padding:0 11px;border-radius:8px;color:var(--dim);font-size:13.5px}
+  .nav-item:hover{background:var(--hover);color:var(--text)}
+  .nav-item.active{background:var(--brand-soft);color:var(--brand);font-weight:600}
+  .nav-item svg{color:currentColor;opacity:.85}
+
+  .main{flex:1;overflow:auto}
+  .inner{max-width:1400px;margin:0 auto;padding:52px 44px 72px}
+  .view-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:30px}
+  .view-header h1{font-size:23px;font-weight:700;letter-spacing:-.02em}
+  .view-header h1 .sep{color:#cbc6bb;font-weight:400;margin:0 3px}
+  .view-header p{margin-top:9px;font-size:13px;color:var(--dim)}
+  .new-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 16px;
+    background:var(--brand);color:#fff;border-radius:9px;font-size:13px;font-weight:600;
+    box-shadow:0 1px 2px rgba(108,76,241,.3)}
+  .new-btn:hover{filter:brightness(1.06)}
+
+  .grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:26px 24px}
+  .card{position:relative;text-align:left;width:100%;display:block;
+    transition:transform .2s ease}
+  .card:hover{transform:translateY(-3px)}
+  .card:hover .cover{box-shadow:0 22px 44px -20px rgba(33,30,25,.3)}
+  .cover{display:block;height:190px;border-radius:var(--r-card);overflow:hidden;position:relative;
+    background:#eae7e0;box-shadow:0 0 0 1px rgba(33,30,25,.05),0 1px 2px rgba(33,30,25,.05);
+    transition:box-shadow .2s ease}
+  .cover .tile{position:absolute;background:#fff;border-radius:5px;
+    box-shadow:0 1px 0 rgba(33,30,25,.06),0 0 0 1px rgba(33,30,25,.04);
+    display:flex;flex-direction:column;padding:9px 8px;gap:5px}
+  .cover .tile i{display:block;height:4px;border-radius:2px;background:#e6e4de}
+  .cover .tile i:first-child{width:55%;height:5px;background:#cfccc4}
+  .cover .tile.dark{background:#26231e}
+  .cover .tile.dark i{background:#3e3a33}
+  .cover .tile.dark i:first-child{background:#5b564c}
+  .cover .tile.tint-blue{background:#e7eef7}
+  .cover .tile.tint-green{background:#e6efe4}
+  .cover .tile.tint-clay{background:#f3e8e0}
+  .card-body{display:flex;align-items:baseline;gap:12px;margin-top:14px;padding:0 2px}
+  .name{font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+  .meta{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin-left:auto}
+  .menu{position:absolute;right:8px;top:8px;width:28px;height:28px;border-radius:7px;color:#fff;
+    background:rgba(33,30,25,.42);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+  .card:hover .menu{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="team-switch">演示团队
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+  <div class="right"><span class="avatar">D</span></div>
+</header>
+
+<div class="body">
+  <aside class="sidebar">
+    <nav class="nav">
+      <a class="nav-item active" href="#">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        项目</a>
+      <a class="nav-item" href="#">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.6c2.3.1 4 1.5 4.5 4"/></svg>
+        团队成员</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="inner">
+      <header class="view-header">
+        <div>
+          <h1>项目 <span class="sep">·</span> 演示团队</h1>
+          <p>选择项目进入，查看设计稿、标注与规范</p>
+        </div>
+        <button class="new-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新建项目</button>
+      </header>
+
+      <ul class="grid">
+        <li><button class="card">
+          <span class="cover">
+            <span class="tile" style="left:18px;top:20px;width:31%;height:70%"><i></i><i></i><i></i><i></i></span>
+            <span class="tile dark" style="left:36%;top:38px;width:29%;height:62%"><i></i><i></i><i></i></span>
+            <span class="tile tint-blue" style="right:16px;top:26px;width:29%;height:66%"><i></i><i></i><i></i><i></i></span>
+          </span>
+          <span class="card-body"><span class="name">演示项目</span><span class="meta">2 份设计稿 · 今天 14:44</span></span>
+          <span class="menu">⋯</span>
+        </button></li>
+
+        <li><button class="card">
+          <span class="cover">
+            <span class="tile tint-clay" style="left:18px;top:26px;width:29%;height:64%"><i></i><i></i><i></i></span>
+            <span class="tile" style="left:36%;top:18px;width:30%;height:72%"><i></i><i></i><i></i><i></i></span>
+            <span class="tile dark" style="right:16px;top:32px;width:28%;height:60%"><i></i><i></i><i></i></span>
+          </span>
+          <span class="card-body"><span class="name">品牌官网改版</span><span class="meta">6 份设计稿 · 昨天 18:02</span></span>
+          <span class="menu">⋯</span>
+        </button></li>
+
+        <li><button class="card">
+          <span class="cover">
+            <span class="tile tint-green" style="left:18px;top:22px;width:30%;height:68%"><i></i><i></i><i></i><i></i></span>
+            <span class="tile dark" style="left:37%;top:40px;width:28%;height:58%"><i></i><i></i><i></i></span>
+            <span class="tile" style="right:16px;top:20px;width:29%;height:70%"><i></i><i></i><i></i><i></i></span>
+          </span>
+          <span class="card-body"><span class="name">移动端 App 2.0</span><span class="meta">12 份设计稿 · 11-07</span></span>
+          <span class="menu">⋯</span>
+        </button></li>
+      </ul>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

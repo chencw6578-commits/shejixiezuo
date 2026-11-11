@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
@@ -68,6 +68,30 @@ function avatarColor(seed: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+/** 项目列表 Tab：全部项目 / 最近浏览 / 最近更新 */
+type ProjectTab = 'all' | 'viewed' | 'updated';
+
+/** 最近浏览记录存 localStorage：{ projectId: 最后进入时间戳 }，纯客户端行为 */
+const RECENT_VIEWS_KEY = 'recentProjectViews';
+
+function readRecentViews(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_VIEWS_KEY) ?? '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+function recordProjectView(id: string): void {
+  try {
+    const map = readRecentViews();
+    map[id] = Date.now();
+    localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(map));
+  } catch {
+    /* 存储不可用时静默忽略，不影响进入项目 */
+  }
+}
+
 /** 角色显示名 */
 const ROLE_LABEL: Record<string, string> = {
   owner: '所有者',
@@ -92,6 +116,8 @@ export default function HomePage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  // 项目列表 Tab：全部项目 / 最近浏览 / 最近更新
+  const [projectTab, setProjectTab] = useState<ProjectTab>('all');
   // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [memberEmail, setMemberEmail] = useState('');
@@ -204,6 +230,23 @@ export default function HomePage() {
       .then((rows) => setProjects(Array.isArray(rows) ? rows : []))
       .catch((e) => setError(e.message));
   }, [activeTeam]);
+
+  // 按 Tab 过滤/排序：全部=原顺序；最近浏览=localStorage 记录倒序；最近更新=按最后更新时间倒序
+  const visibleProjects = useMemo(() => {
+    if (projectTab === 'viewed') {
+      const views = readRecentViews();
+      return projects
+        .filter((p) => views[p.id])
+        .sort((a, b) => views[b.id] - views[a.id]);
+    }
+    if (projectTab === 'updated') {
+      return [...projects].sort(
+        (a, b) =>
+          new Date(b.last_file_at ?? b.created_at).getTime() - new Date(a.last_file_at ?? a.created_at).getTime()
+      );
+    }
+    return projects;
+  }, [projectTab, projects]);
 
   useEffect(loadTeams, [loadTeams]);
 
@@ -672,8 +715,6 @@ export default function HomePage() {
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
             <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
-            <span className="avatar-name">{authUser?.email ?? (identity ? identity.email : '所有者')}</span>
-            <span className="caret"><ChevronDown /></span>
           </summary>
           <div className="avatar-pop">
             <div className="avatar-pop-head">
@@ -757,11 +798,43 @@ export default function HomePage() {
                 </div>
               </header>
 
+              {/* 列表 Tab：全部项目 / 最近浏览 / 最近更新 */}
+              <div className="project-tabs" role="tablist" aria-label="项目筛选">
+                {(
+                  [
+                    ['all', '全部项目'],
+                    ['viewed', '最近浏览'],
+                    ['updated', '最近更新'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={projectTab === key}
+                    className={`project-tab ${projectTab === key ? 'active' : ''}`}
+                    onClick={() => setProjectTab(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <ul className="project-grid">
-                {projects.length === 0 && <p className="empty">暂无项目</p>}
-                {projects.map((p) => (
+                {visibleProjects.length === 0 && (
+                  <p className="empty">
+                    {projectTab === 'viewed' ? '暂无浏览记录，进入项目后会出现在这里' : '暂无项目'}
+                  </p>
+                )}
+                {visibleProjects.map((p) => (
                   <li key={p.id} className="project-card-wrap">
-                    <button className="file-card project-card" onClick={() => navigate(`/projects/${p.id}`)}>
+                    <button
+                      className="file-card project-card"
+                      onClick={() => {
+                        recordProjectView(p.id);
+                        navigate(`/projects/${p.id}`);
+                      }}
+                    >
                       <span
                         className={`project-cover ${coverDark ? 'is-dark-canvas' : ''}`}
                         style={{ background: coverBg }}

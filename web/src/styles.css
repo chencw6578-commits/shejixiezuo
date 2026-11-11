@@ -114,8 +114,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 .avatar-menu { position: relative; margin-left: auto; }
 .avatar-menu summary {
-  list-style: none; display: flex; align-items: center; gap: 8px;
-  cursor: pointer; padding: 4px 6px 4px 4px; border-radius: 999px;
+  list-style: none; display: flex; align-items: center;
+  cursor: pointer; padding: 4px; border-radius: 999px;
 }
 .avatar-menu summary::-webkit-details-marker { display: none; }
 .avatar-menu summary:hover { background: var(--bg-elevated); }
@@ -126,11 +126,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   font-size: 13px; font-weight: 600;
 }
 .avatar-dot.big { width: 38px; height: 38px; font-size: 16px; }
-.avatar-name {
-  font-size: 13px; max-width: 180px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
-}
-.avatar-menu .caret { color: var(--text-dim); font-size: 10px; }
 .avatar-pop {
   position: absolute; right: 0; top: calc(100% + 6px); width: 260px; z-index: 40;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
@@ -198,7 +193,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .auth-foot { text-align: center; margin-top: 14px; font-size: 12px; }
 .auth-foot a { color: var(--accent); text-decoration: none; }
 @media (max-width: 640px) {
-  .avatar-name, .avatar-menu .caret { display: none; }
   .topbar-crumb { font-size: 12px; }
 }
 .home-sidebar {
@@ -217,7 +211,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .side-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
 .side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
 .home-main { flex: 1; overflow-y: auto; }
-.home-main-inner { max-width: 1400px; margin: 0 auto; padding: 40px 36px 60px; }
+.home-main-inner { max-width: 1760px; margin: 0 auto; padding: 28px 28px 56px; }
 .view-header { margin-bottom: 20px; }
 .view-header h1 { font-size: 22px; }
 .view-header p { color: var(--text-dim); margin-top: 6px; }
@@ -1040,14 +1034,32 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   background: var(--bg-panel); color: var(--accent); font-weight: 600;
   box-shadow: 0 1px 4px rgba(29, 33, 41, 0.10);
 }
-.project-grid { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+/* 项目列表 Tab（全部项目 / 最近浏览 / 最近更新）：下划线式极简 Tab */
+.project-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.project-tab {
+  position: relative; padding: 7px 12px 10px; font-size: 13px; color: var(--text-dim);
+  background: transparent; border: none; cursor: pointer;
+  border-radius: 6px 6px 0 0; transition: color 0.12s ease, background 0.12s ease;
+}
+.project-tab:hover { color: var(--text); background: var(--bg-elevated); }
+.project-tab.active { color: var(--text); font-weight: 600; }
+.project-tab.active::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px;
+  background: var(--accent); border-radius: 1px;
+}
+
+/* 项目网格：一行固定 5 个（窄屏逐级降到 4/3/2） */
+.project-grid { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1200px) { .project-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 960px) { .project-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .project-card {
   width: 100%; padding: 16px; text-align: left;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
   transition: border-color 0.15s ease;
 }
 .project-card:hover { border-color: var(--border-strong); }
-.project-card .file-name { font-size: 14px; margin-bottom: 6px; }
+.project-card .file-name { font-size: 14px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 项目卡片封面：显示设计稿缩略图 */
 .project-cover {
   display: block; height: 160px; margin: -16px -16px 12px;
@@ -1536,7 +1548,10 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 /* ---------- 项目卡片「更多操作」（⋯）：与卡片 button 同级，绝对定位到右下角 ---------- */
 .project-card-wrap { position: relative; }
 /* 给右下角按钮预留空间，避免压住「最后更新」文字；行高固定 18px 便于精确对齐 */
-.project-card-wrap .file-meta { padding-right: 36px; line-height: 18px; }
+.project-card-wrap .file-meta {
+  padding-right: 36px; line-height: 18px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 /* ⋯ 按钮 32px 高：文字行中心距卡片底 16(padding)+9(行高一半)=25px → bottom = 25-16 = 9px，
    使按钮中心与「1 份设计稿 · 最后更新」文字中心垂直对齐 */
 .project-card-wrap > .project-card-menu.row-menu {

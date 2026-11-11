@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>方案 C · 暗色精密 Precision</title>
+<style>
+  :root{
+    --bg:#0c0d0f; --panel:#121316; --raise:#17181c; --line:#1e2025;
+    --tx:#e8e9eb; --tx-2:#8a8f99; --tx-3:#565b64; --acc:#b7f04d;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--tx);font-family:-apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--acc);color:#0c0d0f}
+
+  /* ── 44px 紧凑顶栏 + 全局搜索 ─────────────────── */
+  .top{display:flex;align-items:center;gap:14px;height:52px;padding:0 14px;border-bottom:1px solid var(--line)}
+  .logo{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;padding:6px 8px;border-radius:6px}
+  .logo:hover{background:var(--panel)}
+  .logo i{width:16px;height:16px;background:var(--acc);border-radius:4px}
+  .logo em{font-style:normal;color:var(--tx-2);font-weight:400}
+  .search{flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;
+    background:var(--panel);border:1px solid var(--line);border-radius:7px;color:var(--tx-3);font-size:13px}
+  .search kbd{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--tx-3);
+    border:1px solid var(--line);border-radius:4px;padding:2px 5px}
+  .btn{height:30px;padding:0 12px;border-radius:6px;background:#fff;color:#0c0d0f;font-size:12.5px;font-weight:600;
+    display:flex;align-items:center;gap:6px}
+  .btn:hover{background:var(--acc)}
+  .avatar{width:26px;height:26px;border-radius:50%;background:var(--raise);border:1px solid var(--line);
+    color:var(--tx-2);display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer}
+  .avatar:hover{border-color:var(--acc);color:var(--tx)}
+
+  /* ── 左侧 48px 图标栏 ─────────────────────────── */
+  .shell{display:flex;height:calc(100vh - 52px)}
+  .rail{width:52px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:4px}
+  .rail a{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--tx-3)}
+  .rail a:hover{background:var(--panel);color:var(--tx)}
+  .rail a.on{background:var(--panel);color:var(--tx);box-shadow:inset 2px 0 0 var(--acc)}
+  .rail svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ── 主区：表格式列表 ─────────────────────────── */
+  .main{flex:1;overflow:auto}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;padding:36px 36px 22px}
+  .head h1{font-size:22px;letter-spacing:-.02em;font-weight:650}
+  .head p{margin-top:7px;font-size:13px;color:var(--tx-2)}
+  .head .count{font-family:var(--mono);font-size:11px;color:var(--tx-3);letter-spacing:.08em}
+  table{width:100%;border-collapse:collapse}
+  tr.row{cursor:pointer;border-top:1px solid var(--line)}
+  tr.row:hover{background:var(--panel)}
+  td{padding:15px 36px;vertical-align:middle}
+  td.dot{width:20px;padding-right:0}
+  .st{width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px rgba(183,240,77,.5)}
+  .st.dim{background:var(--tx-3);box-shadow:none}
+  td.name b{font-size:14px;font-weight:550}
+  td.name span{display:block;margin-top:3px;font-size:12px;color:var(--tx-2)}
+  td.meta{font-family:var(--mono);font-size:11.5px;color:var(--tx-2);white-space:nowrap;text-align:right}
+  td.meta em{font-style:normal;color:var(--tx)}
+  td.faces{width:120px;text-align:right}
+  .stack{display:inline-flex}
+  .stack span{width:22px;height:22px;border-radius:50%;border:2px solid var(--bg);margin-left:-6px;
+    display:flex;align-items:center;justify-content:center;font-size:9px;color:#0c0d0f;font-weight:700}
+  .stack span:first-child{margin-left:0}
+  td.go{width:40px;color:var(--tx-3);padding-left:0}
+  tr.row:hover td.go{color:var(--acc)}
+
+  .foot{padding:26px 36px;font-family:var(--mono);font-size:11px;color:var(--tx-3);letter-spacing:.06em}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="logo"><i></i>设计协作 <em>› 演示团队</em></div>
+  <div class="search">搜索项目、设计稿或标注…<kbd>⌘K</kbd></div>
+  <button class="btn">＋ 新建</button>
+  <div class="avatar">D</div>
+</header>
+
+<div class="shell">
+  <nav class="rail">
+    <a class="on" title="项目"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></a>
+    <a title="团队成员"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.6c2.3.1 4 1.5 4.5 4"/></svg></a>
+    <a title="导入"><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0 4-4m-4 4-4-4"/><path d="M5 18h14"/></svg></a>
+    <a title="设置" style="margin-top:auto"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></a>
+  </nav>
+
+  <main class="main">
+    <div class="head">
+      <div>
+        <h1>项目</h1>
+        <p>选择项目进入，查看设计稿、标注与规范</p>
+      </div>
+      <span class="count">3 PROJECTS · TEAM DEMO</span>
+    </div>
+
+    <table>
+      <tr class="row">
+        <td class="dot"><span class="st"></span></td>
+        <td class="name"><b>演示项目</b><span>首页 / 登录 / 我的 — 种子数据，用于体验完整流程</span></td>
+        <td class="meta">2 帧 · <em>4 分钟前</em></td>
+        <td class="faces"><span class="stack"><span style="background:#9db56f">演</span><span style="background:#d6a35c">C</span></span></td>
+        <td class="go">›</td>
+      </tr>
+      <tr class="row">
+        <td class="dot"><span class="st"></span></td>
+        <td class="name"><b>品牌官网改版</b><span>官网首页、产品页与博客模板的高保真稿</span></td>
+        <td class="meta">6 帧 · <em>昨天</em></td>
+        <td class="faces"><span class="stack"><span style="background:#7ea4c7">W</span><span style="background:#c77ea4">L</span></span></td>
+        <td class="go">›</td>
+      </tr>
+      <tr class="row">
+        <td class="dot"><span class="st dim"></span></td>
+        <td class="name"><b>移动端 App 2.0</b><span>全新信息架构下的核心链路：浏览 / 下单 / 我的</span></td>
+        <td class="meta">12 帧 · <em>11-07</em></td>
+        <td class="faces"><span class="stack"><span style="background:#9db56f">演</span></span></td>
+        <td class="go">›</td>
+      </tr>
+    </table>
+
+    <p class="foot">LAST SYNC 22:48 · STORAGE LOCAL · v0.1.0</p>
+  </main>
+</div>
+
+</body>
+</html>

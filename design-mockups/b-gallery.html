@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>方案 B · 画廊 Gallery</title>
+<style>
+  :root{
+    --bg:#f7f5f1; --ink:#211d18; --ink-2:#8b857c; --line:#e3ded6;
+    --serif:"Songti SC","Noto Serif CJK SC",Georgia,"Times New Roman",serif;
+    --sans:-apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:#211d18;color:#f7f5f1}
+
+  /* ── 顶栏：无边框，细字距标签 ─────────────────── */
+  .top{display:flex;align-items:center;padding:26px 56px}
+  .brand{font-family:var(--serif);font-size:19px;letter-spacing:.06em;font-weight:600}
+  .brand span{color:var(--ink-2);font-family:var(--mono);font-size:11px;margin-left:12px;letter-spacing:.12em}
+  nav{margin-left:auto;display:flex;gap:30px;font-size:13px;letter-spacing:.14em;color:var(--ink-2)}
+  nav a.on,.nav a:hover{color:var(--ink)}
+  nav a:hover{color:var(--ink)}
+  .avatar{width:34px;height:34px;border-radius:50%;background:#211d18;color:#f7f5f1;
+    display:flex;align-items:center;justify-content:center;font-size:13px;margin-left:34px;cursor:pointer}
+
+  /* ── 引言式标题 ─────────────────────────────── */
+  .intro{padding:64px 56px 20px;max-width:880px}
+  .intro .no{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--ink-2)}
+  .intro h1{font-family:var(--serif);font-size:58px;font-weight:600;letter-spacing:.02em;line-height:1.14;margin-top:18px}
+  .intro h1 em{font-style:italic;color:#b0aa9f}
+  .intro p{margin-top:20px;font-size:15px;line-height:1.9;color:var(--ink-2)}
+
+  /* ── 展签式项目网格：图片是唯一主角 ─────────── */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:72px 48px;padding:56px 56px 40px}
+  .card{cursor:pointer}
+  .frame{aspect-ratio:4/3;background:#efece6;overflow:hidden;position:relative;
+    transition:box-shadow .25s ease}
+  .card:hover .frame{box-shadow:0 24px 48px -24px rgba(33,29,24,.28)}
+  .card:hover .art{transform:translateY(-4px) scale(1.015)}
+  .art{position:absolute;inset:16px;transition:transform .3s ease;display:flex;gap:10px;align-items:flex-end}
+  .shot{flex:1;background:#fff;box-shadow:0 1px 0 rgba(33,29,24,.08);border-radius:2px;height:100%}
+  .shot.alt{height:88%}
+  .shot.tall{height:94%}
+  .label{display:flex;align-items:baseline;gap:16px;margin-top:20px;padding-bottom:6px;border-bottom:1px solid transparent}
+  .card:hover .label{border-color:var(--ink)}
+  .label b{font-family:var(--serif);font-size:21px;font-weight:600;letter-spacing:.02em}
+  .label i{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--ink-2);letter-spacing:.1em}
+
+  /* ── 成员一行 ───────────────────────────────── */
+  .people{padding:36px 56px 80px;display:flex;align-items:center;gap:14px;border-top:1px solid var(--line);margin:24px 56px 0;padding-left:0;padding-right:0}
+  .people b{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.16em;color:var(--ink-2);margin-right:10px}
+  .stack{display:flex}
+  .stack span{width:32px;height:32px;border-radius:50%;border:2px solid var(--bg);margin-left:-8px;
+    display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff}
+  .stack span:first-child{margin-left:0}
+  .people em{font-style:normal;font-size:13px;color:var(--ink-2);margin-left:14px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">设计协作<span>DESIGN HANDOFF</span></div>
+  <nav><a class="on" href="#">项目</a><a href="#">团队成员</a></nav>
+  <div class="avatar">D</div>
+</header>
+
+<section class="intro">
+  <p class="no">演示团队 — 2026 秋</p>
+  <h1>每一份设计稿，<br>都值得被认真<em>陈列</em>。</h1>
+  <p>从导入到标注再到规范，团队的项目在这里安静地排开。选择一件作品，开始查看。</p>
+</section>
+
+<main class="grid">
+  <a class="card" href="#">
+    <div class="frame">
+      <div class="art">
+        <div class="shot" style="background:linear-gradient(180deg,#fff 0 18%,#f0ede7 18% 100%)"></div>
+        <div class="shot alt" style="background:linear-gradient(180deg,#1c1a17 0 30%,#2b2823 30% 100%)"></div>
+        <div class="shot tall" style="background:linear-gradient(180deg,#fff 0 40%,#eef2ee 40% 100%)"></div>
+      </div>
+    </div>
+    <div class="label"><b>演示项目</b><i>2 帧 · 今天</i></div>
+  </a>
+  <a class="card" href="#">
+    <div class="frame">
+      <div class="art">
+        <div class="shot tall" style="background:linear-gradient(180deg,#fff 0 55%,#f6e9e2 55% 100%)"></div>
+        <div class="shot" style="background:linear-gradient(180deg,#22364f 0 45%,#33507a 45% 100%)"></div>
+        <div class="shot alt" style="background:linear-gradient(180deg,#fff 0 26%,#eef1f6 26% 100%)"></div>
+      </div>
+    </div>
+    <div class="label"><b>品牌官网改版</b><i>6 帧 · 昨天</i></div>
+  </a>
+  <a class="card" href="#">
+    <div class="frame">
+      <div class="art">
+        <div class="shot alt" style="background:linear-gradient(180deg,#fff 0 22%,#f2efe8 22% 100%)"></div>
+        <div class="shot tall" style="background:linear-gradient(180deg,#2f3a2f 0 60%,#485948 60% 100%)"></div>
+        <div class="shot" style="background:linear-gradient(180deg,#fff 0 36%,#ece7dd 36% 100%)"></div>
+      </div>
+    </div>
+    <div class="label"><b>移动端 App 2.0</b><i>12 帧 · 11-07</i></div>
+  </a>
+  <a class="card" href="#">
+    <div class="frame" style="display:flex;align-items:center;justify-content:center">
+      <span style="font-family:var(--serif);font-size:44px;color:#c9c2b6">＋</span>
+    </div>
+    <div class="label"><b>新建项目</b><i>从 Figma 导入</i></div>
+  </a>
+</main>
+
+<div class="people">
+  <b>参与成员</b>
+  <div class="stack">
+    <span style="background:#8a9a7b">演</span>
+    <span style="background:#b0885e">C</span>
+    <span style="background:#7b8a9a">W</span>
+    <span style="background:#9a7b8a">L</span>
+  </div>
+  <em>4 位成员正在协作</em>
+</div>
+
+</body>
+</html>
