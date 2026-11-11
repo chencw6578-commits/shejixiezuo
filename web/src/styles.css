@@ -456,7 +456,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .page-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; padding: 0 6px; }
 .page-row {
   display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px;
-  cursor: pointer; font-size: 14px; user-select: none;
+  cursor: pointer; font-size: 14px; user-select: none; position: relative;
 }
 .page-row:hover { background: var(--bg-elevated); }
 .page-row.is-droptarget { outline: 1.5px dashed var(--accent); background: rgba(108, 76, 241, 0.12); }
@@ -473,9 +473,18 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .page-name:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
 /* 编组名前的文件图标（Lucide 风格，随文字省略号一起截断） */
 .page-group-icon { flex: none; vertical-align: -2.5px; margin-right: 5px; color: var(--text-dim); }
-.page-count { flex: none; color: var(--text-dim); font-size: 11px; margin-left: auto; }
-/* 操作按钮：32×32 命中区、放大图标，常显但未悬停降透明度 */
-.page-actions { display: inline-flex; align-items: center; gap: 6px; flex: none; width: 28px; justify-content: flex-end; }
+.page-count { flex: none; color: var(--text-dim); font-size: 11px; margin-left: auto; transition: opacity .12s; }
+/* 「更多」按钮脱离文档流，不再占用行内宽度：编组计数才能与「未分组」行一样贴右对齐。
+   按钮仅在 hover / 键盘聚焦时浮出，此时计数淡出让位，避免叠在同一位置。
+   这里不用 transform 做垂直居中——transform 会给 RowMenu 的 position:fixed 弹层
+   建立新的包含块，导致菜单定位错乱，改用 top/bottom + align-items 居中。 */
+.page-actions {
+  position: absolute; right: 6px; top: 0; bottom: 0;
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  width: 28px; flex: none; pointer-events: none;
+}
+/* 按钮未显示时不拦截鼠标；hover / 键盘聚焦浮出后才可点击 */
+.page-row:hover .page-actions, .page-row:focus-within .page-actions { pointer-events: auto; }
 .sidebar-head { display: flex; align-items: center; gap: 6px; }
 .sidebar-head h3 { flex: 1; min-width: 0; }
 .sidebar-add-group {
@@ -1474,9 +1483,18 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 /* hover 才显示，避免列表噪声；无 hover 设备常显 */
 .page-row:hover .row-menu-btn, .pcanvas-frame-item:hover .row-menu-btn,
 .frame-item:hover .row-menu-btn, .page-row:focus-within .row-menu-btn { opacity: 1; }
-@media (hover: none) { .row-menu-btn { opacity: 1; } }
+/* 有「更多」菜单的编组行：hover / 键盘聚焦时 ⋯ 浮出，计数淡出让位，避免两者叠在同一位置。
+   没有菜单的行（如「未分组」）计数始终可见，保证各行数字右对齐的观感一致。 */
+.page-row:has(.page-actions):hover .page-count,
+.page-row:has(.page-actions):focus-within .page-count { opacity: 0; }
+@media (hover: none) {
+  .row-menu-btn { opacity: 1; }
+  /* 无 hover 设备 ⋯ 常显：恢复文档流占位，计数保持可见且不被遮挡 */
+  .page-actions { position: static; width: 28px; pointer-events: auto; }
+  .page-row:has(.page-actions) .page-count { opacity: 1; }
+}
 .row-menu-pop {
-  position: fixed; width: 168px; padding: 4px;
+  position: fixed; width: 168px; padding: 4px; pointer-events: auto;
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: var(--shadow-pop); z-index: 60;
 }
