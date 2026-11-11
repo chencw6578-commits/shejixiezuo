@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.8';
+const PLUGIN_VERSION = '1.3.9';
 const BUILD_DATE = '2026-11-11';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -12,8 +12,8 @@ const ARTBOARD_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
 
 // 不同阶段给 UI 不同的「静默上限」：读取节点 30 秒 / 单张切图 90 秒 / 单板上传 60 秒。
 // exportAsync 是主线程同步阻塞的，这段时间发不出任何消息，用一个统一阈值会误杀。
-const SILENCE_NODES_MS = 30000;
-const SILENCE_IMAGE_MS = 90000;
+const SILENCE_NODES_MS = 60000;
+const SILENCE_IMAGE_MS = 120000;
 // base64 分片：每片 256KB 源字节，取 3 的整数倍（262143）保证各片编码可直接拼接
 const IMAGE_CHUNK_BYTES = 262143;
 // 逐图层高清切图：单板上传的切片数上限（与服务端 MAX_SLICES_PER_REQUEST 对齐）
@@ -107,7 +107,7 @@ function postProgress(ctx, stage, done, message, silenceMs) {
 /** 导出子树：字段与网站 schemaVersion 1 对应；每 300 个节点发一次心跳并让出事件循环 */
 async function exportNodeAsync(node, parentId, ctx) {
   ctx.count = (ctx.count || 0) + 1;
-  if (ctx.count % 300 === 0) {
+  if (ctx.count % 100 === 0) {
     postProgress(ctx, 'nodes', ctx.index, '读取节点…（已 ' + ctx.count + ' 个）', SILENCE_NODES_MS);
     await nextTask();
   }
@@ -295,7 +295,8 @@ function collectSliceNodes(root, max) {
   return found;
 }
 
-/** 单张切图分片回传：复用 image-chunk 通道，bufferKey = 请求id:slice:序号，UI 按此拼装 */
+/** 单张切图分片回传：复用 image-chunk 通道，bufferKey = 请求id:slice:序号，UI 按此拼装。
+ * 注意 requestId 传 ask 的请求 id（分片期间 UI 靠它重置「无响应」计时），bufferKey 单独携带 */
 async function sendSliceChunks(ctx, bufferKey, bytes) {
   const total = Math.max(1, Math.ceil(bytes.length / IMAGE_CHUNK_BYTES));
   for (let seq = 0; seq < total; seq++) {
@@ -303,7 +304,7 @@ async function sendSliceChunks(ctx, bufferKey, bytes) {
     const end = Math.min(bytes.length, start + IMAGE_CHUNK_BYTES);
     const slice = typeof bytes.subarray === 'function' ? bytes.subarray(start, end) : bytes.slice(start, end);
     const data = bytesToBase64(slice);
-    post({ type: 'image-chunk', requestId: bufferKey, boardId: null, seq: seq, total: total, data: data });
+    post({ type: 'image-chunk', requestId: ctx.requestId, bufferKey: bufferKey, boardId: null, seq: seq, total: total, data: data });
     await nextTask();
   }
   return total;

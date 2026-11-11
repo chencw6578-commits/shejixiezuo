@@ -356,7 +356,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.3.8';
+  var UI_VERSION = '1.3.9';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -404,9 +404,11 @@
   function postToPlugin(message) {
     parent.postMessage({ pluginMessage: message }, '*');
   }
-  // 按阶段给不同「静默上限」：读节点 30 秒 / 单张切图 90 秒 / 单板上传 60 秒。
+  // 按阶段给不同「静默上限」：读节点 120 秒 / 单张切图 120 秒 / 单板上传 60 秒。
   // 主线程 exportAsync 是同步阻塞的，这段时间一条消息都发不出来，用一个阈值会误杀。
-  var STAGE_TIMEOUT_MS = { nodes: 30000, images: 90000, upload: 60000 };
+  // v1.3.9：一次 ask 覆盖整个画板（序列化 + 整板 PNG + 逐图层 4x/SVG 切图），大画板/复杂图层
+  // 单个 exportAsync 就可能超过半分钟，30/90 秒的旧阈值实测会误判「无响应」，放宽到 120 秒。
+  var STAGE_TIMEOUT_MS = { nodes: 120000, images: 120000, upload: 60000 };
   var HEARTBEAT_TIMEOUT_MS = STAGE_TIMEOUT_MS.nodes;
   function timeoutText(ms) {
     return '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：' +
@@ -418,7 +420,9 @@
       var entry = { resolve: resolve, reject: reject, timer: null };
       entry.silenceMs = timeoutMs || HEARTBEAT_TIMEOUT_MS;
       entry.arm = function (ms) {
-        if (typeof ms === 'number' && ms > 0) entry.silenceMs = ms;
+        // 心跳只允许延长预算、不允许缩短：一次 ask 覆盖整个画板导出，中途会混用
+        // nodes(60s)/images(120s) 两档消息，若小值覆盖大值，紧跟的长 exportAsync 会被误杀
+        if (typeof ms === 'number' && ms > 0 && ms > entry.silenceMs) entry.silenceMs = ms;
         clearTimeout(entry.timer);
         entry.timer = setTimeout(function () {
           pending.delete(requestId);
@@ -1332,12 +1336,14 @@
       return;
     }
     if (msg.type === 'image-chunk') {
-      // 分片 base64：拼装期间同样算心跳，避免 90 秒内误判无响应
+      // 分片 base64：拼装期间同样算心跳，避免误判无响应。
+      // v1.3.9：切片分片的 requestId 是 ask 请求 id（可用于心跳），bufferKey 才是拼装键
       if (msg.requestId) heartbeat(msg.requestId, STAGE_TIMEOUT_MS.images);
-      var buf = imageChunkBufs.get(msg.requestId);
+      var chunkKey = msg.bufferKey || msg.requestId;
+      var buf = imageChunkBufs.get(chunkKey);
       if (!buf) {
         buf = { total: msg.total, parts: [], received: 0 };
-        imageChunkBufs.set(msg.requestId, buf);
+        imageChunkBufs.set(chunkKey, buf);
       }
       buf.total = msg.total;
       buf.parts[msg.seq] = msg.data;
