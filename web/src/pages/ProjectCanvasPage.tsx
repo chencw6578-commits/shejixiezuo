@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam } from '../api';
 import type { FileDetail, ProjectFrameRow, ProjectPageRow } from '../types';
 import { findDevice } from '../viewer/devices';
@@ -29,7 +29,6 @@ import {
   Plus,
   Share2,
   Trash2,
-  Users,
   X,
 } from '../components/icons';
 
@@ -2043,10 +2042,6 @@ export default function ProjectCanvasPage() {
           <ArrowLeft />
         </button>
         <h1><Folder /> {project?.name ?? '…'}</h1>
-        {project?.team_name && (
-          <Link to={`/projects?team=${project.team_id}`} className="team-crumb"><Users /> {project.team_name}</Link>
-        )}
-        <span className="crumb">{frames.length} 个画板</span>
         {parsing > 0 && <span className="status status-wait status-pulse">解析中 {parsing}</span>}
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
