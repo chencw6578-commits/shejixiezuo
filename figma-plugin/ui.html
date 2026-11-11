@@ -222,6 +222,7 @@
       服务器：<span id="gateServerText">http://localhost:4000</span>
       <button id="gateServerEdit" class="btn text" type="button">更改</button>
     </p>
+    <p id="gateStorageHint" class="dim small hidden"></p>
     <div id="gateServerRow" class="hidden">
       <input id="gateBaseUrl" type="text" placeholder="http://localhost:4000" />
     </div>
@@ -275,11 +276,6 @@
           <label data-scale="3"><input type="radio" name="scale" value="3" /> 3x</label>
           <label data-scale="4"><input type="radio" name="scale" value="4" /> 4x</label>
         </div>
-        <label class="toggle" for="includeImage"><input type="checkbox" id="includeImage" /> 位图切图</label>
-      </div>
-      <div class="opt-row">
-        <span class="opt-label">元素</span>
-        <label class="toggle" for="includeSlices"><input type="checkbox" id="includeSlices" /> 逐图层高清切图（矢量出 SVG、位图出 4x PNG）</label>
       </div>
       <div id="scaleHint" class="hint small"></div>
     </section>
@@ -356,17 +352,19 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.4.0';
+  var UI_VERSION = '1.5.5';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
     platform: 'android',
     scale: 2,
-    // 位图切图默认关闭：只导结构最快，也不受大画板 exportAsync 阻塞影响
-    includeImage: false,
-    // 逐图层高清切图默认开启：带 Figma Export 标记的图层，矢量元素另出真矢量 SVG、
-    // 全部元素出 4x PNG，网站端任意倍率导出从高分辨率源降采样，不再放大 1x 位图发糊
+    // v1.5.2：位图切图与逐图层高清切图固定开启，不再提供开关（前端已隐藏）
+    includeImage: true,
     includeSlices: true,
+    // v1.5.4：上次偏好读取来源（client/doc），门禁页显示「上次登录状态」存在哪
+    prefsSrc: null,
+    // v1.5.5：存储探针结果（clientOk / clientErr / pluginIdMissing）
+    prefsProbe: null,
     baseUrl: 'http://localhost:4000',
     token: '',
     scope: '',
@@ -392,8 +390,13 @@
     pingTimer: null,
     lastPongAt: 0,
     mainBusy: false,
+    lastPongVersion: '',
+    lastPongGen: -1,
     lastProgressMsg: '',
     lastProgressAt: 0,
+    // 分片接收统计：区分「分片也丢了」vs「只有 board-exported 丢」
+    chunkCount: 0,
+    lastChunkAt: 0,
   };
 
   var pending = new Map();
@@ -418,8 +421,17 @@
   var HEARTBEAT_TIMEOUT_MS = STAGE_TIMEOUT_MS.nodes;
   function timeoutText(ms) {
     var now = Date.now();
-    var lines = '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：' +
-      '请点「重试」，仍不行再关闭插件重新打开';
+    var idle = state.lastPongAt && (now - state.lastPongAt) < 30000 && !state.mainBusy;
+    var headline = idle
+      ? '导出结果未回传（主线程空闲且能应答 ping，疑似 Figma 丢弃了插件消息）：'
+      : '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：';
+    var lines = headline + '请点「重试」，仍不行再关闭插件重新打开';
+    // v1.5.1：报错自证版本——UI 与主线程版本不一致 = Figma 缓存了旧插件代码
+    lines += '\n版本：UI ' + UI_VERSION +
+      (state.lastPongVersion ? ' / 主线程 ' + state.lastPongVersion : ' / 主线程版本未知（从未收到 pong）');
+    if (state.lastPongVersion && state.lastPongVersion !== UI_VERSION) {
+      lines += '（不一致！Figma 正在跑旧插件：必须完全退出 Figma——托盘图标也退出/任务管理器结束进程——再重开）';
+    }
     // 黑匣子：把卡死位置带进错误报告——最后一条进度消息 + 主线程回声状态
     if (state.lastProgressMsg) {
       lines += '\n最后进度消息：' + state.lastProgressMsg + '（' + Math.round((now - state.lastProgressAt) / 1000) + ' 秒前）';
@@ -428,9 +440,16 @@
     }
     if (state.lastPongAt) {
       lines += '\n主线程回声：' + Math.round((now - state.lastPongAt) / 1000) + ' 秒前' +
-        (state.mainBusy ? '（主线程自报：仍在执行任务）' : '（主线程自报：空闲）');
+        (state.mainBusy ? '（主线程自报：仍在执行任务）' : '（主线程自报：空闲）') +
+        '，代次 ' + state.lastPongGen;
     } else {
       lines += '\n主线程回声：从未收到（主线程从上传开始就没响应过任何 ping）';
+    }
+    if (state.chunkCount > 0) {
+      lines += '\n分片接收：本次共收到 ' + state.chunkCount + ' 片（最后一片 ' +
+        Math.round((now - state.lastChunkAt) / 1000) + ' 秒前）';
+    } else {
+      lines += '\n分片接收：本次未收到任何分片';
     }
     return lines;
   }
@@ -447,6 +466,10 @@
         entry.timer = setTimeout(function () {
           pending.delete(requestId);
           imageChunkBufs.delete(requestId);
+          // 一并清掉该请求名下的分片缓冲（payload / slice:N），避免残留占内存
+          imageChunkBufs.forEach(function (_, k) {
+            if (k.indexOf(requestId + ':') === 0) imageChunkBufs.delete(k);
+          });
           reject(new Error(timeoutText(entry.silenceMs)));
         }, entry.silenceMs);
       };
@@ -462,6 +485,25 @@
     pending.delete(requestId);
     p.resolve(payload);
     return true;
+  }
+  /** v1.5.0：拼装分片回传的画板 JSON（单条大 postMessage 会被 Figma 静默丢弃）。
+   * board-exported 与 json-result 共用；失败时抛错，调用方转成 ok:false 结束请求。 */
+  function assemblePayloadChunks(msg) {
+    if (msg.payloadError && !msg.payloadChunks) {
+      throw new Error('画板数据回传失败：' + msg.payloadError);
+    }
+    if (!msg.payloadChunks) return;
+    var pbuf = imageChunkBufs.get(msg.payloadKey);
+    imageChunkBufs.delete(msg.payloadKey);
+    if (!pbuf || pbuf.received < pbuf.total) {
+      throw new Error('画板数据分片回传不完整（' + (pbuf ? pbuf.received : 0) + '/' +
+        (pbuf ? pbuf.total : msg.payloadChunks) + '），请重试');
+    }
+    try {
+      msg.payload = JSON.parse(pbuf.parts.join(''));
+    } catch (perr) {
+      throw new Error('画板数据拼装失败：' + ((perr && perr.message) || String(perr)));
+    }
   }
   /** 收到主线程 progress 心跳：重置该请求的无响应计时（按消息里带的阶段上限） */
   function heartbeat(requestId, silenceMs) {
@@ -502,11 +544,36 @@
     tokenInput.value = '';
     $('gateServerText').textContent = baseUrl();
     $('gateBaseUrl').value = state.baseUrl;
+    // v1.5.5 存储探针：manifest 无固定插件 id 时 Figma 禁用本地存储——这是「每次都要填令牌」的根因
+    var probe = state.prefsProbe;
+    var src = state.prefsSrc;
+    var hint = $('gateStorageHint');
+    var lsHasToken = false;
+    var lsPrefs = lsLoadPrefs();
+    if (lsPrefs && typeof lsPrefs.token === 'string' && /^imp_/.test(lsPrefs.token)) lsHasToken = true;
+    if (probe && probe.pluginIdMissing) {
+      hint.textContent = '诊断：本插件 manifest.json 缺少固定插件 id，Figma 已禁用本地存储（探针报错：'
+        + probe.clientErr + '）——令牌因此永远记不住。修复方法：在 Figma「新建插件」占位拿到 id 后填入 manifest 并重新导入。';
+      hint.classList.remove('hidden');
+    } else if (src && (src.client || src.doc)) {
+      hint.textContent = '诊断：已读到上次保存的登录状态（'
+        + [src.client ? '本地' : null, src.doc ? '文档内' : null].filter(Boolean).join(' + ')
+        + '），但令牌校验未通过或已失效。';
+      hint.classList.remove('hidden');
+    } else if (lsHasToken) {
+      hint.textContent = '诊断：浏览器本地缓存里有令牌，但插件主线程两路存储都没读到（可能插件 ID 已变化）。';
+      hint.classList.remove('hidden');
+    } else {
+      hint.textContent = probe && probe.clientErr
+        ? '诊断：本地存储写入异常（' + probe.clientErr + '），三路均无已保存的登录状态。'
+        : '诊断：三路存储均无已保存的登录状态（首次使用，或上次保存失败）。';
+      hint.classList.remove('hidden');
+    }
     if (reason) {
       showError(reason);
       tokenInput.focus();
     }
-    postToPlugin({ type: 'resize', width: 480, height: 380 });
+    postToPlugin({ type: 'resize', width: 480, height: 420 });
   }
 
   function showMain() {
@@ -559,14 +626,9 @@
       var input = l.querySelector('input');
       if (input) input.checked = Number(l.dataset.scale) === state.scale;
     });
-    $('includeImage').checked = state.includeImage;
-    $('includeSlices').checked = state.includeSlices;
     $('baseUrl').value = state.baseUrl;
     $('token').value = state.token;
-    $('scaleHint').textContent = state.includeImage
-      ? '导 3x 切图请选 4x 位图（整板分辨率高于切图倍率时最清晰）；大画板导出较慢（单张最长 90 秒），单张超过 5MB 自动跳过图片。'
-      : '位图切图已关闭（默认）：只上传画板与节点结构，最快。需要位图/高清切图时再勾选，导 3x 切图建议选 4x。' +
-        (state.includeSlices ? ' 逐图层高清切图已开启：带 Export 标记的图层将按元素本性导出（矢量→SVG+4x PNG，位图→4x PNG）。' : '');
+    $('scaleHint').textContent = '导 3x 切图请选 4x 位图（整板分辨率高于切图倍率时最清晰）；大画板导出较慢（单张最长 90 秒），单张超过 5MB 自动跳过图片。';
   }
 
   function pickPlatform(platform) {
@@ -843,29 +905,43 @@
 
   // ---------- 偏好 ----------
   var prefsTimer = null;
-  function persistPrefs() {
+  var LS_PREFS_KEY = 'designhub-plugin-prefs';
+  /** v1.5.4 第三通道：UI iframe 的 localStorage。clientStorage 按插件 ID 隔离、
+   * pluginData 存在文档内，localStorage 与两者独立，三通道互为兜底。失败静默（尽力而为）。 */
+  function lsSavePrefs(prefs) {
+    try { window.localStorage.setItem(LS_PREFS_KEY, JSON.stringify(prefs)); return true; }
+    catch (e) { return false; }
+  }
+  function lsLoadPrefs() {
+    try {
+      var raw = window.localStorage.getItem(LS_PREFS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function persistPrefs(immediate) {
     clearTimeout(prefsTimer);
-    prefsTimer = setTimeout(function () {
-      postToPlugin({
-        type: 'save-prefs',
-        prefs: {
-          version: 4,
-          baseUrl: state.baseUrl,
-          token: state.token,
-          platform: state.platform,
-          scale: state.scale,
-          includeImage: state.includeImage,
-          includeSlices: state.includeSlices,
-          teamId: state.teamId,
-          projectId: state.projectId,
-          groupId: state.groupId,
-          newGroupName: state.newGroupName,
-        },
-      });
-    }, 300);
+    var send = function () {
+      var prefs = {
+        version: 4,
+        baseUrl: state.baseUrl,
+        token: state.token,
+        platform: state.platform,
+        scale: state.scale,
+        includeImage: state.includeImage,
+        includeSlices: state.includeSlices,
+        teamId: state.teamId,
+        projectId: state.projectId,
+        groupId: state.groupId,
+        newGroupName: state.newGroupName,
+      };
+      postToPlugin({ type: 'save-prefs', prefs: prefs });
+      lsSavePrefs(prefs);
+    };
+    if (immediate) { send(); return; }
+    prefsTimer = setTimeout(send, 300);
   }
 
-  function applyPrefs(prefs) {
+  function applyPrefs(prefs, src) {
     if (!prefs || typeof prefs !== 'object') return;
     if (typeof prefs.baseUrl === 'string' && prefs.baseUrl) {
       state.baseUrl = prefs.baseUrl;
@@ -881,15 +957,15 @@
     if (typeof prefs.token === 'string') state.token = prefs.token;
     if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
     if ([1, 2, 3, 4].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
-    // 旧版本默认打开位图切图，大画板会长时间阻塞主线程：升级到 v1.3.3 时一次性重置为关闭
-    if (!(Number(prefs.version) >= 3)) state.includeImage = false;
-    else if (typeof prefs.includeImage === 'boolean') state.includeImage = prefs.includeImage;
-    // v1.3.7 起逐图层高清切图默认开启；老偏好里没有该字段时保持默认值
-    if (Number(prefs.version) >= 4 && typeof prefs.includeSlices === 'boolean') state.includeSlices = prefs.includeSlices;
+    // v1.5.2：位图切图 / 逐图层高清切图固定开启，忽略旧偏好里保存的开关状态
+    state.includeImage = true;
+    state.includeSlices = true;
     if (typeof prefs.teamId === 'string') state.teamId = prefs.teamId;
     if (typeof prefs.projectId === 'string') state.projectId = prefs.projectId;
     if (typeof prefs.groupId === 'string') state.groupId = prefs.groupId;
     if (typeof prefs.newGroupName === 'string') state.newGroupName = prefs.newGroupName;
+    // v1.5.4：记录偏好读取来源，门禁页据此显示「上次登录状态」存在哪
+    if (src && typeof src === 'object') state.prefsSrc = { client: !!src.client, doc: !!src.doc };
     renderSettings();
     renderTargets();
   }
@@ -988,6 +1064,8 @@
     state.lastPongAt = 0;
     state.lastProgressMsg = '';
     state.lastProgressAt = 0;
+    state.chunkCount = 0;
+    state.lastChunkAt = 0;
     if (state.pingTimer) clearInterval(state.pingTimer);
     state.pingTimer = setInterval(function () { postToPlugin({ type: 'ping', t: Date.now() }); }, 10000);
     // 只有全新一次上传才清空「已成功画板」；重试保留，跳过已入库的
@@ -1033,6 +1111,9 @@
           }, STAGE_TIMEOUT_MS.nodes);
           if (!exported || !exported.ok) {
             throw new Error((exported && exported.message) || ('画板 ' + ids[i] + ' 导出失败'));
+          }
+          if (!exported.payload) {
+            throw new Error('画板数据未回传（payload 为空）：插件界面与主线程版本不一致，请完全退出 Figma 重新打开');
           }
           state.exportCache[key] = exported;
         }
@@ -1116,8 +1197,6 @@
       var failMsg = err && err.message ? err.message : String(err);
       var netLine = (err && err.net) || state.lastNetLine || '';
       var failHint = '\n重试会跳过本次已上传的画板，并复用已读取的画板数据。';
-      if (state.includeImage) failHint += '\n若切图一直失败，可在上方关闭「位图切图」，只导结构通常几秒完成。';
-      if (state.includeSlices) failHint += '\n若「逐图层高清切图」一直失败，可暂时关闭该选项：只影响高清切图，不影响画板导入。';
       showProgressFail(failMsg + failHint + (netLine ? '\n诊断：' + netLine : ''));
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
@@ -1196,7 +1275,7 @@
     state.projectId = '';
     state.groupId = '';
     clearError();
-    persistPrefs();
+    persistPrefs(true);
     showMain();
     renderSettings();
     try {
@@ -1292,17 +1371,8 @@
       persistPrefs();
     };
   });
-  $('includeImage').onchange = function () {
-    state.includeImage = $('includeImage').checked;
-    renderSettings();
-    persistPrefs();
-  };
 
-  $('includeSlices').onchange = function () {
-    state.includeSlices = $('includeSlices').checked;
-    renderSettings();
-    persistPrefs();
-  };
+  // v1.5.2：位图切图 / 逐图层高清切图已固定开启，开关元素与事件一并移除
 
   // 画板列表是 Figma 选中项的只读镜像，没有勾选交互
 
@@ -1343,8 +1413,34 @@
       return;
     }
     if (msg.type === 'prefs') {
-      applyPrefs(msg.prefs);
+      var prefs = msg.prefs || {};
+      // v1.5.4 第三通道兜底：主线程两路都没读到令牌时，再试 UI iframe 的 localStorage
+      if ((!prefs.token || !/^imp_/.test(prefs.token)) && !state.token) {
+        var lsPrefs = lsLoadPrefs();
+        if (lsPrefs && typeof lsPrefs.token === 'string' && /^imp_/.test(lsPrefs.token)) {
+          prefs = Object.assign({}, prefs, lsPrefs);
+          msg.src = msg.src || {};
+          msg.src.localStorage = true;
+        }
+      }
+      applyPrefs(prefs, msg.src);
+      if (msg.probe) state.prefsProbe = msg.probe;
+      if (msg.src && msg.src.localStorage) persistPrefs(true); // 自愈：回写主线程两路存储
       start();
+      return;
+    }
+    if (msg.type === 'prefs-saved') {
+      // v1.5.4：保存结果可视化——写进哪路存储、哪路失败，一目了然
+      var r = msg.result || {};
+      if (r.client && r.doc) {
+        postToPlugin({ type: 'notify', message: '登录状态已保存（本地 + 文档内）' });
+      } else if (r.doc) {
+        postToPlugin({ type: 'notify', message: '登录状态已保存到文档内（本地存储不可用：' + (r.clientErr || '未知原因') + '）' });
+      } else if (r.client) {
+        postToPlugin({ type: 'notify', message: '登录状态已保存到本地（文档内写入失败：' + (r.docErr || '未知原因') + '）' });
+      } else {
+        postToPlugin({ type: 'notify', message: '警告：登录状态保存失败（' + (r.clientErr || r.docErr || '两路存储均不可用') + '），下次打开需要重新粘贴令牌' });
+      }
       return;
     }
     if (msg.type === 'boards') { applyBoards(msg); return; }
@@ -1370,12 +1466,16 @@
       // 主线程回声：能收到 pong 说明消息链路通、主线程没死死阻塞
       state.lastPongAt = Date.now();
       state.mainBusy = !!msg.busy;
+      state.lastPongVersion = msg.pluginVersion || state.lastPongVersion;
+      state.lastPongGen = typeof msg.gen === 'number' ? msg.gen : state.lastPongGen;
       return;
     }
     if (msg.type === 'image-chunk') {
       // 分片 base64：拼装期间同样算心跳，避免误判无响应。
       // v1.3.9：切片分片的 requestId 是 ask 请求 id（可用于心跳），bufferKey 才是拼装键
       if (msg.requestId) heartbeat(msg.requestId, STAGE_TIMEOUT_MS.images);
+      state.chunkCount++;
+      state.lastChunkAt = Date.now();
       var chunkKey = msg.bufferKey || msg.requestId;
       var buf = imageChunkBufs.get(chunkKey);
       if (!buf) {
@@ -1388,6 +1488,13 @@
       return;
     }
     if (msg.type === 'board-exported') {
+      // v1.5.0：画板 JSON 分片拼装（失败直接以 ok:false 结束请求，给出明确原因）
+      try {
+        assemblePayloadChunks(msg);
+      } catch (perr) {
+        settle(msg.requestId, { ok: false, message: perr.message });
+        return;
+      }
       if (msg.imageChunks) {
         var chunkBuf = imageChunkBufs.get(msg.requestId);
         imageChunkBufs.delete(msg.requestId);
@@ -1425,7 +1532,16 @@
       settle(msg.requestId, msg);
       return;
     }
-    if (msg.type === 'json-result') { settle(msg.requestId, msg); return; }
+    if (msg.type === 'json-result') {
+      // v1.5.0：payload 分片拼装，与 import 路径同一套保护
+      try {
+        assemblePayloadChunks(msg);
+        settle(msg.requestId, msg);
+      } catch (perr) {
+        settle(msg.requestId, { ok: false, message: perr.message });
+      }
+      return;
+    }
     if (msg.type === 'error') {
       // 主线程已回传真实异常：按 requestId 结束对应请求，界面显示原因而不是「无响应」
       var errText = msg.message || '主线程操作失败';

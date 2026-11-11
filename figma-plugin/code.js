@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.4.0';
+const PLUGIN_VERSION = '1.5.5';
 const BUILD_DATE = '2026-11-11';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -48,7 +48,12 @@ function post(message) {
   try {
     figma.ui.postMessage(message);
   } catch (err) {
-    // 窗口已关闭时忽略
+    // v1.5.0：postMessage 失败绝不能再静默——v1.4.x 的「120 秒无响应」就是
+    // 大消息（board-exported 整棵画板 JSON）发送失败且无人知晓导致的。
+    const detail = err instanceof Error ? err.message : String(err);
+    const label = (message && message.type) || '未知消息';
+    try { console.error('[plugin] postMessage failed:', label, detail); } catch (_) {}
+    try { figma.notify('插件消息回传失败（' + label + '）：' + detail, { timeout: 8000 }); } catch (_) {}
   }
 }
 
@@ -327,6 +332,32 @@ async function sendSliceChunks(ctx, bufferKey, bytes) {
   return total;
 }
 
+/** 大文本分片回传（画板 JSON payload）：单条 postMessage 过大时会被 Figma 静默丢弃/失败
+ * （v1.4.x 三轮 120 秒超时的根因），与图片一样按 ~256KB 分片走 image-chunk 通道。
+ * 纯文本无需 base64，UI 按 bufferKey 把字符串片段 join 后 JSON.parse。
+ * 边界保护：不把代理对（emoji 等）切成两半，否则序列化时孤立代理会损坏成 U+FFFD。
+ * 先切完再发：total 必须等于真实片数，UI 才能准确判断「回传完整」。 */
+async function sendStringChunks(ctx, bufferKey, str) {
+  const parts = [];
+  let start = 0;
+  while (start < str.length) {
+    let end = Math.min(str.length, start + IMAGE_CHUNK_BYTES);
+    if (end < str.length) {
+      const c = str.charCodeAt(end - 1);
+      if (c >= 0xd800 && c <= 0xdbff) end -= 1; // 高代理落在片尾：回退一位，保住代理对
+    }
+    parts.push(str.slice(start, end));
+    start = end;
+  }
+  const total = Math.max(1, parts.length);
+  for (let seq = 0; seq < total; seq++) {
+    checkGen(ctx);
+    post({ type: 'image-chunk', requestId: ctx.requestId, bufferKey: bufferKey, boardId: null, seq: seq, total: total, data: parts[seq] || '' });
+    await nextTask();
+  }
+  return total;
+}
+
 /**
  * 逐图层高清切图：按元素本性导出——纯矢量图层出 PNG@4x + 真矢量 SVG，
  * 位图图层出 PNG@4x。切片经由现有 POST /api/plugin/slices 入库（source='figma'），
@@ -394,6 +425,21 @@ async function exportBoard(boardId, scale, includeImage, includeSlices, ctx) {
   const artboard = await exportNodeAsync(node, null, Object.assign({}, ctx, { count: 0 }));
   timings.serializeMs = nowMs() - tSerialize;
   const payload = basePayload([artboard]);
+  // v1.5.0：画板 JSON 不再随 board-exported 单条回传——单条大 postMessage 会被 Figma
+  // 静默丢弃/失败（主线程看起来空闲、UI 永远等不到 board-exported → 120 秒超时）。
+  // 改为分片走 image-chunk 通道，board-exported 只带元数据。
+  let payloadChunks = 0;
+  let payloadKey = null;
+  let payloadError = null;
+  try {
+    postProgress(ctx, 'nodes', index, '回传画板数据…', SILENCE_NODES_MS);
+    await nextTask();
+    const payloadJson = JSON.stringify(payload);
+    payloadKey = ctx.requestId + ':payload';
+    payloadChunks = await sendStringChunks(ctx, payloadKey, payloadJson);
+  } catch (err) {
+    payloadError = err instanceof Error ? err.message : String(err);
+  }
   postProgress(ctx, 'nodes', index + 1, '已读取「' + node.name + '」（' + timings.serializeMs + 'ms）', SILENCE_NODES_MS);
   await nextTask();
 
@@ -454,7 +500,10 @@ async function exportBoard(boardId, scale, includeImage, includeSlices, ctx) {
     name: node.name,
     width: Math.round(node.width * 100) / 100,
     height: Math.round(node.height * 100) / 100,
-    payload,
+    payload: null,
+    payloadChunks: payloadChunks,
+    payloadKey: payloadKey,
+    payloadError: payloadError,
     image: null,
     imageChunks,
     imageBytes,
@@ -481,24 +530,74 @@ async function exportBoardsJson(boardIds, ctx) {
     await nextTask();
   }
   if (!artboards.length) return { ok: false, message: '没有可导出的画板' };
-  return { ok: true, payload: basePayload(artboards) };
+  // v1.5.0：与 import 路径一致，payload 分片回传，避免单条大 postMessage 被静默丢弃
+  let payloadChunks = 0;
+  let payloadKey = null;
+  let payloadError = null;
+  try {
+    postProgress(ctx, 'nodes', total, '回传画板数据…', SILENCE_NODES_MS);
+    await nextTask();
+    payloadKey = (ctx.requestId || 'json') + ':payload';
+    payloadChunks = await sendStringChunks(ctx, payloadKey, JSON.stringify(basePayload(artboards)));
+  } catch (err) {
+    payloadError = err instanceof Error ? err.message : String(err);
+  }
+  return { ok: true, payload: null, payloadChunks: payloadChunks, payloadKey: payloadKey, payloadError: payloadError };
 }
 
 async function loadPrefs() {
+  // v1.5.5 存储探针：manifest 无稳定插件 id 时，Figma 会禁用 clientStorage（已知行为，
+  // 官方论坛确认报 "Cannot access client storage without a plugin ID"），pluginData 命名空间
+  // 也会随会话漂移——这是「令牌每次都要重填」的根因。探针结果回传 UI，门禁页直接显示原因。
+  const probe = { clientOk: false, clientErr: '', pluginIdMissing: false };
   try {
-    const prefs = await figma.clientStorage.getAsync(PREFS_KEY);
-    return prefs && typeof prefs === 'object' ? prefs : {};
+    await figma.clientStorage.setAsync('__probe__', { t: Date.now() });
+    const back = await figma.clientStorage.getAsync('__probe__');
+    probe.clientOk = !!(back && back.t);
   } catch (err) {
-    return {};
+    const msg = String((err && err.message) || err);
+    probe.clientErr = msg;
+    if (/plugin ID/i.test(msg)) probe.pluginIdMissing = true;
   }
+  // v1.5.3 双通道恢复：clientStorage（按插件 ID 隔离，跨文件）+ 文档内 pluginData（与插件 ID 无关）。
+  let prefs = {};
+  const src = { client: false, doc: false };
+  try {
+    const p = await figma.clientStorage.getAsync(PREFS_KEY);
+    if (p && typeof p === 'object') { prefs = Object.assign({}, prefs, p); src.client = true; }
+  } catch (err) {
+    console.warn('[prefs] clientStorage 读取失败：' + ((err && err.message) || err));
+  }
+  try {
+    const raw = figma.root.getPluginData(PREFS_KEY);
+    if (raw) {
+      const docPrefs = JSON.parse(raw);
+      if (docPrefs && typeof docPrefs === 'object') { prefs = Object.assign({}, prefs, docPrefs); src.doc = true; }
+    }
+  } catch (err) {
+    console.warn('[prefs] 文档内偏好读取失败：' + ((err && err.message) || err));
+  }
+  return { prefs, src, probe };
 }
 
 async function savePrefs(prefs) {
+  // v1.5.3 双通道保存；v1.5.4 返回各通道写入结果（成功/失败原因），不再静默吞掉
+  const result = { client: false, doc: false, clientErr: '', docErr: '' };
   try {
     await figma.clientStorage.setAsync(PREFS_KEY, prefs);
+    result.client = true;
   } catch (err) {
-    // 偏好保存失败不影响导出
+    result.clientErr = String((err && err.message) || err);
+    console.warn('[prefs] clientStorage 保存失败：' + result.clientErr);
   }
+  try {
+    figma.root.setPluginData(PREFS_KEY, JSON.stringify(prefs));
+    result.doc = true;
+  } catch (err) {
+    result.docErr = String((err && err.message) || err);
+    console.warn('[prefs] 文档内偏好保存失败：' + result.docErr);
+  }
+  return result;
 }
 
 figma.ui.onmessage = async (msg) => {
@@ -511,7 +610,7 @@ figma.ui.onmessage = async (msg) => {
   }
   try {
     if (type === 'ready') {
-      const prefs = await loadPrefs();
+      const { prefs, src, probe } = await loadPrefs();
       post({
         type: 'boot',
         pluginVersion: PLUGIN_VERSION,
@@ -519,7 +618,7 @@ figma.ui.onmessage = async (msg) => {
         fileName: figma.root.name || 'Figma 文件',
         pageName: figma.currentPage.name,
       });
-      post({ type: 'prefs', prefs });
+      post({ type: 'prefs', prefs, src, probe });
       post({ type: 'boards', ...(await listBoards()) });
       return;
     }
@@ -547,8 +646,8 @@ figma.ui.onmessage = async (msg) => {
       return;
     }
     if (type === 'save-prefs') {
-      await savePrefs(msg.prefs && typeof msg.prefs === 'object' ? msg.prefs : {});
-      post({ type: 'prefs-saved' });
+      const result = await savePrefs(msg.prefs && typeof msg.prefs === 'object' ? msg.prefs : {});
+      post({ type: 'prefs-saved', result });
       return;
     }
     if (type === 'notify') {
