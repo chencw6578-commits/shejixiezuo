@@ -178,6 +178,12 @@ export default function HomePage() {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, []);
   const [error, setError] = useState('');
+  // 页面底部错误条只作临时反馈：自动消除，避免上一次操作的旧错误（尤其重复邀请提示）长期常驻
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(''), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
   const [busy, setBusy] = useState(false);
   // 团队导入令牌：newToken 只在生成后展示一次
   const [tokens, setTokens] = useState<ImportToken[]>([]);
@@ -599,6 +605,7 @@ export default function HomePage() {
     if (!memberEmail.trim() || busy || !activeTeam) return;
     // 已是团队成员：不发必然失败的请求，直接在弹窗内给出明确提示
     if (duplicateMember) {
+      setError(''); // 清掉旧版本可能残留的页面底部重复邀请红字
       setInviteError(
         `${memberEmail.trim()} 已是团队成员（${ROLE_LABEL[duplicateMember.role] ?? duplicateMember.role}），无需重复添加。如需调整身份，请在团队成员列表中点「编辑」。`
       );
@@ -945,7 +952,7 @@ export default function HomePage() {
                     <h1>团队管理</h1>
                   </div>
                   {canManage && (
-                    <button type="button" className="new-project-btn" onClick={() => { setInviteError(''); setInviteModal(true); }}>
+                    <button type="button" className="new-project-btn" onClick={() => { setError(''); setInviteError(''); setInviteModal(true); }}>
                       <Mail /> 邀请成员
                     </button>
                   )}
