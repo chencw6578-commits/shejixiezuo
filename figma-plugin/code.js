@@ -3,8 +3,8 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.3.6';
-const BUILD_DATE = '2026-11-08';
+const PLUGIN_VERSION = '1.3.7';
+const BUILD_DATE = '2026-11-11';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -16,6 +16,10 @@ const SILENCE_NODES_MS = 30000;
 const SILENCE_IMAGE_MS = 90000;
 // base64 分片：每片 256KB 源字节，取 3 的整数倍（262143）保证各片编码可直接拼接
 const IMAGE_CHUNK_BYTES = 262143;
+// 逐图层高清切图：单板上传的切片数上限（与服务端 MAX_SLICES_PER_REQUEST 对齐）
+const MAX_SLICES_PER_BOARD = 120;
+// 位图填充识别的递归深度上限：防止超深嵌套把导出卡住
+const MAX_WALK_DEPTH = 24;
 
 // 启动第一句就开窗：避免任何加载逻辑让用户觉得「点了没反应」
 try {
@@ -256,8 +260,104 @@ async function sendImageChunks(ctx, boardId, bytes, timings) {
   return total;
 }
 
+/**
+ * 图层子树内是否含位图填充（Paint type = IMAGE）：
+ * 含 → 元素本质是位图，按 PNG @4x 导出（4x 源供 0.5–4x 任意倍率降采样）；
+ * 不含 → 元素本质是矢量，除 PNG @4x 外再导一份真矢量 SVG（SVG 下载任意缩放清晰）。
+ * fills 可能是 figma.mixed 或内部对象，读不到时按「无位图」处理（宁可多给矢量）。
+ */
+function hasImageFill(node, depth) {
+  if (depth <= 0) return false;
+  try {
+    const fills = node.fills;
+    if (Array.isArray(fills) && fills.some((f) => f && f.type === 'IMAGE')) return true;
+  } catch (err) { /* 读不到填充信息，不当作位图 */ }
+  if ('children' in node && Array.isArray(node.children)) {
+    for (let i = 0; i < node.children.length; i++) {
+      if (hasImageFill(node.children[i], depth - 1)) return true;
+    }
+  }
+  return false;
+}
+
+/** 收集画板内带 Figma Export 标记的图层（与网站端「切图」概念一致，跳过画板自身） */
+function collectSliceNodes(root, max) {
+  const found = [];
+  (function walk(node, depth) {
+    if (found.length >= max || depth > MAX_WALK_DEPTH) return;
+    if (node !== root && Array.isArray(node.exportSettings) && node.exportSettings.length) {
+      found.push(node);
+    }
+    if ('children' in node && Array.isArray(node.children)) {
+      for (let i = 0; i < node.children.length; i++) walk(node.children[i], depth + 1);
+    }
+  })(root, 0);
+  return found;
+}
+
+/** 单张切图分片回传：复用 image-chunk 通道，bufferKey = 请求id:slice:序号，UI 按此拼装 */
+async function sendSliceChunks(ctx, bufferKey, bytes) {
+  const total = Math.max(1, Math.ceil(bytes.length / IMAGE_CHUNK_BYTES));
+  for (let seq = 0; seq < total; seq++) {
+    const start = seq * IMAGE_CHUNK_BYTES;
+    const end = Math.min(bytes.length, start + IMAGE_CHUNK_BYTES);
+    const slice = typeof bytes.subarray === 'function' ? bytes.subarray(start, end) : bytes.slice(start, end);
+    const data = bytesToBase64(slice);
+    post({ type: 'image-chunk', requestId: bufferKey, boardId: null, seq: seq, total: total, data: data });
+    await nextTask();
+  }
+  return total;
+}
+
+/**
+ * 逐图层高清切图：按元素本性导出——纯矢量图层出 PNG@4x + 真矢量 SVG，
+ * 位图图层出 PNG@4x。切片经由现有 POST /api/plugin/slices 入库（source='figma'），
+ * 网站端任意倍率导出时优先从 4x 源降采样 / 直接复用矢量，不再放大 1x 位图。
+ */
+async function exportSlices(rootNode, ctx, timings) {
+  const nodes = collectSliceNodes(rootNode, MAX_SLICES_PER_BOARD);
+  const warnings = [];
+  const slices = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const label = '逐图层切图 ' + (i + 1) + '/' + nodes.length + '：「' + n.name + '」';
+    const vector = !hasImageFill(n, MAX_WALK_DEPTH);
+    const wanted = vector
+      ? [['PNG', 4], ['SVG', 1]]
+      : [['PNG', 4]];
+    for (let w = 0; w < wanted.length; w++) {
+      const format = wanted[w][0];
+      const scale = wanted[w][1];
+      try {
+        postProgress(ctx, 'images', ctx.index, label + '（' + format + ' 导出中）…', SILENCE_IMAGE_MS);
+        await nextTask();
+        const t0 = nowMs();
+        const bytes = await n.exportAsync({ format: format, constraint: { type: 'SCALE', value: scale } });
+        timings.exportMs += nowMs() - t0;
+        if (!bytes || !bytes.length) {
+          warnings.push('「' + n.name + '」的 ' + format + ' 切图导出为空，已跳过');
+          continue;
+        }
+        if (bytes.length > MAX_IMAGE_BYTES) {
+          warnings.push('「' + n.name + '」的 ' + format + ' 切图 ' + (bytes.length / 1024 / 1024).toFixed(1) + 'MB 超过 5MB，已跳过');
+          continue;
+        }
+        postProgress(ctx, 'images', ctx.index, label + '（' + format + ' 回传中）…', SILENCE_IMAGE_MS);
+        const bufferKey = ctx.requestId + ':slice:' + slices.length;
+        const chunks = await sendSliceChunks(ctx, bufferKey, bytes);
+        slices.push({ key: bufferKey, nodeId: n.id, name: n.name, format: format, scale: scale, chunks: chunks });
+      } catch (err) {
+        warnings.push('「' + n.name + '」的 ' + format + ' 切图导出失败：' + (err instanceof Error ? err.message : String(err)));
+      }
+      await nextTask();
+    }
+  }
+  if (!nodes.length) warnings.push('该画板没有带 Figma Export 标记的图层，未生成逐图层切图（在 Figma 里给图层添加 Export 设置后重新导入）');
+  return { slices: slices, warnings: warnings };
+}
+
 /** 导出单个画板（JSON + 可选 PNG），逐板发进度心跳，供向导逐个上传 */
-async function exportBoard(boardId, scale, includeImage, ctx) {
+async function exportBoard(boardId, scale, includeImage, includeSlices, ctx) {
   const index = (ctx && ctx.index) || 0;
   const timings = { loadMs: 0, serializeMs: 0, exportMs: 0, base64Ms: 0, postMs: 0, totalMs: 0 };
   const startedAt = nowMs();
@@ -312,6 +412,20 @@ async function exportBoard(boardId, scale, includeImage, ctx) {
       '已导出' + label + '（' + timings.exportMs + 'ms）', SILENCE_NODES_MS);
   }
 
+  // 逐图层高清切图：矢量元素导真矢量 SVG，位图/矢量统一导 4x PNG（降采样永远比放大清晰）
+  let slices = [];
+  let sliceWarnings = [];
+  if (includeSlices) {
+    postProgress(ctx, 'images', index, '开始逐图层高清切图…', SILENCE_NODES_MS);
+    await nextTask();
+    const sliceResult = await exportSlices(node, ctx, timings);
+    slices = sliceResult.slices;
+    sliceWarnings = sliceResult.warnings;
+    postProgress(ctx, 'images', index,
+      slices.length ? '已生成 ' + slices.length + ' 张逐图层切图' : '无逐图层切图', SILENCE_NODES_MS);
+    await nextTask();
+  }
+
   timings.totalMs = nowMs() - startedAt;
   console.log('[timing] board=' + node.name + ' ' + JSON.stringify(timings));
   // 图片不再塞进这一条消息，改由 image-chunk 分片，UI 侧拼装
@@ -326,6 +440,8 @@ async function exportBoard(boardId, scale, includeImage, ctx) {
     imageChunks,
     imageBytes,
     imageSkipped,
+    slices,
+    sliceWarnings,
     timings,
   };
 }
@@ -389,7 +505,7 @@ figma.ui.onmessage = async (msg) => {
     if (type === 'export-board') {
       const scale = [1, 2, 3, 4].indexOf(Number(msg.scale)) >= 0 ? Number(msg.scale) : 2;
       const ctx = { requestId: msg.requestId, index: Number(msg.index) || 0, total: Number(msg.total) || 1, count: 0 };
-      const result = await exportBoard(msg.boardId, scale, !!msg.includeImage, ctx);
+      const result = await exportBoard(msg.boardId, scale, !!msg.includeImage, !!msg.includeSlices, ctx);
       post({ type: 'board-exported', requestId: msg.requestId, ...result });
       return;
     }

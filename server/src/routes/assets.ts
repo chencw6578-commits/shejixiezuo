@@ -47,9 +47,10 @@ async function findPreferredSlice(
 
 /**
  * 就近真实切图：精确倍率没有插件真切图时，找同节点同格式里
- * 倍率不超过目标的最大一张（SVG 与倍率无关，任意一张都行）。
- * 之后由调用方解码放大到目标尺寸——透明底 + 图层精确边界，
- * 画质优于「带画板底色的整板裁剪放大」，尤其是图标类小图层。
+ * 「倍率 ≥ 目标的最小一张」降采样（源分辨率高于目标时永远比放大清晰——
+ * 插件 v1.3.7 起逐图层上传 4x PNG，3x/2x/1x 全部从高分辨率源缩小）；
+ * 没有高位源才退回「倍率 < 目标的最大一张」放大兜底。
+ * SVG 与倍率无关，任意一张都行。
  */
 async function findNearestRealSlice(
   fileId: string, nodeId: string, format: string, scale: number
@@ -63,13 +64,18 @@ async function findNearestRealSlice(
     );
     return rows[0] ?? null;
   }
-  const { rows } = await pool.query<{ id: string; url: string; source: string }>(
-    `SELECT id, url, source FROM assets
-     WHERE file_id = $1 AND node_id = $2 AND format = $3 AND source = 'figma' AND scale <= $4
-     ORDER BY scale DESC, created_at DESC LIMIT 1`,
-    [fileId, nodeId, format, scale]
+  const { rows } = await pool.query<{ id: string; url: string; source: string; scale: number }>(
+    `SELECT id, url, source, scale FROM assets
+     WHERE file_id = $1 AND node_id = $2 AND format = $3 AND source = 'figma' AND scale BETWEEN 0.5 AND 4
+     ORDER BY created_at DESC`,
+    [fileId, nodeId, format]
   );
-  return rows[0] ?? null;
+  if (!rows.length) return null;
+  // 同倍率多条时取最新（rows 已按 created_at DESC，stable sort 保序）
+  const higher = rows.filter((r) => r.scale >= scale).sort((a, b) => a.scale - b.scale);
+  const lower = rows.filter((r) => r.scale < scale).sort((a, b) => b.scale - a.scale);
+  const pick = higher[0] ?? lower[0];
+  return pick ? { id: pick.id, url: pick.url, source: pick.source } : null;
 }
 
 /** 导出单个图层切图 */
@@ -122,9 +128,10 @@ assetsRouter.post('/export', async (req, res) => {
     }
   }
 
-  // 1b) 精确倍率没有真切图时，用同图层最大可用倍率的真切图放大（仅本地文件——
+  // 1b) 精确倍率没有真切图时，用同图层可用倍率最合适的真切图重采样（仅本地文件——
   //     Figma 直连的文件走第 3 步 REST 真矢量导出更好）：
-  //     透明底 + 图层精确边界，画质优于整板裁剪放大（尤其图标类小图层）。
+  //     优先「倍率 ≥ 目标的最小一张」降采样（插件 v1.3.7 起逐图层上传 4x PNG），
+  //     没有高位源才放大；透明底 + 图层精确边界，画质优于整板裁剪。
   //     SVG 是矢量，与倍率无关，任何倍率直接复用。
   if (!real && localOnly) {
     const near = await findNearestRealSlice(fileId, target?.nodeId ?? nodeId, format, s);

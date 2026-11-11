@@ -277,6 +277,10 @@
         </div>
         <label class="toggle" for="includeImage"><input type="checkbox" id="includeImage" /> 位图切图</label>
       </div>
+      <div class="opt-row">
+        <span class="opt-label">元素</span>
+        <label class="toggle" for="includeSlices"><input type="checkbox" id="includeSlices" /> 逐图层高清切图（矢量出 SVG、位图出 4x PNG）</label>
+      </div>
       <div id="scaleHint" class="hint small"></div>
     </section>
 
@@ -352,7 +356,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.3.6';
+  var UI_VERSION = '1.3.7';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -360,6 +364,9 @@
     scale: 2,
     // 位图切图默认关闭：只导结构最快，也不受大画板 exportAsync 阻塞影响
     includeImage: false,
+    // 逐图层高清切图默认开启：带 Figma Export 标记的图层，矢量元素另出真矢量 SVG、
+    // 全部元素出 4x PNG，网站端任意倍率导出从高分辨率源降采样，不再放大 1x 位图发糊
+    includeSlices: true,
     baseUrl: 'http://localhost:4000',
     token: '',
     scope: '',
@@ -529,11 +536,13 @@
       if (input) input.checked = Number(l.dataset.scale) === state.scale;
     });
     $('includeImage').checked = state.includeImage;
+    $('includeSlices').checked = state.includeSlices;
     $('baseUrl').value = state.baseUrl;
     $('token').value = state.token;
     $('scaleHint').textContent = state.includeImage
       ? '导 3x 切图请选 4x 位图（整板分辨率高于切图倍率时最清晰）；大画板导出较慢（单张最长 90 秒），单张超过 5MB 自动跳过图片。'
-      : '位图切图已关闭（默认）：只上传画板与节点结构，最快。需要位图/高清切图时再勾选，导 3x 切图建议选 4x。';
+      : '位图切图已关闭（默认）：只上传画板与节点结构，最快。需要位图/高清切图时再勾选，导 3x 切图建议选 4x。' +
+        (state.includeSlices ? ' 逐图层高清切图已开启：带 Export 标记的图层将按元素本性导出（矢量→SVG+4x PNG，位图→4x PNG）。' : '');
   }
 
   function pickPlatform(platform) {
@@ -816,12 +825,13 @@
       postToPlugin({
         type: 'save-prefs',
         prefs: {
-          version: 3,
+          version: 4,
           baseUrl: state.baseUrl,
           token: state.token,
           platform: state.platform,
           scale: state.scale,
           includeImage: state.includeImage,
+          includeSlices: state.includeSlices,
           teamId: state.teamId,
           projectId: state.projectId,
           groupId: state.groupId,
@@ -840,6 +850,8 @@
     // 旧版本默认打开位图切图，大画板会长时间阻塞主线程：升级到 v1.3.3 时一次性重置为关闭
     if (!(Number(prefs.version) >= 3)) state.includeImage = false;
     else if (typeof prefs.includeImage === 'boolean') state.includeImage = prefs.includeImage;
+    // v1.3.7 起逐图层高清切图默认开启；老偏好里没有该字段时保持默认值
+    if (Number(prefs.version) >= 4 && typeof prefs.includeSlices === 'boolean') state.includeSlices = prefs.includeSlices;
     if (typeof prefs.teamId === 'string') state.teamId = prefs.teamId;
     if (typeof prefs.projectId === 'string') state.projectId = prefs.projectId;
     if (typeof prefs.groupId === 'string') state.groupId = prefs.groupId;
@@ -921,7 +933,7 @@
   }
 
   function exportCacheKey(boardId) {
-    return boardId + '|' + state.scale + '|' + (state.includeImage ? '1' : '0');
+    return boardId + '|' + state.scale + '|' + (state.includeImage ? '1' : '0') + (state.includeSlices ? 's' : '');
   }
 
   async function startUpload(isRetry) {
@@ -947,7 +959,7 @@
     $('progressBox').classList.remove('hidden');
     persistPrefs();
 
-    var totals = { frames: 0, nodes: 0, warnings: [] };
+    var totals = { frames: 0, nodes: 0, slices: 0, warnings: [] };
     var total = ids.length;
 
     try {
@@ -975,6 +987,7 @@
             boardId: ids[i],
             scale: state.scale,
             includeImage: state.includeImage,
+            includeSlices: state.includeSlices,
             index: i,
             total: total,
           }, STAGE_TIMEOUT_MS.nodes);
@@ -985,6 +998,8 @@
         }
         name = exported.name || name;
         if (exported.imageSkipped) totals.warnings.push('「' + name + '」' + exported.imageSkipped);
+        if (Array.isArray(exported.sliceWarnings)) totals.warnings = totals.warnings.concat(exported.sliceWarnings);
+        if (exported.sliceAssembleFails) totals.warnings.push('「' + name + '」有 ' + exported.sliceAssembleFails + ' 张逐图层切图分片回传不完整，已跳过');
 
         setProgress(i, total, '上传「' + name + '」…（POST /api/plugin/import）');
         var images = exported.image
@@ -1011,7 +1026,31 @@
         if (Array.isArray(result.warnings)) totals.warnings = totals.warnings.concat(result.warnings);
         if (result.groupId && state.groupId === '__new__') state.groupId = result.groupId;
         state.uploaded[doneKey] = { frames: Number(result.frameCount || 0), nodes: Number(result.nodeCount || 0) };
-        setProgress(i + 1, total, '已导入「' + name + '」');
+
+        // 逐图层高清切图：画板入库后按批上传（服务端单批上限 120，这里按 100 分批）。
+        // 失败只记告警、不让画板导入整体失败——重试会重新走一遍（/slices 原位替换，幂等）。
+        var sliceList = Array.isArray(exported.slicesData) ? exported.slicesData : [];
+        if (sliceList.length) {
+          try {
+            for (var sb = 0; sb < sliceList.length; sb += 100) {
+              var batch = sliceList.slice(sb, sb + 100);
+              setProgress(i, total, '上传「' + name + '」逐图层切图…（' + (sb + 1) + '-' +
+                (sb + batch.length) + '/' + sliceList.length + '）');
+              var sres = await api('/api/plugin/slices', {
+                method: 'POST',
+                timeoutMs: STAGE_TIMEOUT_MS.upload,
+                body: { projectId: state.projectId, slices: batch },
+              });
+              totals.slices += Number(sres && sres.saved || 0);
+              if (Array.isArray(sres && sres.warnings)) totals.warnings = totals.warnings.concat(sres.warnings);
+            }
+          } catch (sliceErr) {
+            totals.warnings.push('「' + name + '」逐图层切图上传失败：' +
+              ((sliceErr && sliceErr.message) || String(sliceErr)) + '（画板已入库，可重试补传）');
+          }
+        }
+
+        setProgress(i + 1, total, '已导入「' + name + '」' + (sliceList.length ? '（含 ' + sliceList.length + ' 张逐图层切图）' : ''));
       }
 
       state.exportCache = {};
@@ -1031,12 +1070,14 @@
       $('openSite').href = url;
       $('successUrl').textContent = url;
       $('netInfo').textContent = state.lastNetLine || '';
-      postToPlugin({ type: 'notify', message: '已导入 ' + totals.frames + ' 个画板 / ' + totals.nodes + ' 个节点' });
+      postToPlugin({ type: 'notify', message: '已导入 ' + totals.frames + ' 个画板 / ' + totals.nodes + ' 个节点' +
+        (totals.slices ? ' / ' + totals.slices + ' 张高清切图' : '') });
     } catch (err) {
       var failMsg = err && err.message ? err.message : String(err);
       var netLine = (err && err.net) || state.lastNetLine || '';
       var failHint = '\n重试会跳过本次已上传的画板，并复用已读取的画板数据。';
       if (state.includeImage) failHint += '\n若切图一直失败，可在上方关闭「位图切图」，只导结构通常几秒完成。';
+      if (state.includeSlices) failHint += '\n若「逐图层高清切图」一直失败，可暂时关闭该选项：只影响高清切图，不影响画板导入。';
       showProgressFail(failMsg + failHint + (netLine ? '\n诊断：' + netLine : ''));
       postToPlugin({ type: 'notify', message: '上传失败：' + failMsg });
     } finally {
@@ -1216,6 +1257,12 @@
     persistPrefs();
   };
 
+  $('includeSlices').onchange = function () {
+    state.includeSlices = $('includeSlices').checked;
+    renderSettings();
+    persistPrefs();
+  };
+
   // 画板列表是 Figma 选中项的只读镜像，没有勾选交互
 
   $('upload').onclick = function () { startUpload(); };
@@ -1300,6 +1347,26 @@
           return;
         }
         msg.image = chunkBuf.parts.join('');
+      }
+      // 逐图层高清切图：按 key 拼装各切片分片，转成 /api/plugin/slices 需要的 dataUrl 格式
+      if (Array.isArray(msg.slices) && msg.slices.length) {
+        var sliceFails = 0;
+        msg.slicesData = [];
+        for (var si = 0; si < msg.slices.length; si++) {
+          var meta = msg.slices[si];
+          var sbuf = imageChunkBufs.get(meta.key);
+          imageChunkBufs.delete(meta.key);
+          if (!sbuf || sbuf.received < sbuf.total) { sliceFails++; continue; }
+          var mime = meta.format === 'SVG' ? 'image/svg+xml' : 'image/png';
+          msg.slicesData.push({
+            nodeId: meta.nodeId,
+            name: meta.name,
+            format: meta.format,
+            scale: meta.scale,
+            dataUrl: 'data:' + mime + ';base64,' + sbuf.parts.join(''),
+          });
+        }
+        if (sliceFails) msg.sliceAssembleFails = sliceFails;
       }
       if (msg.timings) console.log('[timing]', msg.name, msg.timings);
       settle(msg.requestId, msg);
