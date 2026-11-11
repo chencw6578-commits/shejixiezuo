@@ -209,6 +209,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   padding: 9px 12px; background: transparent; border-color: transparent; color: var(--text-dim);
   /* 覆盖全局 button 的 999px 胶囊圆角：选中/hover 背景统一为 4px 小圆角 */
   border-radius: 4px;
+  /* 导航文字统一 14px（不跟随 body 的 13px） */
+  font-size: 14px;
 }
 .side-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
 .side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
