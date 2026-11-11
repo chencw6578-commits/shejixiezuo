@@ -677,7 +677,6 @@ export default function HomePage() {
                     }}
                   >
                     {t.name}
-                    <em>{t.project_count}</em>
                   </button>
                   {role && (
                     <RowMenu

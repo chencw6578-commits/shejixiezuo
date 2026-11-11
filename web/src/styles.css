@@ -907,8 +907,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch-row {
   display: flex; align-items: center; position: relative; border-radius: 6px;
 }
-.team-switch-row.active .team-switch-item {
+/* 选中行整行上底色（包含右侧「⋯ 更多」按钮），按钮自身保持透明不叠色 */
+.team-switch-row.active {
   background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600;
+}
+.team-switch-row.active .team-switch-item,
+.team-switch-row.active .team-switch-item:hover {
+  background: transparent; color: inherit; font-weight: inherit;
 }
 .team-switch-item {
   display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left;
@@ -916,10 +921,6 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .team-switch-row .team-switch-item.active { background: transparent; }
 .team-switch-item:hover { background: var(--bg-panel); }
-.team-switch-item em {
-  margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-dim);
-  background: rgba(29, 33, 41, 0.06); border-radius: 999px; padding: 1px 8px;
-}
 .team-row-menu { flex: none; display: inline-flex; align-items: center; }
 .team-row-menu .row-menu-btn { opacity: 0.45; }
 .team-switch-row:hover .team-row-menu .row-menu-btn,
