@@ -207,6 +207,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .side-nav-item {
   display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
   padding: 9px 12px; background: transparent; border-color: transparent; color: var(--text-dim);
+  /* 覆盖全局 button 的 999px 胶囊圆角：选中/hover 背景统一为 4px 小圆角 */
+  border-radius: 4px;
 }
 .side-nav-item:hover { background: var(--bg-elevated); color: var(--text); }
 .side-nav-item.active { background: rgba(108, 76, 241, 0.13); color: var(--accent); font-weight: 600; }
@@ -222,6 +224,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; white-space: nowrap;
   background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  /* 与侧栏选中态一致：主按钮统一 4px 小圆角（新建项目 / 邀请成员 / 创建 Token） */
+  border-radius: 4px;
 }
 .new-project-btn:hover { background: var(--accent-hover); }
 /* 覆盖 .home-shell button:hover（优先级更高，否则悬停变成浅灰底、白字不可见） */
