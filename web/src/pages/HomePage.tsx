@@ -789,8 +789,7 @@ export default function HomePage() {
               <header className="view-header">
                 <div className="view-header-row">
                   <div className="view-header-text">
-                    <h1>项目{activeTeamName ? ` · ${activeTeamName}` : ''}</h1>
-                    <p>选择项目进入，查看设计稿、标注与规范</p>
+                    <h1>项目</h1>
                   </div>
                   <button type="button" className="new-project-btn" onClick={openCreateProject}>
                     <Plus /> 新建项目
