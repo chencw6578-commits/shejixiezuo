@@ -128,6 +128,8 @@ export default function HomePage() {
   const [inviteModal, setInviteModal] = useState(false);
   const [inviteMode, setInviteMode] = useState<'link' | 'email'>('link');
   const [inviteCopied, setInviteCopied] = useState(false);
+  // 弹窗内专用提示：页面底部 home-error 会被弹窗遮住，重复成员/接口错误必须就地显示
+  const [inviteError, setInviteError] = useState('');
   // 编辑成员身份走弹窗：记录目标成员与草稿角色，点保存才提交
   const [roleModal, setRoleModal] = useState<{ id: string; email: string; role: 'admin' | 'collaborator' } | null>(null);
   const [roleDraft, setRoleDraft] = useState<'admin' | 'collaborator'>('collaborator');
@@ -145,6 +147,12 @@ export default function HomePage() {
       return (m.name ?? '').toLowerCase().includes(q) || (m.email ?? '').toLowerCase().includes(q);
     });
   }, [members, memberQuery, memberRoleFilter]);
+  // 邮箱邀请输入的是已加入成员：输入时就提示，提交时再给明确反馈（后端 409 兜底不变）
+  const duplicateMember = useMemo(() => {
+    const q = memberEmail.trim().toLowerCase();
+    if (!q || !q.includes('@')) return null;
+    return members.find((m) => (m.email ?? '').trim().toLowerCase() === q) ?? null;
+  }, [memberEmail, members]);
   const [identity, setIdentityState] = useState<Identity | null>(null);
   // 登录账号（邮箱注册登录），顶栏头像展示与退出
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -589,11 +597,20 @@ export default function HomePage() {
   const addMemberByEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberEmail.trim() || busy || !activeTeam) return;
+    // 已是团队成员：不发必然失败的请求，直接在弹窗内给出明确提示
+    if (duplicateMember) {
+      setInviteError(
+        `${memberEmail.trim()} 已是团队成员（${ROLE_LABEL[duplicateMember.role] ?? duplicateMember.role}），无需重复添加。如需调整身份，请在团队成员列表中点「编辑」。`
+      );
+      return;
+    }
     setBusy(true);
     setError('');
+    setInviteError('');
     try {
       await api.addMemberByEmail(activeTeam, memberEmail.trim(), memberRole);
       setMemberEmail('');
+      setInviteError('');
       setInviteModal(false);
       // 直接刷新成员列表，新成员立即可见
       api
@@ -601,7 +618,8 @@ export default function HomePage() {
         .then((rows) => setMembers(Array.isArray(rows) ? rows : []))
         .catch(() => undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // 409「该邮箱已在团队中」等错误必须显示在弹窗内，页面底部错误条会被遮住
+      setInviteError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -927,7 +945,7 @@ export default function HomePage() {
                     <h1>团队管理</h1>
                   </div>
                   {canManage && (
-                    <button type="button" className="new-project-btn" onClick={() => setInviteModal(true)}>
+                    <button type="button" className="new-project-btn" onClick={() => { setInviteError(''); setInviteModal(true); }}>
                       <Mail /> 邀请成员
                     </button>
                   )}
@@ -1078,7 +1096,7 @@ export default function HomePage() {
                 role="tab"
                 aria-selected={inviteMode === 'link'}
                 className={inviteMode === 'link' ? 'is-active' : ''}
-                onClick={() => setInviteMode('link')}
+                onClick={() => { setInviteError(''); setInviteMode('link'); }}
               >
                 链接邀请
               </button>
@@ -1087,7 +1105,7 @@ export default function HomePage() {
                 role="tab"
                 aria-selected={inviteMode === 'email'}
                 className={inviteMode === 'email' ? 'is-active' : ''}
-                onClick={() => setInviteMode('email')}
+                onClick={() => { setInviteError(''); setInviteMode('email'); }}
               >
                 邮箱邀请
               </button>
@@ -1121,7 +1139,7 @@ export default function HomePage() {
                   type="email"
                   value={memberEmail}
                   autoFocus
-                  onChange={(e) => setMemberEmail(e.target.value)}
+                  onChange={(e) => { setMemberEmail(e.target.value); setInviteError(''); }}
                   placeholder="如 design@company.com"
                   maxLength={120}
                 />
@@ -1135,7 +1153,15 @@ export default function HomePage() {
                   <option value="collaborator">协作 · 只读</option>
                   <option value="admin">管理员（可编辑、可邀请）</option>
                 </select>
-                <p className="dim small">对方将被直接加入团队成员并立即生效，不发送邮件、不需要对方点击链接接受。</p>
+                {inviteError ? (
+                  <p className="invite-dup-hint is-error" role="alert">{inviteError}</p>
+                ) : duplicateMember ? (
+                  <p className="invite-dup-hint" role="status">
+                    {memberEmail.trim()} 已是团队成员（{ROLE_LABEL[duplicateMember.role] ?? duplicateMember.role}），无需重复添加；如需调整身份，请在团队成员列表中点「编辑」。
+                  </p>
+                ) : (
+                  <p className="dim small">对方将被直接加入团队成员并立即生效，不发送邮件、不需要对方点击链接接受。</p>
+                )}
                 <div className="dlg-actions">
                   <button type="button" className="dlg-btn" onClick={() => setInviteModal(false)}>取消</button>
                   <button type="submit" className="dlg-btn is-primary" disabled={busy || !memberEmail.trim()}>

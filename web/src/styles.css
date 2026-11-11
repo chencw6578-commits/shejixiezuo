@@ -1064,6 +1064,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: flex; flex-direction: column; gap: 8px;
 }
 .dlg.invite-modal .dlg-label { margin-top: 4px; }
+/* 邮箱邀请：输入已加入成员的邮箱 / 后端 409 时，就地提示（页面底部错误条会被弹窗遮住） */
+.invite-dup-hint {
+  margin: 0; padding: 8px 10px; border-radius: 6px;
+  background: var(--brand-100); color: var(--brand-600);
+  font-size: 12px; line-height: 1.55;
+}
+.invite-dup-hint.is-error { background: #fef2f2; color: var(--err); }
 /* 邀请方式切换（链接邀请 / 邮箱邀请） */
 .invite-mode-tabs {
   display: flex; gap: 4px; margin: 2px 0 4px;
