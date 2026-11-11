@@ -901,7 +901,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch summary:hover { background: var(--bg-elevated); }
 .team-switch .logo { font-size: 22px; color: var(--accent); }
 .team-switch-name {
-  font-size: 13px; font-weight: 600; flex: 1; max-width: 130px;
+  font-size: 16px; font-weight: 600; flex: 1; max-width: 130px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .team-switch .caret { color: var(--text-dim); font-size: 10px; }
@@ -944,7 +944,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* 顶栏团队切换器（取代顶部面包屑与侧栏团队下拉） */
 .topbar-team-switch { padding: 0; }
 .topbar-team-switch summary { padding: 4px 8px; border-radius: 8px; gap: 6px; }
-.topbar-team-switch .team-switch-name { flex: none; max-width: 200px; font-size: 13px; }
+.topbar-team-switch .team-switch-name { flex: none; max-width: 200px; }
 .topbar-team-switch .team-switch-pop { top: calc(100% + 6px); left: 0; }
 
 /* 团队成员：整页视图限宽 1120px 并左右居中（头部按钮右缘 = 列表右缘） */
