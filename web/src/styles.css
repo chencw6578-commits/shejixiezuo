@@ -923,12 +923,16 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch-row.active .team-switch-item:hover {
   background: transparent; color: inherit; font-weight: inherit;
 }
+/* 非选中行 hover / 键盘聚焦：灰底铺满整行，把右侧「⋯ 更多」按钮一起包含进去。
+   颜色与 .home-shell button:hover 一致；⋯ 按钮自身不再叠一层方块，整行底色才连贯。 */
+.team-switch-row:not(.active):hover,
+.team-switch-row:not(.active):focus-within { background: #eef1f5; }
+.team-switch-row .row-menu-btn:hover { background: transparent; }
 .team-switch-item {
   display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left;
   padding: 8px 10px; background: transparent; border-color: transparent; font-size: 13px;
 }
 .team-switch-row .team-switch-item.active { background: transparent; }
-.team-switch-item:hover { background: var(--bg-panel); }
 .team-row-menu { flex: none; display: inline-flex; align-items: center; }
 .team-row-menu .row-menu-btn { opacity: 0.45; }
 .team-switch-row:hover .team-row-menu .row-menu-btn,
