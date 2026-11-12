@@ -23,6 +23,27 @@ const Svg = ({ size = 16, children, ...rest }: IconProps & { children: ReactNode
   </svg>
 );
 
+/** 连线（Remix ri-link）：画布上画板之间的有向连线开关 */
+export const LinkIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M18.3642 15.5355L16.95 14.1213L18.3642 12.7071C20.3171 10.7542 20.3171 7.58785 18.3642 5.63493L17.1926 4.46333C15.2397 2.51042 12.0734 2.51042 10.1205 4.46333L8.70728 5.87654L7.29307 4.46233L8.70628 3.04912C11.4167 0.338707 15.8964 0.338707 18.6068 3.04912L19.7784 4.22072C22.4888 6.93113 22.4888 11.4108 19.7784 14.1212L18.3642 15.5355ZM15.5358 18.364L14.1216 16.9497L12.7074 18.364C10.7545 20.3169 7.58812 20.3169 5.63521 18.364L4.46361 17.1924C2.5107 15.2395 2.5107 12.0731 4.46361 10.1202L5.87682 8.70698L4.46261 7.29277L3.0494 8.70698C0.338984 11.4174 0.338984 15.8971 3.0494 18.6075L4.221 19.7791C6.93141 22.4895 11.4111 22.4895 14.1216 19.7791L15.5358 18.364ZM10.1215 13.8787L13.8789 10.1213L15.2931 11.5355L11.5357 15.2929L10.1215 13.8787Z"/>
+  </Svg>
+);
+
+/** 侧栏画板标题前的图片图标（Remix ri-image-2-line，官方路径） */
+export const ImageIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 11.1005L7 9.1005L12.5 14.6005L16 11.1005L19 14.1005V5H5V11.1005ZM5 13.9289V19H8.1005L11.0858 16.0147L7 11.9289L5 13.9289ZM10.9289 19H19V16.9289L16 13.9289L10.9289 19ZM4 3H20C20.5523 3 21 3.44772 21 4V20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V4C3 3.44772 3.44772 3 4 3ZM15.5 10C14.6716 10 14 9.32843 14 8.5C14 7.67157 14.6716 7 15.5 7C16.3284 7 17 7.67157 17 8.5C17 9.32843 16.3284 10 15.5 10Z"/>
+  </Svg>
+);
+
+/** 吸管取色（Remix ri-sip-line，官方路径） */
+export const Sip = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6.45711 18.9539L15.0208 10.3902L13.6066 8.97596L5.04289 17.5397L6.45711 18.9539ZM12.1924 7.56174L10.7782 6.14753L12.1924 4.73331L13.9602 6.50108L16.7886 3.67265C17.1791 3.28213 17.8123 3.28213 18.2028 3.67265L20.3241 5.79397C20.7146 6.1845 20.7146 6.81766 20.3241 7.20819L17.4957 10.0366L19.2635 11.8044L17.8492 13.2186L16.435 11.8044L7.24264 20.9968H3V16.7541L12.1924 7.56174Z"/>
+  </Svg>
+);
+
 export const ChevronRight = (p: IconProps) => (
   <Svg {...p}>
     <path d="M13.1717 12.0007L8.22192 7.05093L9.63614 5.63672L16.0001 12.0007L9.63614 18.3646L8.22192 16.9504L13.1717 12.0007Z"/>
@@ -32,6 +53,13 @@ export const ChevronRight = (p: IconProps) => (
 export const ChevronDown = (p: IconProps) => (
   <Svg {...p}>
     <path d="M11.9999 13.1714L16.9497 8.22168L18.3639 9.63589L11.9999 15.9999L5.63599 9.63589L7.0502 8.22168L11.9999 13.1714Z"/>
+  </Svg>
+);
+
+/** 一键收起所有展开（Remix ri-contract-up-down-line，官方路径） */
+export const CollapseAll = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5.79285 5.20718 12 11.4143 18.2071 5.20718 16.7928 3.79297 12 8.58586 7.20706 3.79297 5.79285 5.20718ZM18.2072 18.7928 12.0001 12.5857 5.793 18.7928 7.20721 20.207 12.0001 15.4141 16.793 20.207 18.2072 18.7928Z"/>
   </Svg>
 );
 
@@ -110,6 +138,12 @@ export const FolderFilled = (p: IconProps) => (
 export const FolderMinus = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5ZM4 5V19H20V7H11.5858L9.58579 5H4ZM8 12H16V14H8V12Z"/>
+  </Svg>
+);
+
+export const FolderAdd = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5ZM4 5V19H20V7H11.5858L9.58579 5H4ZM11 12V9H13V12H16V14H13V17H11V14H8V12H11Z"/>
   </Svg>
 );
 
@@ -221,66 +255,56 @@ export const ExternalLink = (p: IconProps) => (
   </Svg>
 );
 
+/**
+ * 多选画板对齐 / 等间距工具条图标：全部取自 Remix Icon 官方路径（Design 分类），
+ * 与全站一致（viewBox 0 0 24 24、单 path、fill=currentColor、2px 视觉线宽）。
+ * 前 6 个为 align-item-*-line；等间距借用 layout-vertical-line / layout-horizontal-line
+ * （官方无 distribute 图标，这两枚恰好是「等分列 / 等分行」的几何表达）。
+ */
 export const AlignFrameLeft = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="3" width="2" height="18" rx="1" />
-    <rect x="7" y="6" width="13" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    <rect x="7" y="13" width="9" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <path d="M3 21V3H5V21H3ZM9 15H15V18H9V15ZM8 13C7.44772 13 7 13.4477 7 14V19C7 19.5523 7.44772 20 8 20H16C16.5523 20 17 19.5523 17 19V14C17 13.4477 16.5523 13 16 13H8ZM9 9H19V6H9V9ZM7 5C7 4.44772 7.44772 4 8 4H20C20.5523 4 21 4.44772 21 5V10C21 10.5523 20.5523 11 20 11H8C7.44772 11 7 10.5523 7 10V5Z"/>
   </Svg>
 );
 
 export const AlignFrameHCenter = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="11" y="3" width="2" height="18" rx="1" />
-    <rect x="5" y="6" width="14" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    <rect x="8" y="13" width="8" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <path d="M11 4V2H13V4H19C19.5523 4 20 4.44772 20 5V10C20 10.5523 19.5523 11 19 11H13V13H17C17.5523 13 18 13.4477 18 14V19C18 19.5523 17.5523 20 17 20H13V22H11V20H7C6.44772 20 6 19.5523 6 19V14C6 13.4477 6.44772 13 7 13H11V11H5C4.44772 11 4 10.5523 4 10V5C4 4.44772 4.44772 4 5 4H11ZM8 15V18H16V15H8ZM6 9H18V6H6V9Z"/>
   </Svg>
 );
 
 export const AlignFrameRight = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="19" y="3" width="2" height="18" rx="1" />
-    <rect x="4" y="6" width="13" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    <rect x="8" y="13" width="9" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <path d="M19 21V3H21V21H19ZM9 15H15V18H9V15ZM8 13C7.44772 13 7 13.4477 7 14V19C7 19.5523 7.44772 20 8 20H16C16.5523 20 17 19.5523 17 19V14C17 13.4477 16.5523 13 16 13H8ZM5 9H15V6H5V9ZM3 5C3 4.44772 3.44772 4 4 4H16C16.5523 4 17 4.44772 17 5V10C17 10.5523 16.5523 11 16 11H4C3.44772 11 3 10.5523 3 10V5Z"/>
   </Svg>
 );
 
 export const AlignFrameTop = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="3" width="18" height="2" rx="1" />
-    <rect x="6" y="7" width="5" height="13" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    <rect x="13" y="7" width="5" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <path d="M21 3H3V5L21 5V3ZM15 9V15H18V9H15ZM13 8C13 7.44772 13.4477 7 14 7L19 7C19.5523 7 20 7.44772 20 8V16C20 16.5523 19.5523 17 19 17H14C13.4477 17 13 16.5523 13 16V8ZM9 9L9 19H6L6 9H9ZM5 7C4.44772 7 4 7.44772 4 8L4 20C4 20.5523 4.44772 21 5 21H10C10.5523 21 11 20.5523 11 20L11 8C11 7.44772 10.5523 7 10 7L5 7Z"/>
   </Svg>
 );
 
 export const AlignFrameVCenter = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="11" width="18" height="2" rx="1" />
-    <rect x="6" y="5" width="5" height="14" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    <rect x="13" y="8" width="5" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <path d="M9 18L9 6L6 6L6 18H9ZM5 20C4.44772 20 4 19.5523 4 19L4 13H2V11H4L4 5C4 4.44771 4.44771 4 5 4H10C10.5523 4 11 4.44771 11 5V11H13V7C13 6.44771 13.4477 6 14 6L19 6C19.5523 6 20 6.44772 20 7V11H22V13H20V17C20 17.5523 19.5523 18 19 18H14C13.4477 18 13 17.5523 13 17V13H11V19C11 19.5523 10.5523 20 10 20H5ZM15 16H18V8L15 8V16Z"/>
   </Svg>
 );
 
 export const AlignFrameBottom = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="19" width="18" height="2" rx="1" />
-    <rect x="6" y="4" width="5" height="13" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
-    <rect x="13" y="8" width="5" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    <path d="M9 5L9 15H6L6 5L9 5ZM5 3C4.44772 3 4 3.44772 4 4L4 16C4 16.5523 4.44772 17 5 17H10C10.5523 17 11 16.5523 11 16L11 4C11 3.44772 10.5523 3 10 3H5ZM15 9V15H18V9H15ZM13 8C13 7.44772 13.4477 7 14 7L19 7C19.5523 7 20 7.44772 20 8V16C20 16.5523 19.5523 17 19 17H14C13.4477 17 13 16.5523 13 16V8ZM21 19L3 19V21H21V19Z"/>
   </Svg>
 );
 
 export const DistributeH = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="3" y="6" width="2" height="12" rx="1" />
-    <rect x="11" y="6" width="2" height="12" rx="1" />
-    <rect x="19" y="6" width="2" height="12" rx="1" />
+    <path d="M5 19H19V5H5V19ZM3 4C3 3.44772 3.44772 3 4 3H20C20.5523 3 21 3.44772 21 4V20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V4ZM15 7V17H17V7H15ZM11 7L11 17H13V7H11ZM7 17L7 7L9 7L9 17H7Z"/>
   </Svg>
 );
 
 export const DistributeV = (p: IconProps) => (
   <Svg {...p}>
-    <rect x="6" y="3" width="12" height="2" rx="1" />
-    <rect x="6" y="11" width="12" height="2" rx="1" />
-    <rect x="6" y="19" width="12" height="2" rx="1" />
+    <path d="M5 19H19V5H5V19ZM3 4C3 3.44772 3.44772 3 4 3H20C20.5523 3 21 3.44772 21 4V20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V4ZM7 9H17V7H7V9ZM17 13H7V11H17V13ZM7 17H17V15H7V17Z"/>
   </Svg>
 );

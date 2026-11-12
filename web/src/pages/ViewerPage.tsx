@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam, type CommentItem } from '../api';
 import type { FileDetail, FrameDetail, LayerNode, ProjectFrameRow, ProjectPageRow } from '../types';
@@ -11,11 +11,14 @@ import { readUnit, saveUnit, unitForPlatform, type Unit } from '../unit';
 import {
   ArrowLeft,
   ChevronDown,
+  CollapseAll,
   ChevronRight,
   Download,
   Folder,
+  ImageIcon,
   MessageSquare,
   Plus,
+  Sip,
 } from '../components/icons';
 
 /** 侧栏树：设计稿 → 编组 → 画板（跨设计稿时都带 file_id） */
@@ -35,8 +38,6 @@ interface CtxMenuState {
 export default function ViewerPage() {
   const { fileId = '', frameId = '' } = useParams();
   const [file, setFile] = useState<{ name: string; project_id: string | null; team_id: string | null } | null>(null);
-  // 顶栏标题显示所属项目名称（无项目的设计稿回退为设计稿名）
-  const [projectName, setProjectName] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [data, setData] = useState<FrameDetail | null>(null);
   const [error, setError] = useState('');
@@ -47,6 +48,8 @@ export default function ViewerPage() {
   const [drawer, setDrawer] = useState<'none' | 'left' | 'right'>('none');
   // 评论协作
   const [commentMode, setCommentMode] = useState(false);
+  // 吸管取色：吸取设计稿任意像素的颜色（HEX 自动复制）
+  const [eyedropper, setEyedropper] = useState(false);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [author, setAuthor] = useState(() => localStorage.getItem('designhub-author') ?? '');
@@ -88,6 +91,7 @@ export default function ViewerPage() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSelectedId(null);
+        setSelectedFrameIds(new Set());
         setCtxMenu(null);
       }
     };
@@ -101,6 +105,9 @@ export default function ViewerPage() {
   const [openFiles, setOpenFiles] = useState<Set<string>>(new Set());
   const [openPages, setOpenPages] = useState<Set<string>>(new Set());
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
+  // 侧栏画板多选：Ctrl/⌘ 点选、Shift 连选，用于右键「创建子编组」
+  const [selectedFrameIds, setSelectedFrameIds] = useState<Set<string>>(new Set());
+  const frameSelectionAnchorRef = useRef<string | null>(null);
   // 首轮加载才展开全部文件/编组，之后保留用户折叠状态
   const treeInitializedRef = useRef(false);
   const [dragFrameId, setDragFrameId] = useState<string | null>(null);
@@ -163,10 +170,20 @@ export default function ViewerPage() {
     } else {
       setOpenFiles((s) => new Set([...s, ...fileNodes.map((x) => x.id)]));
     }
-    // 当前查看的画板所在设计稿/编组始终展开
+    // 当前查看的画板所在编组及其所有祖先编组始终展开（子编组必须连父一起展开才可见）
     setOpenFiles((s) => new Set(s).add(f.id));
     const cur = treeFrames.find((x) => x.id === frameId);
-    if (cur) setOpenPages((s) => new Set(s).add(cur.page_id ?? `__none:${cur.file_id}`));
+    if (cur) {
+      const byId = new Map(treePages.map((p) => [p.id, p]));
+      const chain: string[] = [];
+      let p = cur.page_id ? byId.get(cur.page_id) : undefined;
+      while (p) {
+        chain.push(p.id);
+        p = p.parent_page_id ? byId.get(p.parent_page_id) : undefined;
+      }
+      if (!cur.page_id) chain.push(`__none:${cur.file_id}`);
+      if (chain.length) setOpenPages((s) => new Set([...s, ...chain]));
+    }
   };
 
   useEffect(() => {
@@ -180,16 +197,6 @@ export default function ViewerPage() {
       })
       .catch((e) => setError(e.message));
   }, [fileId, frameId]);
-
-  // 顶栏标题用项目名称：拿到 file 后按 project_id 查项目
-  useEffect(() => {
-    const pid = file?.project_id ?? null;
-    if (!pid) {
-      setProjectName(null);
-      return;
-    }
-    api.getProject(pid).then((p) => setProjectName(p.name)).catch(() => setProjectName(null));
-  }, [file?.project_id]);
 
   const refreshPages = async () => {
     const f = await api.getFile(fileId).catch(() => null);
@@ -212,11 +219,19 @@ export default function ViewerPage() {
   const pageFrames = (fid: string, pageId: string | null) =>
     sortFrames(framesOfFile(fid).filter((f) => (f.page_id ?? null) === pageId));
   const ungroupedOf = (fid: string) => pageFrames(fid, null);
-  /** 侧栏拉平：所有设计稿的编组同层展示（归属保留，悬浮提示可查） */
-  const flatGroups = useMemo(
-    () => files.flatMap((fl) => pagesOfFile(fl.id).map((pg) => ({ pg, fileId: fl.id, fileName: fl.name }))),
+  /** 顶层编组（无父编组）；子编组由 renderGroup 递归挂在父编组展开区内 */
+  const topGroups = useMemo(
+    () => files.flatMap((fl) =>
+      pagesOfFile(fl.id)
+        .filter((pg) => !pg.parent_page_id)
+        .map((pg) => ({ pg, fileId: fl.id, fileName: fl.name }))
+    ),
     [files, pages]
   );
+  /** 子编组：按 parent_page_id 取直接子级，保持 sort_order */
+  const childPagesOf = (parentId: string): TreePage[] =>
+    [...pages].filter((p) => p.parent_page_id === parentId)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   /** 唯一全局未分组：所有设计稿里没归组的画板 */
   const globalUngrouped = useMemo(() => {
     const list = frames.filter((f) => !f.page_id);
@@ -241,6 +256,7 @@ export default function ViewerPage() {
       ? `该设计稿下已存在同名编组「${value}」`
       : null;
 
+  /** 侧栏顶部「＋」：新建空编组（子编组改由选中画板后右键创建） */
   const addPage = async (fid: string) => {
     const name = await dialogs.prompt({
       title: '新建编组',
@@ -259,21 +275,35 @@ export default function ViewerPage() {
     }
   };
 
-  const createGroupFromSelection = async (fid: string, ids: string[]) => {
+  /** 从所选画板新建编组；parentPageId 有值时创建为该编组的子编组 */
+  const createGroupFromSelection = async (fid: string, ids: string[], parentPageId: string | null = null) => {
     if (!ids.length) return;
+    const parent = parentPageId ? pages.find((p) => p.id === parentPageId) : null;
     const name = await dialogs.prompt({
-      title: `新建编组（${ids.length} 个画板）`,
-      label: '编组名称',
+      title: parent ? `在「${parent.name}」下创建子编组（${ids.length} 个画板）` : `新建编组（${ids.length} 个画板）`,
+      label: parent ? '子编组名称' : '编组名称',
       placeholder: '例如：登录流程',
       maxLength: 50,
       validate: (v) => validatePageName(fid, v),
     });
     if (!name) return;
     try {
-      const pg = await api.createPage(fid, name);
+      const pg = await api.createPage(fid, name, parentPageId);
       await api.moveFramesToPage(fid, ids, pg.id);
       await refreshPages();
-      setOpenPages((s) => new Set(s).add(pg.id));
+      setOpenPages((s) => {
+        const next = new Set(s).add(pg.id);
+        if (parentPageId) {
+          next.add(parentPageId);
+          let pid = parent?.parent_page_id ?? null;
+          while (pid) {
+            next.add(pid);
+            pid = pages.find((p) => p.id === pid)?.parent_page_id ?? null;
+          }
+        }
+        return next;
+      });
+      setSelectedFrameIds(new Set());
     } catch (e) {
       fail(e);
     }
@@ -298,11 +328,12 @@ export default function ViewerPage() {
 
   const removePage = async (pg: TreePage, forced?: 'dissolve' | 'content') => {
     const list = pageFrames(pg.file_id, pg.id);
+    const parentPg = pg.parent_page_id ? pages.find((p) => p.id === pg.parent_page_id) : null;
     const mode = forced ?? (await dialogs.choose({
       title: `删除编组「${pg.name}」`,
       message: `该编组内有 ${list.length} 个画板，请选择处理方式：`,
       options: [
-        { label: '解散编组，保留内容（画板移入未分组）', value: 'dissolve' },
+        { label: parentPg ? `解散编组，保留画板（移入上一级编组「${parentPg.name}」）` : '解散编组，保留内容（画板移入未分组）', value: 'dissolve' },
         { label: '删除编组并删除其中内容', value: 'content', danger: true },
       ],
     }));
@@ -319,8 +350,20 @@ export default function ViewerPage() {
     try {
       await api.deletePage(pg.file_id, pg.id, mode as 'dissolve' | 'content');
       await refreshPages();
-      // 解散后画板回到未分组：展开该段，避免看起来“画板消失”
-      setOpenPages((s) => new Set(s).add(filePageKey(pg.file_id, null)));
+      // 解散后画板去向：子编组 → 上一级编组（连带展开祖先，保证可见）；顶层编组 → 未分组
+      if (mode === 'dissolve' && parentPg) {
+        setOpenPages((s) => {
+          const next = new Set(s).add(parentPg.id);
+          let pid = parentPg.parent_page_id ?? null;
+          while (pid) {
+            next.add(pid);
+            pid = pages.find((p) => p.id === pid)?.parent_page_id ?? null;
+          }
+          return next;
+        });
+      } else if (mode === 'dissolve') {
+        setOpenPages((s) => new Set(s).add(filePageKey(pg.file_id, null)));
+      }
       if (mode === 'content' && list.some((f) => f.id === frameId)) navigate(`/files/${pg.file_id}`);
     } catch (e) {
       fail(e);
@@ -480,13 +523,23 @@ export default function ViewerPage() {
       return n;
     });
 
-  // ---------- 右键菜单：轻量编组入口（只作用于右键的那一张画板） ----------
+  // ---------- 右键菜单：支持侧栏多选（选中 2 个以上画板可创建子编组） ----------
   const ctxFrame = ctxMenu ? frames.find((f) => f.id === ctxMenu.frameId) : undefined;
   const ctxFileId = ctxFrame?.file_id ?? '';
+  const ctxIds = () =>
+    ctxMenu
+      ? (selectedFrameIds.has(ctxMenu.frameId) ? [...selectedFrameIds] : [ctxMenu.frameId])
+      : [];
+  const ctxSameFile = () =>
+    !!ctxFrame && ctxIds().every((id) => frames.find((f) => f.id === id)?.file_id === ctxFrame.file_id);
   const openCtxMenu = (f: ProjectFrameRow, e: React.MouseEvent) => {
     if (readOnly) return;
     e.preventDefault();
     e.stopPropagation();
+    if (!selectedFrameIds.has(f.id)) {
+      frameSelectionAnchorRef.current = f.id;
+      setSelectedFrameIds(new Set([f.id]));
+    }
     setCtxMenu({ x: e.clientX, y: e.clientY, frameId: f.id });
   };
   const closeCtxMenu = () => setCtxMenu(null);
@@ -566,22 +619,43 @@ export default function ViewerPage() {
       }
     : null;
 
-  // 页面（编组）内的画板列表：只高亮当前打开的画板；不做多选，拖拽仍可排序/跨组移动
+  // 页面（编组）内的画板列表：单击打开画板，Ctrl/⌘ 点选 / Shift 连选可多选，用于右键创建子编组
   const renderFrameList = (list: ProjectFrameRow[], showEmptyHint: boolean) => (
-    <div className="page-frames" role={readOnly ? undefined : 'listbox'}>
+    <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
       {list.map((f) => (
         <div
           key={f.id}
+          data-frame-id={f.id}
           role={readOnly ? undefined : 'option'}
-          aria-selected={readOnly ? undefined : f.id === frameId}
+          aria-selected={readOnly ? undefined : selectedFrameIds.has(f.id) || f.id === frameId}
           className={`frame-item ${f.id === frameId ? 'is-current' : ''} ${
-            dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''
-          }`}
-          title={`${f.name}（单击打开，右键编组）`}
+            selectedFrameIds.has(f.id) ? 'is-selected' : ''
+          } ${dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''}`}
+          title={`${f.name}（单击打开，Ctrl/⌘ 或 Shift 多选，右键创建子编组）`}
           draggable={!readOnly}
-          onClick={() => {
+          onClick={(e) => {
             // 查看器内切换画板用 replace：不往历史里堆画板详情，浏览器后退可回项目页
             if (draggedRef.current) return;
+            if (!readOnly && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+              e.stopPropagation();
+              const anchor = frameSelectionAnchorRef.current;
+              const a = e.shiftKey && anchor ? list.findIndex((x) => x.id === anchor) : -1;
+              const b = list.findIndex((x) => x.id === f.id);
+              if (a >= 0 && b >= 0) {
+                const [from, to] = a <= b ? [a, b] : [b, a];
+                setSelectedFrameIds(new Set(list.slice(from, to + 1).map((x) => x.id)));
+                return;
+              }
+              frameSelectionAnchorRef.current = f.id;
+              setSelectedFrameIds((s) => {
+                const n = new Set(s);
+                if (n.has(f.id)) n.delete(f.id);
+                else n.add(f.id);
+                return n;
+              });
+              return;
+            }
+            setSelectedFrameIds(new Set());
             navigate(`/files/${f.file_id}/frames/${f.id}`, { replace: true });
           }}
           onContextMenu={(e) => openCtxMenu(f, e)}
@@ -617,6 +691,7 @@ export default function ViewerPage() {
             void dropOnFrame(f, position);
           }}
         >
+          <ImageIcon className="frame-thumb-icon" size={14} />
           <span className="frame-item-name">{f.name}</span>
           {!readOnly && (
             <span className="frame-item-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
@@ -637,6 +712,92 @@ export default function ViewerPage() {
     </div>
   );
 
+  /**
+   * 递归渲染编组树：一个编组展开后显示「子编组（可继续嵌套）→ 本组画板」。
+   * 子编组改由选中 2 个以上画板后右键创建；与顶层编组共用同一套拖拽/重命名/删除逻辑。
+   */
+  const renderGroup = (pg: TreePage, fid: string, fileName: string, depth: number): ReactElement => {
+    const list = pageFrames(fid, pg.id);
+    const open = openPages.has(pg.id);
+    const droppable = !readOnly && !!dragFrameId && draggingIdsFor(fid).length > 0;
+    const children = childPagesOf(pg.id);
+    return (
+      <div key={pg.id} className="page-group" style={depth ? { marginLeft: depth * 14 } : undefined}>
+        <div
+          className={`page-row ${dropPageId === pg.id ? 'is-droptarget' : ''}`}
+          title={`${pg.name}（${list.length} 个画板${children.length ? ` · ${children.length} 个子编组` : ''}）· 设计稿：${fileName}`}
+          onDragOver={(e) => {
+            if (droppable) {
+              e.preventDefault();
+              setDropPageId(pg.id);
+              setDropFrameHint(null);
+              if (!open) setOpenPages((s) => new Set(s).add(pg.id));
+            }
+          }}
+          onDragLeave={() => setDropPageId((v) => (v === pg.id ? null : v))}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (droppable) void dropOnPage(fid, pg.id);
+          }}
+        >
+          <button
+            type="button"
+            className="page-caret"
+            aria-label={open ? `折叠 ${pg.name}` : `展开 ${pg.name}`}
+            aria-expanded={open}
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePage(pg.id);
+            }}
+          >
+            {open ? <ChevronDown /> : <ChevronRight />}
+          </button>
+          <span
+            className="page-name"
+            role="button"
+            tabIndex={0}
+            aria-expanded={open}
+            onClick={() => { togglePage(pg.id); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                togglePage(pg.id);
+              }
+            }}
+          >
+            <Folder className="page-group-icon" size={16} />
+            {pg.name}
+          </span>
+          <span className="page-count">{list.length}</span>
+          {!readOnly && (
+            <span className="page-actions" onClick={(e) => e.stopPropagation()}>
+              <RowMenu
+                label={`编组 ${pg.name}`}
+                items={[
+                  { label: '重命名编组', onClick: () => void renamePage(pg) },
+                  {
+                    label: pg.parent_page_id
+                      ? `解散子编组，画板移入「${pages.find((p) => p.id === pg.parent_page_id)?.name ?? '上一级编组'}」`
+                      : '解散编组，画板移入未分组',
+                    onClick: () => void removePage(pg, 'dissolve'),
+                  },
+                  { label: '删除编组及内容', danger: true, onClick: () => void removePage(pg, 'content') },
+                ]}
+              />
+            </span>
+          )}
+        </div>
+        {open && (
+          <>
+            {children.map((child) => renderGroup(child, fid, fileName, depth + 1))}
+            {renderFrameList(list, false)}
+          </>
+        )}
+      </div>
+    );
+  };
+
   // 返回：上一级是本项目画布页（/projects/:projectId）；缺失 project_id 时才退回团队项目列表
   const goBack = () => {
     if (file?.project_id) {
@@ -653,10 +814,18 @@ export default function ViewerPage() {
         <button className="icon-btn" onClick={goBack} title="返回画布" aria-label="返回画布">
           <ArrowLeft />
         </button>
-        <h1><Folder /> {projectName ?? file?.name ?? '…'}</h1>
-        <span className="crumb">{data.frame.page_name} / {data.frame.name}</span>
+        <h1><ImageIcon /> {data.frame.name}</h1>
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
+        <button
+          className={`icon-btn eyedropper-toggle ${eyedropper ? 'is-active' : ''}`}
+          data-eyedropper-toggle
+          onClick={() => setEyedropper((v) => !v)}
+          title="吸管取色：点击画布吸取颜色，HEX 自动复制"
+          aria-label="吸管取色"
+        >
+          <Sip />
+        </button>
         <button
           className={`comment-toggle ${commentMode ? 'is-active' : ''}`}
           onClick={() => {
@@ -697,27 +866,38 @@ export default function ViewerPage() {
             </p>
           </div>
         </details>
-        <select
-          className="device-select unit-select"
-          value={unit}
-          onChange={(e) => pickUnit(e.target.value as Unit)}
-          title="切换尺寸单位：只改数值后缀，不改变画板尺寸或已存数据"
-        >
-          <option value="px">单位：px（Web）</option>
-          <option value="pt">单位：pt（iOS）</option>
-          <option value="dp">单位：dp（Android）</option>
-        </select>
+        <span className="unit-select-wrap">
+          <select
+            className="device-select unit-select"
+            value={unit}
+            onChange={(e) => pickUnit(e.target.value as Unit)}
+            title="切换尺寸单位：只改数值后缀，不改变画板尺寸或已存数据"
+          >
+            <option value="px">单位：px（Web）</option>
+            <option value="pt">单位：pt（iOS）</option>
+            <option value="dp">单位：dp（Android）</option>
+          </select>
+          <ChevronDown />
+        </span>
       </header>
 
       <div className="viewer-body">
         {drawer !== 'none' && (
           <div className="drawer-backdrop mobile-only" onClick={() => setDrawer('none')} />
         )}
-        <aside className={`sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
+        <aside className={`sidebar viewer-sidebar ${drawer === 'left' ? 'is-open' : ''}`}>
           <div className="sidebar-section sidebar-grow">
-            {/* 与项目画布页同一结构：sidebar-head（标题左 + 加号右），计数格式统一为「画板 · N」 */}
+            {/* 与项目画布页同一结构：sidebar-head（标题左 + 收起/加号右），计数格式统一为「画板 · N」 */}
             <div className="sidebar-head">
               <h3>画板 · {frames.length}</h3>
+              <button
+                className="pcanvas-edit-btn sidebar-collapse-all"
+                title="收起所有编组"
+                aria-label="收起所有编组"
+                onClick={() => setOpenPages(new Set())}
+              >
+                <CollapseAll />
+              </button>
               {!readOnly && (
                 <button
                   className="pcanvas-edit-btn sidebar-add-group"
@@ -729,78 +909,7 @@ export default function ViewerPage() {
               )}
             </div>
             <div className="page-list">
-              {flatGroups.map(({ pg, fileId: fid, fileName }) => {
-                const list = pageFrames(fid, pg.id);
-                const open = openPages.has(pg.id);
-                const droppable = !readOnly && !!dragFrameId && draggingIdsFor(fid).length > 0;
-                return (
-                  <div key={pg.id} className="page-group">
-                    <div
-                      className={`page-row ${dropPageId === pg.id ? 'is-droptarget' : ''}`}
-                      title={`${pg.name}（${list.length} 个画板）· 设计稿：${fileName}`}
-                      onDragOver={(e) => {
-                        if (droppable) {
-                          e.preventDefault();
-                          setDropPageId(pg.id);
-                          setDropFrameHint(null);
-                          if (!open) setOpenPages((s) => new Set(s).add(pg.id));
-                        }
-                      }}
-                      onDragLeave={() => setDropPageId((v) => (v === pg.id ? null : v))}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (droppable) void dropOnPage(fid, pg.id);
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="page-caret"
-                        aria-label={open ? `折叠 ${pg.name}` : `展开 ${pg.name}`}
-                        aria-expanded={open}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePage(pg.id);
-                        }}
-                      >
-                        {open ? <ChevronDown /> : <ChevronRight />}
-                      </button>
-                      <span
-                        className="page-name"
-                        role="button"
-                        tabIndex={0}
-                        aria-expanded={open}
-                        onClick={() => {
-                          togglePage(pg.id);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            togglePage(pg.id);
-                          }
-                        }}
-                      >
-                        <Folder className="page-group-icon" size={14} />
-                        {pg.name}
-                      </span>
-                      <span className="page-count">{list.length}</span>
-                      {!readOnly && (
-                        <span className="page-actions" onClick={(e) => e.stopPropagation()}>
-                          <RowMenu
-                            label={`编组 ${pg.name}`}
-                            items={[
-                              { label: '重命名编组', onClick: () => void renamePage(pg) },
-                              { label: '解散编组（保留画板）', onClick: () => void removePage(pg, 'dissolve') },
-                              { label: '删除编组及内容', danger: true, onClick: () => void removePage(pg, 'content') },
-                            ]}
-                          />
-                        </span>
-                      )}
-                    </div>
-                    {open && renderFrameList(list, false)}
-                  </div>
-                );
-              })}
+              {topGroups.map(({ pg, fileId: fid, fileName }) => renderGroup(pg, fid, fileName, 0))}
               <div className="page-group page-group-unassigned is-global">
                 <div
                   className={`page-row ${dropPageId === '__none:global' ? 'is-droptarget' : ''}`}
@@ -849,7 +958,7 @@ export default function ViewerPage() {
                       }
                     }}
                   >
-                    <Folder className="page-group-icon" size={14} />
+                    <Folder className="page-group-icon" size={16} />
                     未分组
                   </span>
                   <span className="page-count">{globalUngrouped.length}</span>
@@ -871,6 +980,7 @@ export default function ViewerPage() {
           unit={unit}
           comments={comments}
           commentMode={commentMode}
+          eyedropper={eyedropper}
           onAddComment={onAddComment}
           onOpenComment={(id) => setActiveCommentId(id)}
         />
@@ -918,24 +1028,29 @@ export default function ViewerPage() {
             className="ctx-menu"
             style={{
               left: Math.min(ctxMenu.x, window.innerWidth - 250),
-              top: Math.min(ctxMenu.y, window.innerHeight - 340),
+              top: Math.min(ctxMenu.y, window.innerHeight - 380),
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="ctx-title">画板「{ctxFrame.name}」</div>
+            <div className="ctx-title">已选 {ctxIds().length} 个画板</div>
+            {!ctxSameFile() && <div className="ctx-hint">跨设计稿选择不能编组或移动，请取消后重选</div>}
             <button
+              disabled={!ctxSameFile()}
               onClick={() => {
                 closeCtxMenu();
-                void createGroupFromSelection(ctxFileId, [ctxFrame.id]);
+                void createGroupFromSelection(ctxFileId, ctxIds(), ctxFrame.page_id);
               }}
             >
-              新建编组…
+              <Plus /> {ctxFrame.page_id
+                ? `在「${pages.find((p) => p.id === ctxFrame.page_id)?.name ?? '编组'}」内新建子编组…`
+                : '新建编组…'}
             </button>
             {ctxFrame.page_id && (
               <button
+                disabled={!ctxSameFile()}
                 onClick={() => {
                   closeCtxMenu();
-                  void moveSelection(ctxFileId, [ctxFrame.id], null);
+                  void moveSelection(ctxFileId, ctxIds(), null);
                 }}
               >
                 移出编组
@@ -951,14 +1066,17 @@ export default function ViewerPage() {
               .map((pg) => (
                 <button
                   key={pg.id}
+                  disabled={!ctxSameFile()}
                   onClick={() => {
                     closeCtxMenu();
-                    void moveSelection(ctxFileId, [ctxFrame.id], pg.id);
+                    void moveSelection(ctxFileId, ctxIds(), pg.id);
                   }}
                 >
                   {pg.name}
                 </button>
               ))}
+            <div className="ctx-sep" />
+            <button onClick={() => { setSelectedFrameIds(new Set()); closeCtxMenu(); }}>取消选中</button>
           </div>
         </>
       )}

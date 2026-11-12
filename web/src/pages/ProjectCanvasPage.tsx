@@ -1,7 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, getIdentity, setActiveTeam } from '../api';
-import type { FileDetail, ProjectFrameRow, ProjectPageRow } from '../types';
+import type { FileDetail, FrameLink, ProjectFrameRow, ProjectPageRow } from '../types';
 import { findDevice } from '../viewer/devices';
 import { useDialogs } from '../components/Dialogs';
 import { canvasBgStyle, useCanvasBg } from '../canvasBg';
@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  CollapseAll,
   ChevronRight,
   Copy,
   DistributeH,
@@ -24,6 +25,8 @@ import {
   ExternalLink,
   Folder,
   FolderMinus,
+  ImageIcon,
+  LinkIcon,
   Maximize,
   Minus,
   Plus,
@@ -31,6 +34,83 @@ import {
   Trash2,
   X,
 } from '../components/icons';
+
+// ---------- 画板连线：几何与命中工具 ----------
+type PortSide = 'top' | 'right' | 'bottom' | 'left';
+interface CanvasRect { x: number; y: number; w: number; h: number }
+interface LinkDraft {
+  fromId: string;
+  /** 出线边：按目标画板方位自动计算，避免曲线穿过起点画板内容 */
+  side: PortSide;
+  /** 光标位置（世界坐标） */
+  cursor: { x: number; y: number };
+  targetId: string | null;
+}
+
+/** 按目标相对起点画板的方位挑出线边（宽高归一化，避免画板比例影响判断） */
+function pickLinkSide(a: CanvasRect, p: { x: number; y: number }): PortSide {
+  const dx = (p.x - (a.x + a.w / 2)) / Math.max(1, a.w / 2);
+  const dy = (p.y - (a.y + a.h / 2)) / Math.max(1, a.h / 2);
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
+}
+
+/** 画板四边中点（世界坐标） */
+function portPoint(r: CanvasRect, side: PortSide) {
+  if (side === 'top') return { x: r.x + r.w / 2, y: r.y };
+  if (side === 'right') return { x: r.x + r.w, y: r.y + r.h / 2 };
+  if (side === 'bottom') return { x: r.x + r.w / 2, y: r.y + r.h };
+  return { x: r.x, y: r.y + r.h / 2 };
+}
+
+/** 两个画板之间的贝塞尔曲线：从用户拖出的那一侧出线，落到目标画板相向的一侧 */
+function linkCurve(a: CanvasRect, b: CanvasRect, side: PortSide, z: number, ox: number, oy: number) {
+  const p1 = portPoint(a, side);
+  let p2: { x: number; y: number };
+  let c1: { x: number; y: number };
+  let c2: { x: number; y: number };
+  if (side === 'right' || side === 'left') {
+    const s = side === 'right' ? 1 : -1;
+    p2 = { x: s > 0 ? b.x : b.x + b.w, y: b.y + b.h / 2 };
+    const bend = Math.max(30, Math.abs(p2.x - p1.x) * 0.42);
+    c1 = { x: p1.x + s * bend, y: p1.y };
+    c2 = { x: p2.x - s * bend, y: p2.y };
+  } else {
+    const s = side === 'bottom' ? 1 : -1;
+    p2 = { x: b.x + b.w / 2, y: s > 0 ? b.y : b.y + b.h };
+    const bend = Math.max(30, Math.abs(p2.y - p1.y) * 0.42);
+    c1 = { x: p1.x, y: p1.y + s * bend };
+    c2 = { x: p2.x, y: p2.y - s * bend };
+  }
+  // 世界坐标 → SVG 局部坐标（画布缩放 + SVG 原点偏移）
+  const t = (p: { x: number; y: number }) => ({ x: p.x * z - ox, y: p.y * z - oy });
+  const P1 = t(p1);
+  const C1 = t(c1);
+  const C2 = t(c2);
+  const P2 = t(p2);
+  const d = `M ${P1.x} ${P1.y} C ${C1.x} ${C1.y}, ${C2.x} ${C2.y}, ${P2.x} ${P2.y}`;
+  const mid = {
+    x: (P1.x + 3 * C1.x + 3 * C2.x + P2.x) / 8,
+    y: (P1.y + 3 * C1.y + 3 * C2.y + P2.y) / 8,
+  };
+  return { d, mid };
+}
+
+function worldPointAt(clientX: number, clientY: number, rect: DOMRect, pan: { x: number; y: number }, z: number) {
+  return { x: (clientX - rect.left - pan.x) / z, y: (clientY - rect.top - pan.y) / z };
+}
+
+/** 光标下最上层的目标画板（跳过连线 SVG 的命中层，排除起点自身） */
+function frameIdAtPoint(x: number, y: number, exclude?: string): string | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    const frame = (el as HTMLElement).closest?.('.pcanvas-frame[data-frame-id]') as HTMLElement | null;
+    if (frame) {
+      const id = frame.getAttribute('data-frame-id');
+      if (id && id !== exclude) return id;
+    }
+  }
+  return null;
+}
 
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   pending: { text: '排队中', cls: 'status-wait' },
@@ -113,6 +193,16 @@ export default function ProjectCanvasPage() {
   const [project, setProject] = useState<{ id: string; name: string; team_id: string | null; team_name: string | null } | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const readOnlyRef = useRef(false);
+  // ---------- 画板连线（有向，落库；公开只读分享里只展示不可编辑） ----------
+  const [links, setLinks] = useState<FrameLink[]>([]);
+  const linksRef = useRef<FrameLink[]>([]);
+  // 连线编辑模式：只控制「能否创建/删除连线」，不控制线条显隐（关闭时线条仍完整展示）
+  const [linkMode, setLinkMode] = useState(false);
+  const linkModeRef = useRef(false);
+  linkModeRef.current = linkMode;
+  const [linkDraft, setLinkDraft] = useState<LinkDraft | null>(null);
+  const linkDraftRef = useRef<LinkDraft | null>(null);
+  const [hoverLinkId, setHoverLinkId] = useState<string | null>(null);
   const [frames, setFrames] = useState<ProjectFrameRow[]>([]);
   const [pages, setPages] = useState<ProjectPageRow[]>([]);
   const [files, setFiles] = useState<FileDetail[]>([]);
@@ -308,6 +398,12 @@ export default function ProjectCanvasPage() {
     }).catch((e) => setError(e.message));
     // 隧道偶发截断 JSON，解析失败会兜底为 {}，这里强制归一为数组避免 .map 崩溃
     api.listFiles(projectId).then((rows) => setFiles(Array.isArray(rows) ? rows : [])).catch(() => undefined);
+    // 连线与画板同批加载；端点画板已删除的连线由后端级联清理，前端渲染时再兜底过滤
+    api.listFrameLinks(projectId).then((rows) => {
+      const arr = Array.isArray(rows) ? rows : [];
+      linksRef.current = arr;
+      setLinks(arr);
+    }).catch(() => undefined);
     api
       .listProjectFrames(projectId)
       .then((r) => {
@@ -570,32 +666,50 @@ export default function ProjectCanvasPage() {
     return { fileTree: order, ungrouped: loose };
   }, [frames, pages]);
 
-  /** 侧栏拉平：所有设计稿的编组放在同一层（归属仍保留，用悬浮提示看设计稿） */
-  const allGroups = useMemo(
-    () => fileTree.flatMap((f) => f.groups.map((g) => ({ ...g, fileId: f.fileId, fileName: f.fileName }))),
-    [fileTree]
-  );
+  /** 侧栏拉平：所有设计稿的编组同层，附带 parent_page_id 供递归渲染（父不存在时按顶层处理） */
+  const allGroups = useMemo(() => {
+    const ids = new Set(pages.map((p) => p.id));
+    return fileTree.flatMap((f) => f.groups.map((g) => {
+      const raw = pages.find((p) => p.id === g.pageId)?.parent_page_id ?? null;
+      return {
+        ...g, fileId: f.fileId, fileName: f.fileName,
+        parentPageId: raw && ids.has(raw) ? raw : null,
+      };
+    }));
+  }, [fileTree, pages]);
+  /** 顶层编组 + 按父取直接子编组：编组下还能再建编组 */
+  const topGroups = useMemo(() => allGroups.filter((g) => !g.parentPageId), [allGroups]);
+  const childGroupsOf = (parentId: string | null) =>
+    allGroups.filter((g) => parentId && g.parentPageId === parentId);
 
-  /** 侧栏当前“视觉顺序”里的画板 id：只算展开的编组，全局未分组排最后 */
+  /** 侧栏当前“视觉顺序”里的画板 id：递归按 顶层编组 → 子编组 → 画板，全局未分组排最后 */
   const visibleFrameIds = () => {
     const ids: string[] = [];
-    for (const file of fileTree) {
-      for (const g of file.groups) {
+    const walk = (list: typeof allGroups) => {
+      for (const g of list) {
         if (!openPages.has(g.key)) continue;
         g.items.forEach((f) => ids.push(f.id));
+        walk(childGroupsOf(g.pageId));
       }
-    }
+    };
+    walk(topGroups);
     if (openPages.has('__none:global')) ungrouped.forEach((f) => ids.push(f.id));
     return ids;
   };
 
-  /** 选中后自动展开所在编组，保证侧栏能看到选中行 */
+  /** 选中后自动展开所在编组及其全部祖先编组，保证子编组里的画板也可见 */
   const revealSelection = (ids: Iterable<string>) => {
     setOpenPages((prev) => {
       const next = new Set(prev);
       for (const id of ids) {
         const f = frameById.get(id);
-        if (f) next.add(groupKey(f.page_id ?? null));
+        if (!f) continue;
+        next.add(groupKey(f.page_id ?? null));
+        let pid = f.page_id ? pages.find((p) => p.id === f.page_id)?.parent_page_id ?? null : null;
+        while (pid) {
+          next.add(pid);
+          pid = pages.find((p) => p.id === pid)?.parent_page_id ?? null;
+        }
       }
       return next;
     });
@@ -656,6 +770,17 @@ export default function ProjectCanvasPage() {
     });
   };
 
+  /** 一键收起所有编组（含未分组），并把「全部折叠」记忆到 localStorage（刷新后保持） */
+  const collapseAll = () => {
+    const allKeys = [...fileTree.flatMap((f) => f.groups.map((g) => g.key)), '__none:global'];
+    setOpenPages(new Set());
+    try {
+      localStorage.setItem(`pcanvas:collapsed:${projectId}`, JSON.stringify(allKeys));
+    } catch {
+      /* 隐私模式下忽略 */
+    }
+  };
+
   /** 拖拽悬停到已折叠的编组时自动展开，避免“放不进去” */
   const autoExpand = (key: string) => {
     setOpenPages((s) => {
@@ -692,37 +817,61 @@ export default function ProjectCanvasPage() {
       ? `该设计稿内已存在同名编组「${value}」`
       : null;
 
-  const createGroupFromSelection = async () => {
+  /**
+   * 右键「新建编组」：parentPageId 有值时创建为该编组的子编组（支持任意深度嵌套），
+   * 否则创建顶级编组。撤销时按各画板原所属编组分别还原，避免跨组选择被错误合并。
+   */
+  const createGroupFromSelection = async (parentPageId: string | null = null) => {
     if (!selectedFrames.size) return;
     const fileId = selectedSingleFile();
     if (!fileId) {
       await dialogs.alert('选中的画板来自多个设计稿，编组只能在同一个设计稿内创建。请分别选择后再建组。');
       return;
     }
+    const ids = [...selectedFrames];
+    const parent = parentPageId ? pages.find((p) => p.id === parentPageId) : null;
     const name = await dialogs.prompt({
-      title: `新建编组（${selectedFrames.size} 个画板）`,
-      label: '编组名称',
+      title: parent
+        ? `在「${parent.name}」下创建子编组（${ids.length} 个画板）`
+        : `新建编组（${ids.length} 个画板）`,
+      label: parent ? '子编组名称' : '编组名称',
       placeholder: '例如：登录流程',
       maxLength: 50,
       validate: (v) => validatePageName(fileId, v),
     });
     if (!name) return;
+    const origin = new Map(ids.map((id) => [id, frameById.get(id)?.page_id ?? null]));
     try {
-      const pg = await api.createPage(fileId, name);
-      await api.moveFramesToPage(fileId, [...selectedFrames], pg.id);
+      const pg = await api.createPage(fileId, name, parentPageId);
+      await api.moveFramesToPage(fileId, ids, pg.id);
       knownPagesRef.current.add(pg.id);
-      setOpenPages((s) => new Set(s).add(pg.id));
+      setOpenPages((s) => {
+        const next = new Set(s).add(pg.id);
+        if (parentPageId) {
+          next.add(parentPageId);
+          let pid = parent?.parent_page_id ?? null;
+          while (pid) {
+            next.add(pid);
+            pid = pages.find((p) => p.id === pid)?.parent_page_id ?? null;
+          }
+        }
+        return next;
+      });
       setSelectedFrames(new Set());
       let pageId = pg.id;
-      const ids = [...selectedFrames];
       recordHistory({
-        label: '新建编组',
+        label: parent ? '创建子编组' : '新建编组',
         undo: async () => {
-          await api.moveFramesToPage(fileId, ids, null);
+          const byParent = new Map<string | null, string[]>();
+          for (const id of ids) {
+            const p = origin.get(id) ?? null;
+            byParent.set(p, [...(byParent.get(p) ?? []), id]);
+          }
+          for (const [p, group] of byParent) await api.moveFramesToPage(fileId, group, p);
           await api.deletePage(fileId, pageId, 'dissolve');
         },
         redo: async () => {
-          pageId = (await api.createPage(fileId, name)).id;
+          pageId = (await api.createPage(fileId, name, parentPageId)).id;
           await api.moveFramesToPage(fileId, ids, pageId);
         },
       });
@@ -732,7 +881,7 @@ export default function ProjectCanvasPage() {
     }
   };
 
-  /** 设计稿标题旁「＋」：新建空编组，之后把画板拖进去 */
+  /** 侧栏顶部「＋」：新建空编组（子编组改由选中画板后右键创建） */
   const addPage = async (fileId: string, fileName: string) => {
     const name = await dialogs.prompt({
       title: `在「${fileName}」下新建编组`,
@@ -796,11 +945,12 @@ export default function ProjectCanvasPage() {
 
   const removePage = async (pg: ProjectPageRow, forced?: 'dissolve' | 'content') => {
     const list = pageFrames(pg.file_id, pg.id);
+    const parentPg = pg.parent_page_id ? pages.find((p) => p.id === pg.parent_page_id) : null;
     const mode = forced ?? (await dialogs.choose({
       title: `删除编组「${pg.name}」`,
       message: `该编组内有 ${list.length} 个画板，请选择处理方式：`,
       options: [
-        { label: '解散编组，保留内容（画板移入未分组）', value: 'dissolve' },
+        { label: parentPg ? `解散编组，保留画板（移入上一级编组「${parentPg.name}」）` : '解散编组，保留内容（画板移入未分组）', value: 'dissolve' },
         { label: '删除编组并删除其中内容', value: 'content', danger: true },
       ],
     }));
@@ -822,7 +972,8 @@ export default function ProjectCanvasPage() {
         recordHistory({
           label: '删除编组',
           undo: async () => {
-            pageId = (await api.createPage(pg.file_id, pg.name)).id;
+            // 子编组按原父编组重建，画板从上一级编组移回；顶层编组重建后从未分组移回
+            pageId = (await api.createPage(pg.file_id, pg.name, pg.parent_page_id ?? null)).id;
             if (ids.length) await api.moveFramesToPage(pg.file_id, ids, pageId);
           },
           redo: async () => {
@@ -944,13 +1095,14 @@ export default function ProjectCanvasPage() {
     const maxX = Math.max(...items.map((i) => i.x + i.w));
     const minY = Math.min(...items.map((i) => i.y));
     const maxY = Math.max(...items.map((i) => i.y + i.h));
-    const aboveTop = minY * zoom - 46;
+    // 工具条高度固定 40px（屏幕像素，与 zoom 无关），上方留 12px 间距
+    const aboveTop = minY * zoom - 52;
     // 选区太靠上放不下时，改到选区下方
-    const top = aboveTop >= 4 ? aboveTop : maxY * zoom + 8;
+    const top = aboveTop >= 4 ? aboveTop : maxY * zoom + 10;
     return {
       ids: items.map((i) => i.id),
-      left: minX * zoom,
-      width: (maxX - minX) * zoom,
+      // 只跟随选区中心平移：条宽与按钮尺寸由 CSS 固定，不随选区尺寸 / 画布 zoom 缩放
+      left: ((minX + maxX) / 2) * zoom,
       top,
     };
   }, [readOnly, selectedFrames, frames, pos, zoom]);
@@ -1076,8 +1228,32 @@ export default function ProjectCanvasPage() {
     api.reorderFrames(target.file_id, pageId, order).catch(persistFailed);
   };
 
-  /** 画板交互：单击选中（Ctrl/⌘ 切换、Shift 连选）；双击进入详情；只读单击仍直接进入 */
+  /** 画板交互：连线模式下依次点两个画板完成连线；普通模式单击选中（Ctrl/⌘、Shift），双击进详情 */
   const onFrameClick = (f: ProjectFrameRow, e: React.MouseEvent) => {
+    // 连线模式开启时，画板点击只用于连线：不选中、不拖动、不进详情
+    if (linkMode && !readOnly) {
+      e.preventDefault();
+      e.stopPropagation();
+      const draft = linkDraftRef.current;
+      if (draft) {
+        if (f.id !== draft.fromId) {
+          // 用目标画板中心重算出线边：避免「直接点第二张画板、中间没有 pointermove」时方向不对
+          const a = placedByIdRef.current.get(draft.fromId);
+          const b = placedByIdRef.current.get(f.id);
+          const side = a && b
+            ? pickLinkSide(
+                { x: a.px, y: a.py, w: a.f.width, h: a.f.height },
+                { x: b.px + b.f.width / 2, y: b.py + b.f.height / 2 }
+              )
+            : draft.side;
+          addLinkRef.current(draft.fromId, f.id, side);
+        }
+        clearLinkDraft();
+      } else {
+        startLinkFromFrame(f.id, e);
+      }
+      return;
+    }
     if (readOnly) {
       navigate(`/files/${f.file_id}/frames/${f.id}`);
       return;
@@ -1304,6 +1480,12 @@ export default function ProjectCanvasPage() {
     return { placed, bands, minX, minY, maxX, maxY };
   }, [frames, fileTree, pos, ungrouped]);
 
+  /** 连线渲染用：按 id 快速取画板在画布上的矩形 */
+  const placedById = useMemo(() => new Map(layout.placed.map((p) => [p.f.id, p])), [layout.placed]);
+  // 全局 pointer 监听需要读最新布局，用 ref 同步，避免每次 render 重绑监听器
+  const placedByIdRef = useRef(placedById);
+  placedByIdRef.current = placedById;
+
   /** 把若干画板的最新坐标落库（按设计稿分组批量保存） */
   const savePositions = useCallback(async (ids: string[]) => {
     if (readOnlyRef.current || !ids.length) return;
@@ -1331,6 +1513,80 @@ export default function ProjectCanvasPage() {
     undoStackRef.current.push(entry);
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
     redoStackRef.current = [];
+  };
+
+  // ---------- 连线操作 ----------
+  // 全局 pointer 监听通过 ref 调用最新闭包，避免每次 render 反复重绑监听器
+  const addLinkRef = useRef<(from: string, to: string, side: PortSide) => void>(() => {});
+  const addLink = async (from: string, to: string, side: PortSide = 'right') => {
+    if (readOnlyRef.current || !projectId || from === to) return;
+    if (linksRef.current.some((l) => l.from_frame_id === from && l.to_frame_id === to)) {
+      flashToast('这两个画板已经连过线了');
+      return;
+    }
+    try {
+      const link = await api.createFrameLink(projectId, from, to, side);
+      const next = [...linksRef.current, link];
+      linksRef.current = next;
+      setLinks(next);
+      flashToast('已连线');
+      recordHistory({
+        label: '新建连线',
+        undo: () => api.deleteFrameLink(projectId, link.id).then(() => undefined),
+        redo: () => api.createFrameLink(projectId, from, to, side).then(() => undefined),
+      });
+    } catch (e) {
+      fail(e);
+    }
+  };
+  addLinkRef.current = addLink;
+
+  const removeLink = async (link: FrameLink) => {
+    if (readOnlyRef.current || !projectId) return;
+    const next = linksRef.current.filter((l) => l.id !== link.id);
+    linksRef.current = next;
+    setLinks(next);
+    setHoverLinkId(null);
+    try {
+      await api.deleteFrameLink(projectId, link.id);
+      flashToast('已删除连线');
+      recordHistory({
+        label: '删除连线',
+        undo: () => api.createFrameLink(projectId, link.from_frame_id, link.to_frame_id, link.from_side ?? 'right').then(() => undefined),
+        redo: async () => {
+          // 撤销重建后 id 会变，按端点重新查当前连线再删
+          const cur = (await api.listFrameLinks(projectId)).find(
+            (l) => l.from_frame_id === link.from_frame_id && l.to_frame_id === link.to_frame_id
+          );
+          if (cur) await api.deleteFrameLink(projectId, cur.id);
+        },
+      });
+    } catch (e) {
+      fail(e);
+      load();
+    }
+  };
+
+  const clearLinkDraft = () => {
+    linkDraftRef.current = null;
+    setLinkDraft(null);
+  };
+
+  /** 连线模式下点击第一张画板：设为起点，之后点第二张画板即完成连线 */
+  const startLinkFromFrame = (frameId: string, e: React.MouseEvent) => {
+    if (readOnly || !linkModeRef.current || spaceRef.current) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    const a = placedByIdRef.current.get(frameId);
+    if (!rect || !a) return;
+    const cursor = worldPointAt(e.clientX, e.clientY, rect, panXYRef.current, zoomRef.current);
+    const draft: LinkDraft = {
+      fromId: frameId,
+      side: pickLinkSide({ x: a.px, y: a.py, w: a.f.width, h: a.f.height }, cursor),
+      cursor,
+      targetId: null,
+    };
+    linkDraftRef.current = draft;
+    setLinkDraft(draft);
   };
 
   /** 把一组坐标写回前端并落库（撤销/重做共用） */
@@ -1477,6 +1733,9 @@ export default function ProjectCanvasPage() {
   /** 画板按下：先选中，再准备拖动（超过 4px 才算拖动，避免点一下就位移） */
   const beginFrameDrag = (f: ProjectFrameRow, e: React.PointerEvent) => {
     if (readOnly || e.button !== 0 || spaceRef.current) return;
+    // 连线模式下不选中、不拖动画板，交给随后的 click 完成/取消连线
+    // 这里不 preventDefault，确保 pointerdown 之后浏览器仍会派发 click
+    if (linkModeRef.current || linkDraftRef.current) return;
     e.preventDefault();
     dragMovedRef.current = false;
     const already = selectedFrames.has(f.id);
@@ -1892,6 +2151,57 @@ export default function ProjectCanvasPage() {
     };
   }, [setPanXY, updatePositions, snapOffset, commitDrag, savePositions]);
 
+  // 连线模式：顶栏开关开启后点第一张画板设起点，预览虚线跟随光标并自动朝向目标；点第二张画板 / Esc / 点空白结束
+  useEffect(() => {
+    const clear = () => {
+      linkDraftRef.current = null;
+      setLinkDraft(null);
+    };
+    const move = (e: PointerEvent) => {
+      const d = linkDraftRef.current;
+      if (!d) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const cursor = worldPointAt(e.clientX, e.clientY, rect, panXYRef.current, zoomRef.current);
+      const targetId = frameIdAtPoint(e.clientX, e.clientY, d.fromId);
+      const a = placedByIdRef.current.get(d.fromId);
+      const target = targetId ? placedByIdRef.current.get(targetId) : null;
+      // 对准目标时按目标画板中心定向，预览曲线与最终落库曲线完全一致
+      const toward = target
+        ? { x: target.px + target.f.width / 2, y: target.py + target.f.height / 2 }
+        : cursor;
+      const next: LinkDraft = {
+        ...d,
+        cursor,
+        targetId,
+        side: a ? pickLinkSide({ x: a.px, y: a.py, w: a.f.width, h: a.f.height }, toward) : d.side,
+      };
+      linkDraftRef.current = next;
+      setLinkDraft(next);
+    };
+    // 点到画布空白（非画板、非顶栏开关）视为放弃；画板由 onFrameClick、开关由自身 onClick 处理
+    const click = (e: MouseEvent) => {
+      if (!linkDraftRef.current) return;
+      const t = e.target as HTMLElement;
+      if (t.closest?.('.pcanvas-frame') || t.closest?.('.link-toggle')) return;
+      clear();
+    };
+    const keydown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // 有起点先取消起点；没有起点则直接退出连线模式（线条始终保留）
+      if (linkDraftRef.current) clear();
+      else if (linkModeRef.current) setLinkMode(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('click', click);
+    window.addEventListener('keydown', keydown);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('click', click);
+      window.removeEventListener('keydown', keydown);
+    };
+  }, []);
+
   // 打开导入面板时探测服务端是否配置了统一令牌（只拿 true/false，不含令牌）
   useEffect(() => {
     if (!importOpen) return;
@@ -1990,7 +2300,7 @@ export default function ProjectCanvasPage() {
       className={`pcanvas-frame-item ${selectedFrames.has(f.id) ? 'is-selected' : ''} ${
         dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''
       }`}
-      title={`${f.file_name} / ${f.name}（双击打开，Ctrl/⌘ 点击多选，Shift 连选）`}
+      title={`${f.file_name} / ${f.name}（双击打开，Ctrl/⌘ 点击多选，Shift 连选，右键创建子编组）`}
       draggable={!readOnly}
       onClick={(e) => {
         setDrawer('none');
@@ -2014,6 +2324,7 @@ export default function ProjectCanvasPage() {
         void dropOnFrame(f, position);
       }}
     >
+      <ImageIcon className="frame-thumb-icon" size={14} />
       <span className="pcanvas-frame-item-name">{f.name}</span>
       {!readOnly && (
         <span className="pcanvas-edit-btn" onClick={(e) => e.stopPropagation()} onDoubleClick={stopFrameAction}>
@@ -2029,6 +2340,99 @@ export default function ProjectCanvasPage() {
     </div>
   );
 
+  /**
+   * 递归渲染编组树：展开后显示「子编组（可继续嵌套）→ 本组画板」。
+   * 子编组不再由常驻按钮创建，改为选中 2 个以上画板后右键创建；与 ViewerPage 保持一致。
+   */
+  const renderGroup = (g: (typeof allGroups)[number], depth: number): ReactElement => {
+    const open = openPages.has(g.key);
+    const pg = g.pageId ? pages.find((p) => p.id === g.pageId) ?? null : null;
+    const groupSelected = g.items.length > 0 && g.items.every((f) => selectedFrames.has(f.id));
+    const children = childGroupsOf(g.pageId);
+    return (
+      <div key={g.key} className="page-group" style={depth ? { marginLeft: depth * 14 } : undefined}>
+        <div
+          className={`page-row ${dropPageId === g.key ? 'is-droptarget' : ''} ${
+            groupSelected ? 'is-selected' : ''
+          }`}
+          title={`${g.name}（${g.items.length} 个画板${children.length ? ` · ${children.length} 个子编组` : ''}）· 设计稿：${g.fileName}`}
+          onDragOver={(e) => {
+            if (!readOnly && dragFrameIdRef.current) {
+              e.preventDefault();
+              setDropPageId(g.key);
+              setDropFrameHint(null);
+              autoExpand(g.key);
+            }
+          }}
+          onDragLeave={() => setDropPageId((v) => (v === g.key ? null : v))}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (!readOnly && dragFrameIdRef.current) void dropOnPage(g.fileId, g.pageId);
+          }}
+        >
+          <button
+            type="button"
+            className="page-caret"
+            aria-label={open ? `折叠 ${g.name}` : `展开 ${g.name}`}
+            aria-expanded={open}
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePage(g.key);
+            }}
+          >
+            {open ? <ChevronDown /> : <ChevronRight />}
+          </button>
+          <span
+            className="page-name"
+            role="button"
+            tabIndex={0}
+            aria-expanded={open}
+            title={`${g.name} · 所在设计稿：${g.fileName}`}
+            onClick={() => {
+              togglePage(g.key);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                togglePage(g.key);
+              }
+            }}
+          >
+            <Folder className="page-group-icon" size={16} />
+            {g.name}
+          </span>
+          <span className="page-count">{g.items.length}</span>
+          {pg && !readOnly && (
+            <span className="page-actions" onClick={(e) => e.stopPropagation()}>
+              <RowMenu
+                label={`编组 ${g.name}`}
+                items={[
+                  { label: '重命名编组', onClick: () => void renamePage(pg) },
+                  {
+                    label: pg.parent_page_id
+                      ? `解散子编组，画板移入「${pages.find((p) => p.id === pg.parent_page_id)?.name ?? '上一级编组'}」`
+                      : '解散编组，画板移入未分组',
+                    onClick: () => void removePage(pg, 'dissolve'),
+                  },
+                  { label: '删除编组及内容', danger: true, onClick: () => void removePage(pg, 'content') },
+                ]}
+              />
+            </span>
+          )}
+        </div>
+        {open && (
+          <>
+            {children.map((c) => renderGroup(c, depth + 1))}
+            <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
+              {g.items.map((f) => renderFrameRow(f))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   // 返回：固定回项目所属团队的项目列表，不再回裸的 /（避免落到默认第一个团队）
   const goBack = () => {
     const teamId = project?.team_id;
@@ -2037,7 +2441,7 @@ export default function ProjectCanvasPage() {
 
   return (
     <div className="viewer">
-      <header className="topbar">
+      <header className={`topbar${bg.dark ? ' is-dark-topbar' : ''}`}>
         <button className="icon-btn" onClick={goBack} title="返回上一页" aria-label="返回上一页">
           <ArrowLeft />
         </button>
@@ -2045,6 +2449,23 @@ export default function ProjectCanvasPage() {
         {parsing > 0 && <span className="status status-wait status-pulse">解析中 {parsing}</span>}
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
         <span className="spacer" />
+        {!readOnly && (
+          <button
+            type="button"
+            className="icon-btn link-toggle"
+            data-link-mode={linkMode ? 'on' : 'off'}
+            onClick={() => {
+              const next = !linkMode;
+              setLinkMode(next);
+              clearLinkDraft();
+              if (next) flashToast('连线模式：依次点击两个画板完成连线，Esc 退出');
+            }}
+            title={linkMode ? '退出连线模式（线条始终显示）' : '开启连线模式：依次点击两个画板即可连线'}
+            aria-pressed={linkMode}
+          >
+            <LinkIcon /> <span>连线</span>
+          </button>
+        )}
         <div className="share-wrap">
           <button
             type="button"
@@ -2103,6 +2524,14 @@ export default function ProjectCanvasPage() {
           <div className="sidebar-section sidebar-grow">
             <div className="sidebar-head">
               <h3>画板 · {frames.length}</h3>
+              <button
+                className="pcanvas-edit-btn sidebar-collapse-all"
+                title="收起所有编组"
+                aria-label="收起所有编组"
+                onClick={collapseAll}
+              >
+                <CollapseAll />
+              </button>
               {!readOnly && (
                 <button
                   className="pcanvas-edit-btn sidebar-add-group"
@@ -2118,86 +2547,7 @@ export default function ProjectCanvasPage() {
               role={readOnly ? undefined : 'listbox'}
               aria-multiselectable={!readOnly}
             >
-              {allGroups.map((g) => {
-                const open = openPages.has(g.key);
-                const pg = g.pageId ? pages.find((p) => p.id === g.pageId) ?? null : null;
-                const groupSelected = g.items.length > 0 && g.items.every((f) => selectedFrames.has(f.id));
-                return (
-                  <div key={g.key} className="page-group">
-                    <div
-                      className={`page-row ${dropPageId === g.key ? 'is-droptarget' : ''} ${
-                        groupSelected ? 'is-selected' : ''
-                      }`}
-                      title={`${g.name}（${g.items.length} 个画板）· 设计稿：${g.fileName}`}
-                      onDragOver={(e) => {
-                        if (!readOnly && dragFrameIdRef.current) {
-                          e.preventDefault();
-                          setDropPageId(g.key);
-                          setDropFrameHint(null);
-                          autoExpand(g.key);
-                        }
-                      }}
-                      onDragLeave={() => setDropPageId((v) => (v === g.key ? null : v))}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (!readOnly && dragFrameIdRef.current) void dropOnPage(g.fileId, g.pageId);
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="page-caret"
-                        aria-label={open ? `折叠 ${g.name}` : `展开 ${g.name}`}
-                        aria-expanded={open}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePage(g.key);
-                        }}
-                      >
-                        {open ? <ChevronDown /> : <ChevronRight />}
-                      </button>
-                      <span
-                        className="page-name"
-                        role="button"
-                        tabIndex={0}
-                        aria-expanded={open}
-                        title={`${g.name} · 所在设计稿：${g.fileName}`}
-                        onClick={() => {
-                          // 点击编组名称：只切换展开/折叠，不改变画板选中状态
-                          togglePage(g.key);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            togglePage(g.key);
-                          }
-                        }}
-                      >
-                        <Folder className="page-group-icon" size={14} />
-                        {g.name}
-                      </span>
-                      <span className="page-count">{g.items.length}</span>
-                      {pg && !readOnly && (
-                        <span className="page-actions" onClick={(e) => e.stopPropagation()}>
-                          <RowMenu
-                            label={`编组 ${g.name}`}
-                            items={[
-                              { label: '重命名编组', onClick: () => void renamePage(pg) },
-                              { label: '解散编组（保留画板）', onClick: () => void removePage(pg, 'dissolve') },
-                              { label: '删除编组及内容', danger: true, onClick: () => void removePage(pg, 'content') },
-                            ]}
-                          />
-                        </span>
-                      )}
-                    </div>
-                    {open && (
-                      <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
-                        {g.items.map((f) => renderFrameRow(f))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {topGroups.map((g) => renderGroup(g, 0))}
               {frames.length > 0 && (
                 <div className="page-group page-group-unassigned is-global">
                   <div
@@ -2258,7 +2608,7 @@ export default function ProjectCanvasPage() {
                         }
                       }}
                     >
-                      <Folder className="page-group-icon" size={14} />
+                      <Folder className="page-group-icon" size={16} />
                       未分组
                     </span>
                     <span className="page-count">{ungrouped.length}</span>
@@ -2280,7 +2630,7 @@ export default function ProjectCanvasPage() {
         </aside>
 
         <div
-          className={`canvas-container${spacePan ? ' space-pan' : ''} ${bg.className}`}
+          className={`canvas-container pcanvas-stage${spacePan ? ' space-pan' : ''} ${bg.className}`}
           ref={containerRef}
           style={bg.style}
           onPointerDown={(e) => {
@@ -2333,6 +2683,97 @@ export default function ProjectCanvasPage() {
             role={readOnly ? undefined : 'listbox'}
             aria-multiselectable={!readOnly}
           >
+            {/* 连线层：始终显示，顶栏开关只控制能否操作；与画板同处 world 坐标系，随缩放/平移实时重算 */}
+            {(links.length > 0 || linkDraft) && (() => {
+              const ox = (layout.minX - 240) * zoom;
+              const oy = (layout.minY - 240) * zoom;
+              const w = (layout.maxX - layout.minX + 480) * zoom;
+              const h = (layout.maxY - layout.minY + 480) * zoom;
+              const toSvg = (p: { x: number; y: number }) => ({ x: p.x * zoom - ox, y: p.y * zoom - oy });
+              return (
+                <svg
+                  className={`pcanvas-link-layer${linkMode ? '' : ' is-readonly'}`}
+                  data-link-layer="1"
+                  style={{ left: ox, top: oy, width: w, height: h }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <defs>
+                    <marker
+                      id="pcanvas-link-arrow"
+                      viewBox="0 0 10 10"
+                      refX="8"
+                      refY="5"
+                      markerWidth="9"
+                      markerHeight="9"
+                      orient="auto"
+                      markerUnits="userSpaceOnUse"
+                    >
+                      <path className="pcanvas-link-arrow" d="M0 0 L10 5 L0 10 Z" />
+                    </marker>
+                  </defs>
+                  {links.map((link) => {
+                    const a = placedById.get(link.from_frame_id);
+                    const b = placedById.get(link.to_frame_id);
+                    if (!a || !b) return null;
+                    const g = linkCurve(
+                      { x: a.px, y: a.py, w: a.f.width, h: a.f.height },
+                      { x: b.px, y: b.py, w: b.f.width, h: b.f.height },
+                      link.from_side ?? 'right',
+                      zoom, ox, oy
+                    );
+                    const hot = hoverLinkId === link.id;
+                    return (
+                      <g
+                        key={link.id}
+                        data-link-id={link.id}
+                        className={`pcanvas-link ${hot ? 'is-hot' : ''}`}
+                        onPointerEnter={() => setHoverLinkId(link.id)}
+                        onPointerLeave={() => setHoverLinkId(null)}
+                      >
+                        <path className="pcanvas-link-hit" d={g.d} />
+                        <path className="pcanvas-link-line" d={g.d} markerEnd="url(#pcanvas-link-arrow)" />
+                        {!readOnly && linkMode && hot && (
+                          <g
+                            className="pcanvas-link-del"
+                            data-link-del={link.id}
+                            transform={`translate(${g.mid.x}, ${g.mid.y})`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void removeLink(link);
+                            }}
+                          >
+                            <circle r="9" />
+                            <path d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5" />
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })}
+                  {linkDraft && (() => {
+                    const a = placedById.get(linkDraft.fromId);
+                    if (!a) return null;
+                    const rectA = { x: a.px, y: a.py, w: a.f.width, h: a.f.height };
+                    const p1 = toSvg(portPoint(rectA, linkDraft.side));
+                    const target = linkDraft.targetId ? placedById.get(linkDraft.targetId) : null;
+                    // 已对准目标画板时，预览曲线与最终落库后的曲线完全一致
+                    const curve = target
+                      ? linkCurve(
+                          rectA,
+                          { x: target.px, y: target.py, w: target.f.width, h: target.f.height },
+                          linkDraft.side, zoom, ox, oy
+                        )
+                      : null;
+                    const p2 = toSvg(linkDraft.cursor);
+                    return (
+                      <g className="pcanvas-link-preview">
+                        <path d={curve ? curve.d : `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`} />
+                      </g>
+                    );
+                  })()}
+                </svg>
+              );
+            })()}
             {layout.bands.map((b) => {
               const key = groupKey(b.pageId);
               const hot = dropPageId === key;
@@ -2428,6 +2869,8 @@ export default function ProjectCanvasPage() {
                 aria-selected={readOnly ? undefined : selectedFrames.has(f.id)}
                 className={`pcanvas-frame ${selectedFrames.has(f.id) ? 'is-selected' : ''} ${
                   dropFrameHint?.frameId === f.id ? 'is-drop-target' : ''
+                } ${linkDraft?.targetId === f.id ? 'is-link-target' : ''} ${
+                  linkDraft?.fromId === f.id ? 'is-link-source' : ''
                 }`}
                 style={{
                   left: px * zoom,
@@ -2502,7 +2945,7 @@ export default function ProjectCanvasPage() {
             {alignBar && (
               <div
                 className="pcanvas-alignbar"
-                style={{ left: alignBar.left, top: alignBar.top, width: Math.max(160, alignBar.width) }}
+                style={{ left: alignBar.left, top: alignBar.top }}
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 <button title="左对齐" onClick={() => void alignSelection('left', alignBar.ids)}><AlignFrameLeft /></button>
@@ -2581,14 +3024,16 @@ export default function ProjectCanvasPage() {
             className="ctx-menu"
             style={{
               left: Math.min(ctxMenu.x, window.innerWidth - 250),
-              top: Math.min(ctxMenu.y, window.innerHeight - 340),
+              top: Math.min(ctxMenu.y, window.innerHeight - 380),
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ctx-title">已选 {ctxIds().length} 个画板</div>
             {!ctxSameFile() && <div className="ctx-hint">跨设计稿选择不能编组或移动，请取消后重选</div>}
-            <button disabled={!ctxSameFile()} onClick={() => { closeCtxMenu(); void createGroupFromSelection(); }}>
-              <Plus /> 新建编组…
+            <button disabled={!ctxSameFile()} onClick={() => { closeCtxMenu(); void createGroupFromSelection(ctxFrame.page_id); }}>
+              <Plus /> {ctxFrame.page_id
+                ? `在「${pages.find((p) => p.id === ctxFrame.page_id)?.name ?? '编组'}」内新建子编组…`
+                : '新建编组…'}
             </button>
             {ctxFrame.page_id && (
               <button disabled={!ctxSameFile()} onClick={() => { closeCtxMenu(); void moveSelection(null); }}>

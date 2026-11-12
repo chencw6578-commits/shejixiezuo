@@ -85,7 +85,7 @@ projectsRouter.get('/:id/frames', async (req, res) => {
   ).rows;
   const pages = (
     await pool.query(
-      `SELECT pg.id, pg.file_id, pg.name, pg.sort_order, df.name AS file_name
+      `SELECT pg.id, pg.file_id, pg.name, pg.sort_order, pg.parent_page_id, df.name AS file_name
        FROM pages pg JOIN design_files df ON df.id = pg.file_id
        WHERE df.project_id = $1 AND df.status = 'ready'
        ORDER BY df.created_at, df.id, pg.sort_order, pg.created_at`,
@@ -93,6 +93,69 @@ projectsRouter.get('/:id/frames', async (req, res) => {
     )
   ).rows;
   res.json({ frames, pages });
+});
+
+/** 项目画布连线：读取（与 /frames 一致不加写守卫，协作者只读视图也能看到连线） */
+projectsRouter.get('/:id/links', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, from_frame_id, to_frame_id, from_side, created_at
+     FROM frame_links WHERE project_id = $1::uuid ORDER BY created_at, id`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
+/** 新建连线：两端画板必须属于该项目，禁止自连 / 重复 */
+projectsRouter.post('/:id/links', async (req, res) => {
+  const body = req.body as { from?: unknown; to?: unknown; side?: unknown } | undefined;
+  const from = body?.from;
+  const to = body?.to;
+  const side = typeof body?.side === 'string' && ['top', 'right', 'bottom', 'left'].includes(body.side)
+    ? body.side
+    : 'right';
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (typeof from !== 'string' || typeof to !== 'string' || !UUID.test(from) || !UUID.test(to)) {
+    return res.status(400).json({ error: '连线端点无效' });
+  }
+  if (from === to) return res.status(400).json({ error: '不能把画板连到自己' });
+  const p = await pool.query<{ team_id: string | null }>(
+    'SELECT team_id FROM projects WHERE id = $1::uuid',
+    [req.params.id]
+  );
+  if (!p.rows[0]) return res.status(404).json({ error: '项目不存在' });
+  const denied = await editGuard(p.rows[0].team_id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  const owned = await pool.query<{ id: string }>(
+    `SELECT fr.id FROM frames fr JOIN design_files df ON df.id = fr.file_id
+     WHERE df.project_id = $1::uuid AND fr.id = ANY($2::uuid[])`,
+    [req.params.id, [from, to]]
+  );
+  if (owned.rows.length !== 2) return res.status(400).json({ error: '连线两端必须是本项目内的画板' });
+  // 重复连线直接返回已有记录（DO UPDATE 仅为拿到 RETURNING，同时允许用户改方向）
+  const { rows } = await pool.query(
+    `INSERT INTO frame_links (project_id, from_frame_id, to_frame_id, from_side)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text)
+     ON CONFLICT (from_frame_id, to_frame_id) DO UPDATE SET
+       from_frame_id = EXCLUDED.from_frame_id,
+       from_side = EXCLUDED.from_side
+     RETURNING id, from_frame_id, to_frame_id, from_side, created_at`,
+    [req.params.id, from, to, side]
+  );
+  res.status(201).json(rows[0]);
+});
+
+/** 删除连线 */
+projectsRouter.delete('/:id/links/:linkId', async (req, res) => {
+  const { rows: [link] } = await pool.query<{ id: string; team_id: string | null }>(
+    `SELECT l.id, p.team_id FROM frame_links l JOIN projects p ON p.id = l.project_id
+     WHERE l.id = $1::uuid AND l.project_id = $2::uuid`,
+    [req.params.linkId, req.params.id]
+  );
+  if (!link) return res.status(404).json({ error: '连线不存在' });
+  const denied = await editGuard(link.team_id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  await pool.query('DELETE FROM frame_links WHERE id = $1::uuid', [link.id]);
+  res.json({ ok: true });
 });
 
 /** 项目详情（含所属团队） */

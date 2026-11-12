@@ -192,7 +192,7 @@ filesRouter.get('/:id', async (req, res) => {
   ).rows;
   const pages = (
     await pool.query(
-      'SELECT id, name, sort_order FROM pages WHERE file_id = $1 ORDER BY sort_order, created_at',
+      'SELECT id, name, sort_order, parent_page_id FROM pages WHERE file_id = $1 ORDER BY sort_order, created_at',
       [req.params.id]
     )
   ).rows;
@@ -224,6 +224,7 @@ filesRouter.post('/:id/pages', async (req, res) => {
   const denied = await editGuard(await fileTeamId(req.params.id), req);
   if (denied) return res.status(403).json({ error: denied });
   const name = ((req.body as { name?: string }).name ?? '').trim();
+  const parentPageId = (req.body as { parentPageId?: string | null }).parentPageId ?? null;
   if (!name) return res.status(400).json({ error: '页面名称不能为空' });
   if (name.length > 50) return res.status(400).json({ error: '页面名称过长（≤50 字符）' });
   const { rows: [existing] } = await pool.query(
@@ -231,9 +232,19 @@ filesRouter.post('/:id/pages', async (req, res) => {
     [req.params.id, name]
   );
   if (existing) return res.status(409).json({ error: `已存在同名页面「${existing.name}」` });
+  if (parentPageId && !/^[0-9a-f-]{36}$/i.test(parentPageId)) {
+    return res.status(400).json({ error: '父编组 ID 格式不正确' });
+  }
+  if (parentPageId) {
+    const { rows: [parent] } = await pool.query(
+      'SELECT id FROM pages WHERE id = $1::uuid AND file_id = $2::uuid',
+      [parentPageId, req.params.id]
+    );
+    if (!parent) return res.status(400).json({ error: '父编组不存在或不属于该设计稿' });
+  }
   const { rows: [pg] } = await pool.query(
-    'INSERT INTO pages (file_id, name) VALUES ($1, $2) RETURNING id, name',
-    [req.params.id, name]
+    'INSERT INTO pages (file_id, name, parent_page_id) VALUES ($1, $2, $3) RETURNING id, name, parent_page_id',
+    [req.params.id, name, parentPageId]
   );
   res.status(201).json(pg);
 });
@@ -261,31 +272,61 @@ filesRouter.patch('/:id/pages/:pageId', async (req, res) => {
 
 /**
  * 删除页面（编组），两种语义：
- * - 默认（dissolve）：解散编组，画板回落为未分组
+ * - 默认（dissolve）：解散编组，画板移入上一级编组（子编组）或回落为未分组（顶层编组）
  * - ?mode=content：删除编组及其中的画板（图层/评论随外键级联删除）
  */
 filesRouter.delete('/:id/pages/:pageId', async (req, res) => {
   const denied = await editGuard(await fileTeamId(req.params.id), req);
   if (denied) return res.status(403).json({ error: denied });
   const pageId = req.params.pageId;
-  const { rows: [pg] } = await pool.query(
-    'SELECT id FROM pages WHERE id = $1::uuid AND file_id = $2::uuid',
+  const { rows: [pg] } = await pool.query<{ id: string; parent_page_id: string | null }>(
+    'SELECT id, parent_page_id FROM pages WHERE id = $1::uuid AND file_id = $2::uuid',
     [pageId, req.params.id]
   );
   if (!pg) return res.status(404).json({ error: '页面不存在' });
   const cascade = req.query.mode === 'content';
+  // 递归收集自身 + 所有后代编组：删除父编组时，子编组的画板也要按同样语义处理
+  const { rows: descendants } = await pool.query<{ id: string }>(
+    `WITH RECURSIVE sub AS (
+       SELECT id FROM pages WHERE id = $1::uuid
+       UNION ALL
+       SELECT p.id FROM pages p JOIN sub s ON p.parent_page_id = s.id
+     ) SELECT id FROM sub`,
+    [pageId]
+  );
+  const pageIds = descendants.map((r) => r.id);
   let deletedFrames = 0;
   if (cascade) {
     const del = await pool.query<{ id: string }>(
-      'DELETE FROM frames WHERE page_id = $1::uuid RETURNING id',
-      [pg.id]
+      'DELETE FROM frames WHERE page_id = ANY($1::uuid[]) RETURNING id',
+      [pageIds]
     );
     deletedFrames = del.rowCount ?? 0;
     if (del.rows.length) {
       await pool.query('DELETE FROM assets WHERE frame_id = ANY($1::uuid[])', [del.rows.map((r) => r.id)]);
     }
+  } else if (pg.parent_page_id) {
+    // 解散子编组：该编组及所有子编组的画板按原顺序移入上一级编组末尾（画板不离开父编组）
+    const { rows: [parent] } = await pool.query<{ name: string }>(
+      'SELECT name FROM pages WHERE id = $1::uuid AND file_id = $2::uuid',
+      [pg.parent_page_id, req.params.id]
+    );
+    if (!parent) return res.status(400).json({ error: '上一级编组不存在' });
+    const { rows: [{ next }] } = await pool.query<{ next: number }>(
+      'SELECT COALESCE(MAX(page_sort), -1) + 1 AS next FROM frames WHERE file_id = $1::uuid AND page_id = $2::uuid',
+      [req.params.id, pg.parent_page_id]
+    );
+    await pool.query(
+      `UPDATE frames f SET page_id = $1, page_name = $2, page_sort = $3 + t.ord - 1
+       FROM (
+         SELECT id, row_number() OVER (ORDER BY page_sort, sort_order, name) AS ord
+         FROM frames WHERE page_id = ANY($4::uuid[])
+       ) t
+       WHERE f.id = t.id`,
+      [pg.parent_page_id, parent.name, next, pageIds]
+    );
   } else {
-    // 解散编组：画板按原组内顺序追加到「未分组」末尾
+    // 解散顶层编组：该编组及所有子编组的画板按原组内顺序追加到「未分组」末尾
     const { rows: [{ next }] } = await pool.query<{ next: number }>(
       'SELECT COALESCE(MAX(page_sort), -1) + 1 AS next FROM frames WHERE file_id = $1::uuid AND page_id IS NULL',
       [req.params.id]
@@ -294,12 +335,13 @@ filesRouter.delete('/:id/pages/:pageId', async (req, res) => {
       `UPDATE frames f SET page_id = NULL, page_name = NULL, page_sort = $1 + t.ord - 1
        FROM (
          SELECT id, row_number() OVER (ORDER BY page_sort, sort_order, name) AS ord
-         FROM frames WHERE page_id = $2::uuid
+         FROM frames WHERE page_id = ANY($2::uuid[])
        ) t
        WHERE f.id = t.id`,
-      [next, pg.id]
+      [next, pageIds]
     );
   }
+  // 删除父编组；子编组由 parent_page_id 外键 ON DELETE CASCADE 一并删除
   await pool.query('DELETE FROM pages WHERE id = $1::uuid', [pg.id]);
   res.json({ ok: true, deletedFrames });
 });

@@ -1,4 +1,4 @@
-import type { ExportResult, FileDetail, FrameDetail, ProjectFrameRow, ProjectPageRow, SpecData } from './types';
+import type { ExportResult, FileDetail, FrameDetail, FrameLink, ProjectFrameRow, ProjectPageRow, SpecData } from './types';
 
 /** 项目卡片封面用：一张画板的缩略图与原始尺寸 */
 export interface ProjectCoverFrame {
@@ -304,10 +304,10 @@ export const api = {
     }),
 
   // ---- 页面（画板编组） ----
-  createPage: (fileId: string, name: string) =>
+  createPage: (fileId: string, name: string, parentPageId?: string | null) =>
     request<{ id: string; name: string }>(`/api/files/${fileId}/pages`, {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, parentPageId: parentPageId ?? null }),
     }),
   renamePage: (fileId: string, pageId: string, name: string) =>
     request<{ id: string; name: string }>(`/api/files/${fileId}/pages/${pageId}`, {
@@ -425,6 +425,15 @@ export const api = {
   /** 项目画板总览：所有设计稿的全部画板 + 编组（项目画板页用） */
   listProjectFrames: (projectId: string) =>
     request<{ frames: ProjectFrameRow[]; pages: ProjectPageRow[] }>(`/api/projects/${projectId}/frames`),
+  listFrameLinks: (projectId: string) =>
+    request<FrameLink[]>(`/api/projects/${projectId}/links`),
+  createFrameLink: (projectId: string, from: string, to: string, side: 'top' | 'right' | 'bottom' | 'left' = 'right') =>
+    request<FrameLink>(`/api/projects/${projectId}/links`, {
+      method: 'POST',
+      body: JSON.stringify({ from, to, side }),
+    }),
+  deleteFrameLink: (projectId: string, linkId: string) =>
+    request<{ ok: boolean }>(`/api/projects/${projectId}/links/${linkId}`, { method: 'DELETE' }),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   // ---------- 公开只读分享 ----------

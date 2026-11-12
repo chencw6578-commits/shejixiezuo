@@ -282,7 +282,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           </div>
           {p.text?.family && <div className="kv"><span>字体</span><CopyChip text={renderable(p.text.family)}><b>{renderable(p.text.family)}</b></CopyChip></div>}
           {textSize !== null && textSize > 0 && (
-            <div className="kv"><span>字号</span><CopyChip text={renderable(textSize)}><b>{renderable(textSize)}px / {renderable(p.text?.weight ?? 400)}</b></CopyChip></div>
+            <div className="kv"><span>字号</span><CopyChip text={renderable(textSize)}><b>{renderable(textSize)}{unit} / {renderable(p.text?.weight ?? 400)}</b></CopyChip></div>
           )}
           {lineHeightPx !== null && lineHeightPx > 0 && (
             <div className="kv"><span>行高</span><b>{renderable(lineHeightPx)}px</b></div>

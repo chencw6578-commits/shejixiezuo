@@ -122,6 +122,9 @@ CREATE TABLE IF NOT EXISTS pages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS pages_file_name_uniq ON pages(file_id, name);
+-- 编组可嵌套：子编组挂在父编组下；删除父编组时子编组级联删除（其画板由 frames.page_id ON DELETE SET NULL 回落未分组）
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS parent_page_id UUID REFERENCES pages(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id);
 ALTER TABLE frames ADD COLUMN IF NOT EXISTS page_id UUID REFERENCES pages(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_frames_page ON frames(page_id);
 -- 编组内排序（不影响画布的全局 sort_order）
@@ -217,6 +220,22 @@ CREATE TABLE IF NOT EXISTS project_shares (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_project_shares_project ON project_shares(project_id);
+
+-- 项目画布：画板之间的有向连线（from → to）。
+-- 端点画板/项目删除时由外键级联清理，避免留下悬空连线。
+CREATE TABLE IF NOT EXISTS frame_links (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  from_frame_id   UUID NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
+  to_frame_id     UUID NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
+  from_side       TEXT NOT NULL DEFAULT 'right',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT frame_links_no_self CHECK (from_frame_id <> to_frame_id),
+  CONSTRAINT frame_links_uniq UNIQUE (from_frame_id, to_frame_id),
+  CONSTRAINT frame_links_side_check CHECK (from_side IN ('top', 'right', 'bottom', 'left'))
+);
+ALTER TABLE frame_links ADD COLUMN IF NOT EXISTS from_side TEXT NOT NULL DEFAULT 'right';
+CREATE INDEX IF NOT EXISTS idx_frame_links_project ON frame_links(project_id);
 `;
 
 let initialized: Promise<void> | null = null;

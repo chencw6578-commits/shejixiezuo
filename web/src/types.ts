@@ -157,6 +157,16 @@ export interface ProjectFrameRow {
   scale?: number | null;
 }
 
+/** 项目画布：两个画板之间的有向连线（from → to） */
+export interface FrameLink {
+  id: string;
+  from_frame_id: string;
+  to_frame_id: string;
+  /** 起点画板的出线方向：用户从哪个连接柄拖出 */
+  from_side?: 'top' | 'right' | 'bottom' | 'left';
+  created_at?: string;
+}
+
 /** 项目画板页里的编组（pages 表，属于某份设计稿） */
 export interface ProjectPageRow {
   id: string;
@@ -164,6 +174,8 @@ export interface ProjectPageRow {
   name: string;
   sort_order?: number;
   file_name?: string;
+  /** 父编组 ID（null/缺省 = 顶层编组）；支持「编组下再建编组」 */
+  parent_page_id?: string | null;
 }
 
 export interface SpecData {

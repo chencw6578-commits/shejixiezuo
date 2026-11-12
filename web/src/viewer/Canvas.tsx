@@ -19,6 +19,8 @@ interface Props {
   unit?: Unit;
   comments?: CommentItem[];
   commentMode?: boolean;
+  /** 吸管取色模式：光标十字、悬浮色值预览、点击吸取颜色 */
+  eyedropper?: boolean;
   onAddComment?: (draft: { x: number; y: number; nodeId?: string }, body: string) => Promise<void>;
   onOpenComment?: (id: string) => void;
 }
@@ -174,7 +176,7 @@ function insetMeasures(inner: Rect, outer: Rect): Measure[] {
 
 export default function Canvas({
   frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange, unit = 'px',
-  comments = [], commentMode = false, onAddComment, onOpenComment,
+  comments = [], commentMode = false, onAddComment, onOpenComment, eyedropper = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
@@ -199,6 +201,125 @@ export default function Canvas({
   const bg = canvasBgStyle(canvasBg);
   // 画板底图：插件导入时已经保存了 Figma 原生 exportAsync 的整板 PNG（含图片填充、图标、渐变）。
   // 节点矢量层只是 CSS 近似，还原不了这些，因此固定展示原图（无原图时回退到节点渲染）。
+
+  // ── 吸管取色 ────────────────────────────────────────────────
+  // 原图模式：把整板 PNG 画进离屏 canvas（按 src 缓存），点击处映射回自然像素取色；
+  // 无原图（纯 DOM 渲染）时回退浏览器原生 EyeDropper API（Chrome 95+）。
+  const [pickPreview, setPickPreview] = useState<{ x: number; y: number; hex: string } | null>(null);
+  const [picked, setPicked] = useState<{ x: number; y: number; hex: string; rgb: string } | null>(null);
+  const [copyOk, setCopyOk] = useState(false);
+  const sampleCanvasRef = useRef<{ src: string; canvas: HTMLCanvasElement } | null>(null);
+
+  /** 屏幕坐标 → 设计稿像素颜色。不在画板图内返回 null。 */
+  const sampleColorAt = useCallback((clientX: number, clientY: number): string | null => {
+    const img = containerRef.current?.querySelector<HTMLImageElement>('.artboard-img');
+    const ab = artboardRef.current;
+    if (!img || !ab || !img.complete || !img.naturalWidth) return null;
+    const rect = ab.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    // .artboard-img 是 object-fit: cover：按 cover 裁切公式映射回原图坐标
+    const scale = Math.max(rect.width / nw, rect.height / nh);
+    const ox = (rect.width - nw * scale) / 2;
+    const oy = (rect.height - nh * scale) / 2;
+    const sx = Math.floor((x - ox) / scale);
+    const sy = Math.floor((y - oy) / scale);
+    if (sx < 0 || sy < 0 || sx >= nw || sy >= nh) return null;
+    let entry = sampleCanvasRef.current;
+    if (!entry || entry.src !== img.currentSrc) {
+      const c = document.createElement('canvas');
+      c.width = nw;
+      c.height = nh;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+      entry = { src: img.currentSrc, canvas: c };
+      sampleCanvasRef.current = entry;
+    }
+    const data = (entry.canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(sx, sy, 1, 1).data;
+    return '#' + [data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }, []);
+
+  const toLocal = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current!.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }, []);
+
+  // 悬浮预览：吸管模式下鼠标移动实时显示所指像素的色值
+  const onEyeDropperMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!eyedropper) return;
+      const hex = sampleColorAt(e.clientX, e.clientY);
+      setPickPreview(hex ? { ...toLocal(e.clientX, e.clientY), hex } : null);
+    },
+    [eyedropper, sampleColorAt, toLocal]
+  );
+
+  const pickColor = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!showImageRef.current) {
+        // 无整板图：浏览器原生吸管（全屏幕取色，含 DOM 渲染层）
+        const Ctor = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
+        if (!Ctor) return;
+        new Ctor()
+          .open()
+          .then((r: { sRGBHex: string }) => {
+            const hex = r.sRGBHex.toLowerCase();
+            const n = parseInt(hex.slice(1), 16);
+            const p = toLocal(clientX, clientY);
+            setPicked({ ...p, hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}` });
+            void navigator.clipboard?.writeText(hex.toUpperCase()).catch(() => {});
+          })
+          .catch(() => { /* 用户取消 */ });
+        return;
+      }
+      const hex = sampleColorAt(clientX, clientY);
+      if (!hex) return;
+      const n = parseInt(hex.slice(1), 16);
+      setPicked({ ...toLocal(clientX, clientY), hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}` });
+      setPickPreview(null);
+      void navigator.clipboard?.writeText(hex.toUpperCase()).catch(() => {});
+    },
+    [sampleColorAt, toLocal]
+  );
+
+  const copyPicked = useCallback(() => {
+    if (!picked) return;
+    void navigator.clipboard?.writeText(picked.hex.toUpperCase()).then(() => {
+      setCopyOk(true);
+      window.setTimeout(() => setCopyOk(false), 1500);
+    }).catch(() => {});
+  }, [picked]);
+
+  // 退出吸管 / Esc：清掉预览与结果
+  useEffect(() => {
+    if (!eyedropper) {
+      setPickPreview(null);
+      setPicked(null);
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPicked(null);
+        setPickPreview(null);
+      }
+    };
+    // 点击卡片以外任意位置自动关闭（画布上点击会先关再由 onClick 取新色）
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest('.eyedropper-result')) return;
+      setPicked(null);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [eyedropper]);
+  // ──────────────────────────────────────────────────────────
 
   const setZoom = useCallback((z: number) => {
     z = clamp(z, MIN_ZOOM, MAX_ZOOM);
@@ -318,6 +439,8 @@ export default function Canvas({
   const dragMovedRef = useRef(false);
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    // 吸管模式：不做空白拖拽平移
+    if (eyedropper) return;
     panRef.current = { x: e.clientX, y: e.clientY };
     dragMovedRef.current = false;
   };
@@ -495,6 +618,8 @@ export default function Canvas({
   // 无节点数据时无条件用原图；有节点时也固定用原图（模式切换按钮已全部移除）。
   const showImage = hasThumb;
   const showVector = hasNodes && !showImage;
+  const showImageRef = useRef(showImage);
+  showImageRef.current = showImage;
   // 缩放是把每个坐标手动乘 zoom（.artboard 只有 translate，没有 transform: scale），
   // 所以标注层的 DOM / SVG 本身就是屏幕像素坐标系。以前按「外层 scale(zoom)」的假设
   // 用 1/zoom 反向补偿，结果 zoom 越大字号、描边越细 —— 即「越放大文字越小」。
@@ -523,12 +648,15 @@ export default function Canvas({
 
   return (
     <div
-      className={`canvas-container${spacePan ? ' space-pan' : ''} ${bg.className}`}
+      className={`canvas-container viewer-stage${spacePan ? ' space-pan' : ''}${eyedropper ? ' is-eyedropper' : ''} ${bg.className}`}
       ref={containerRef}
       style={bg.style}
       onPointerDown={onPointerDown}
+      onMouseMove={onEyeDropperMove}
       onDragStart={(e) => e.preventDefault()}
       onMouseDown={(e) => {
+        // 吸管模式：点击即取色，不取消选中、不触发其他行为
+        if (eyedropper) return;
         // 点击空白取消选中（拖拽后不触发）；空格平移模式下不触发；评论模式下改为在点击处起草评论
         if (spaceRef.current) return;
         const target = e.target as HTMLElement;
@@ -604,6 +732,11 @@ export default function Canvas({
               onClick={(e) => {
                 e.stopPropagation();
                 if (dragMovedRef.current || spaceRef.current) return;
+                // 吸管模式：点图层 = 取色，不选中
+                if (eyedropper) {
+                  pickColor(e.clientX, e.clientY);
+                  return;
+                }
                 if (commentMode) {
                   // 锚定到图层：钉在图层右上角
                   setDraft({ x: n.x + n.width, y: n.y, nodeId: n.node_id });
@@ -624,7 +757,7 @@ export default function Canvas({
               data-outline-w={hoverOutline.w} data-outline-h={hoverOutline.h}
               x={hoverOutline.rect.x * zoom} y={hoverOutline.rect.y * zoom}
               width={hoverOutline.rect.w * zoom} height={hoverOutline.rect.h * zoom}
-              fill="none" stroke="rgba(108, 76, 241, 0.45)" strokeWidth={lw}
+              fill="none" style={{ stroke: 'var(--measure)', strokeOpacity: 0.45 }} strokeWidth={lw}
             />
           )}
           {selectedOutline && (
@@ -633,7 +766,7 @@ export default function Canvas({
               data-outline-w={selectedOutline.w} data-outline-h={selectedOutline.h}
               x={selectedOutline.rect.x * zoom} y={selectedOutline.rect.y * zoom}
               width={selectedOutline.rect.w * zoom} height={selectedOutline.rect.h * zoom}
-              fill="none" stroke="#6c4cf1" strokeWidth={lw}
+              fill="none" style={{ stroke: 'var(--measure)' }} strokeWidth={lw}
             />
           )}
           {/* 距离引线统一品牌色，不再出现粉红/白底两套颜色 */}
@@ -643,7 +776,7 @@ export default function Canvas({
               data-gap-line={m.side}
               x1={m.x1 * zoom} y1={m.y1 * zoom}
               x2={m.x2 * zoom} y2={m.y2 * zoom}
-              stroke="#6c4cf1" strokeWidth={lw}
+              style={{ stroke: 'var(--measure)' }} strokeWidth={lw}
               strokeDasharray={`${4 * lw} ${3 * lw}`}
             />
           ))}
@@ -654,7 +787,7 @@ export default function Canvas({
               data-frame-gap-line={m.side}
               x1={m.x1 * zoom} y1={m.y1 * zoom}
               x2={m.x2 * zoom} y2={m.y2 * zoom}
-              stroke="#6c4cf1" strokeWidth={lw}
+              style={{ stroke: 'var(--measure)' }} strokeWidth={lw}
               strokeDasharray={`${4 * lw} ${3 * lw}`}
             />
           ))}
@@ -747,6 +880,11 @@ export default function Canvas({
                 title={`${c.author}：${c.body}`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  // 吸管模式：点评论钉点也取色，不打开评论抽屉
+                  if (eyedropper) {
+                    pickColor(e.clientX, e.clientY);
+                    return;
+                  }
                   onOpenComment?.(c.id);
                 }}
               >
@@ -791,6 +929,40 @@ export default function Canvas({
         <button onClick={fit} title="适应画布"><Maximize /><span>适应</span></button>
         <CanvasBgPicker token={canvasBg} onPick={pickCanvasBg} />
       </div>
+
+      {/* 吸管：悬浮色值预览（跟随光标，不挡操作） */}
+      {eyedropper && pickPreview && !picked && (
+        <div
+          className="eyedropper-preview"
+          data-eyedropper-preview
+          style={{ left: pickPreview.x + 16, top: pickPreview.y + 16 }}
+        >
+          <span className="eyedropper-swatch" style={{ background: pickPreview.hex }} />
+          <span className="mono">{pickPreview.hex.toUpperCase()}</span>
+        </div>
+      )}
+
+      {/* 吸管：取色结果卡（色块 + HEX/RGB + 复制） */}
+      {picked && (
+        <div
+          className="eyedropper-result"
+          data-eyedropper-result
+          style={{
+            left: Math.min(Math.max(picked.x - 40, 8), (containerRef.current?.clientWidth ?? 800) - 320),
+            top: Math.min(Math.max(picked.y + 18, 8), (containerRef.current?.clientHeight ?? 600) - 90),
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="eyedropper-swatch swatch-lg" style={{ background: picked.hex }} />
+          <div className="eyedropper-values">
+            <span className="mono">{picked.hex.toUpperCase()}</span>
+            <span className="dim mono">rgb({picked.rgb})</span>
+          </div>
+          <button className="eyedropper-copy" data-eyedropper-copy onClick={copyPicked}>
+            {copyOk ? '已复制' : '复制'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -33,8 +33,8 @@ function BrandMark() {
     <svg className="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="brand-mark-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#7d5ef7" />
-          <stop offset="1" stopColor="#5b3fe0" />
+          <stop offset="0" stopColor="#8ab4f8" />
+          <stop offset="1" stopColor="#0b57d0" />
         </linearGradient>
       </defs>
       <rect width="24" height="24" rx="6" fill="url(#brand-mark-g)" />
@@ -56,15 +56,15 @@ function ProjectMark() {
     <svg className="project-mark" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="project-mark-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8b6cff" />
-          <stop offset="1" stopColor="#5b3fe0" />
+          <stop offset="0" stopColor="#8ab4f8" />
+          <stop offset="1" stopColor="#0b57d0" />
         </linearGradient>
       </defs>
       <rect width="24" height="24" rx="6" fill="url(#project-mark-g)" />
       {/* 后层画板：半透明，示意项目内更多设计稿 */}
       <rect x="9.6" y="4.9" width="9.5" height="9.5" rx="1.8" fill="none" stroke="#fff" strokeWidth="1.5" opacity="0.45" />
       {/* 前层画板：实心填充遮住后层交叠部分，形成清晰的前后层叠 */}
-      <rect x="4.9" y="9.6" width="9.5" height="9.5" rx="1.8" fill="#6a4ff0" stroke="#fff" strokeWidth="1.7" />
+      <rect x="4.9" y="9.6" width="9.5" height="9.5" rx="1.8" fill="#1a73e8" stroke="#fff" strokeWidth="1.7" />
     </svg>
   );
 }
@@ -765,68 +765,8 @@ export default function HomePage() {
           </button>
         </div>
       )}
-      {/* 顶部状态栏：左侧上下文面包屑，右侧身份头像 */}
+      {/* 顶部状态栏：右侧身份头像（团队切换器已移入左侧栏顶部，侧栏从页面顶部贯通到底） */}
       <header className="home-topbar">
-        <details
-          className="team-switch topbar-team-switch"
-          ref={teamSwitchRef}
-          open={switchOpen}
-          onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
-        >
-          <summary title="切换团队">
-            <BrandMark />
-            <span className="team-switch-name">{activeTeamName ?? '当前团队'}</span>
-            <span className="caret"><ChevronDown /></span>
-          </summary>
-          <div className="team-switch-pop">
-            {teams.map((t) => {
-              const role = t.my_role ?? (t.id === activeTeam ? myRole : null);
-              return (
-                <div key={t.id} className={`team-switch-row ${activeTeam === t.id ? 'active' : ''}`}>
-                  <button
-                    type="button"
-                    className="team-switch-item"
-                    onClick={() => {
-                      switchTeam(t.id);
-                      setView('projects');
-                      setSwitchOpen(false);
-                    }}
-                  >
-                    {t.name}
-                  </button>
-                  {role && (
-                    <RowMenu
-                      className="team-row-menu"
-                      label={`团队 ${t.name}`}
-                      items={
-                        role === 'owner'
-                          ? [
-                              { label: '重命名', onClick: () => openRenameTeam(t) },
-                              { label: '移交所有权', onClick: () => void openTransferTeam(t.id, t.name) },
-                              { label: '删除团队', onClick: () => void removeCurrentTeam(t) },
-                            ]
-                          : role === 'admin'
-                            ? [
-                                { label: '重命名', onClick: () => openRenameTeam(t) },
-                                { label: '退出团队', onClick: () => void leaveCurrentTeam(t) },
-                              ]
-                            : [{ label: '退出团队', onClick: () => void leaveCurrentTeam(t) }]
-                      }
-                    />
-                  )}
-                </div>
-              );
-            })}
-            <button
-              type="button"
-              className="team-switch-create"
-              onClick={openCreateTeam}
-              title="创建新团队"
-            >
-              <Plus /> 新建团队
-            </button>
-          </div>
-        </details>
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
             <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
@@ -886,8 +826,68 @@ export default function HomePage() {
       </header>
 
       <div className="home-body">
-      {/* 左侧边栏：左上角团队切换下拉框 + 导航 */}
+      {/* 左侧边栏：顶部团队切换下拉框 + 导航，从页面顶部贯通到底 */}
       <aside className="home-sidebar">
+        <details
+          className="team-switch sidebar-team-switch"
+          ref={teamSwitchRef}
+          open={switchOpen}
+          onToggle={(e) => setSwitchOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary title="切换团队">
+            <BrandMark />
+            <span className="team-switch-name">{activeTeamName ?? '当前团队'}</span>
+            <span className="caret"><ChevronDown /></span>
+          </summary>
+          <div className="team-switch-pop">
+            {teams.map((t) => {
+              const role = t.my_role ?? (t.id === activeTeam ? myRole : null);
+              return (
+                <div key={t.id} className={`team-switch-row ${activeTeam === t.id ? 'active' : ''}`}>
+                  <button
+                    type="button"
+                    className="team-switch-item"
+                    onClick={() => {
+                      switchTeam(t.id);
+                      setView('projects');
+                      setSwitchOpen(false);
+                    }}
+                  >
+                    {t.name}
+                  </button>
+                  {role && (
+                    <RowMenu
+                      className="team-row-menu"
+                      label={`团队 ${t.name}`}
+                      items={
+                        role === 'owner'
+                          ? [
+                              { label: '重命名', onClick: () => openRenameTeam(t) },
+                              { label: '移交所有权', onClick: () => void openTransferTeam(t.id, t.name) },
+                              { label: '删除团队', onClick: () => void removeCurrentTeam(t) },
+                            ]
+                          : role === 'admin'
+                            ? [
+                                { label: '重命名', onClick: () => openRenameTeam(t) },
+                                { label: '退出团队', onClick: () => void leaveCurrentTeam(t) },
+                              ]
+                            : [{ label: '退出团队', onClick: () => void leaveCurrentTeam(t) }]
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="team-switch-create"
+              onClick={openCreateTeam}
+              title="创建新团队"
+            >
+              <Plus /> 新建团队
+            </button>
+          </div>
+        </details>
         <nav className="side-nav">
           <button
             className={`side-nav-item ${view === 'projects' ? 'active' : ''}`}
