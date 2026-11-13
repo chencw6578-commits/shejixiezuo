@@ -1228,8 +1228,12 @@ export default function ProjectCanvasPage() {
     api.reorderFrames(target.file_id, pageId, order).catch(persistFailed);
   };
 
-  /** 画板交互：连线模式下依次点两个画板完成连线；普通模式单击选中（Ctrl/⌘、Shift），双击进详情 */
-  const onFrameClick = (f: ProjectFrameRow, e: React.MouseEvent) => {
+  /**
+   * 画板交互：连线模式下依次点两个画板完成连线；普通模式单击选中（Ctrl/⌘、Shift），双击进详情。
+   * source 区分点击来源：画布是自由布局、画板没有稳定先后顺序，Shift 与 Ctrl/⌘ 一样做「逐个加选/取消」；
+   * 侧栏是有序列表，Shift 保留「连选一段」（selectRangeTo）。
+   */
+  const onFrameClick = (f: ProjectFrameRow, e: React.MouseEvent, source: 'canvas' | 'list') => {
     // 连线模式开启时，画板点击只用于连线：不选中、不拖动、不进详情
     if (linkMode && !readOnly) {
       e.preventDefault();
@@ -1259,6 +1263,12 @@ export default function ProjectCanvasPage() {
       return;
     }
     if (draggedRef.current || dragMovedRef.current || spaceRef.current) return;
+    // 画布：Shift 与 Ctrl/⌘ 同为加选/取消（自由摆放的画板按侧栏顺序连选会退化成单选）
+    if (e.shiftKey && source === 'canvas') {
+      e.preventDefault();
+      toggleSelect(f.id);
+      return;
+    }
     if (e.shiftKey) {
       e.preventDefault();
       selectRangeTo(f.id);
@@ -2304,7 +2314,7 @@ export default function ProjectCanvasPage() {
       draggable={!readOnly}
       onClick={(e) => {
         setDrawer('none');
-        onFrameClick(f, e);
+        onFrameClick(f, e, 'list');
       }}
       onContextMenu={(e) => openCtxMenu(f, e)}
       onDoubleClick={(e) => onFrameDoubleClick(f, e)}
@@ -2878,9 +2888,9 @@ export default function ProjectCanvasPage() {
                   width: f.width * zoom,
                   height: f.height * zoom,
                 }}
-                title={`${f.file_name} / ${f.name}（拖动可任意摆放，双击打开，Ctrl/⌘ 多选，方向键微调，框选后按 Delete 删除）`}
+                title={`${f.file_name} / ${f.name}（拖动可任意摆放，双击打开，Shift / Ctrl/⌘ 点击多选，方向键微调，框选后按 Delete 删除）`}
                 onPointerDown={(e) => beginFrameDrag(f, e)}
-                onClick={(e) => onFrameClick(f, e)}
+                onClick={(e) => onFrameClick(f, e, 'canvas')}
                 onContextMenu={(e) => openCtxMenu(f, e)}
                 onDoubleClick={(e) => onFrameDoubleClick(f, e)}
               >

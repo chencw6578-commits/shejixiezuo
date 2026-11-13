@@ -4,6 +4,7 @@ import type { FrameDetail, LayerNode, ParsedColor } from '../types';
 import { api } from '../api';
 import { EXPORT_SCALES, PLATFORM_LABEL, type PlatformId } from './devices';
 import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
+import { parseGradientCss } from './gradient';
 import { metricToPx, renderable } from './textMetric';
 import type { Unit } from '../unit';
 
@@ -300,13 +301,32 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           <h3>填充</h3>
           {p.fills.filter((f) => f.visible).map((f, i) => {
             if (f.type === 'solid' && f.color) return <ColorRow key={i} color={f.color} />;
-            if (f.type === 'gradient')
+            if (f.type === 'gradient') {
+              const grad = parseGradientCss(f.css);
               return (
-                <div key={i} className="fill-row">
-                  <span className="swatch swatch-lg" style={{ background: typeof f.css === 'string' ? f.css : undefined }} />
-                  <span className="dim">渐变</span>
+                <div key={i} className="grad-fill">
+                  <div className="fill-row">
+                    <span className="swatch swatch-lg" style={{ background: grad?.css ?? (typeof f.css === 'string' ? f.css : undefined) }} />
+                    <span className="dim">
+                      {grad?.kind === 'radial' ? '径向渐变' : '线性渐变'}
+                      {grad?.angle !== null && grad?.angle !== undefined ? ` · ${grad.angle}°` : ''}
+                    </span>
+                  </div>
+                  {grad && (
+                    <div className="grad-stop-list">
+                      {grad.stops.map((s, j) => (
+                        <CopyChip key={j} text={s.cssValue}>
+                          <span className="grad-stop-dot" style={{ background: s.cssValue }} />
+                          <span className="mono">{s.hex}</span>
+                          <span className="dim">{Math.round(s.pos)}%</span>
+                        </CopyChip>
+                      ))}
+                      <CopyChip text={grad.css}><span className="dim">复制 CSS ↗</span></CopyChip>
+                    </div>
+                  )}
                 </div>
               );
+            }
             if (f.type === 'image')
               return (
                 <div key={i} className="fill-row">

@@ -12,3 +12,6 @@ web/dist/
 *.tsbuildinfo
 /*.png
 outbox/
+.neon
+.env.local
+web/public/figma-plugin.zip

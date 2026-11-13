@@ -2,7 +2,7 @@
  * MCP JSON-RPC 核心：HTTP（/mcp）与 stdio 两种传输共用。
  * 实现 initialize / tools/list / tools/call / ping，协议版本 2024-11-05。
  */
-import { callTool, toolList } from './tools.js';
+import { callTool, toolList, type McpCtx, EMPTY_CTX } from './tools.js';
 
 const PROTOCOL_VERSION = '2024-11-05';
 
@@ -37,7 +37,10 @@ function err(id: RpcRequest['id'], code: number, message: string): RpcResponse {
  * 处理一条 JSON-RPC 消息。
  * 返回 null 表示是通知（无需响应）；否则返回响应对象。
  */
-export async function handleRpcMessage(msg: RpcRequest): Promise<RpcResponse | null> {
+export async function handleRpcMessage(
+  msg: RpcRequest,
+  ctx: McpCtx = EMPTY_CTX
+): Promise<RpcResponse | null> {
   const { id, method, params } = msg;
   switch (method) {
     case 'initialize':
@@ -63,7 +66,7 @@ export async function handleRpcMessage(msg: RpcRequest): Promise<RpcResponse | n
     case 'tools/call': {
       const name = String((params as { name?: string } | undefined)?.name ?? '');
       const args = ((params as { arguments?: Record<string, unknown> } | undefined)?.arguments) ?? {};
-      const result = await callTool(name, args);
+      const result = await callTool(name, args, ctx);
       return ok(id, result);
     }
     case 'resources/list':

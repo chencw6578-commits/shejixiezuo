@@ -19,6 +19,13 @@ interface ToolResult {
   isError?: boolean;
 }
 
+/** MCP 请求上下文：由 HTTP 路由从 Bearer 令牌解析出团队范围。stdio 本地模式为全开。 */
+export interface McpCtx {
+  teamId: string | null;
+  scope: 'all' | 'team';
+}
+export const EMPTY_CTX: McpCtx = { teamId: null, scope: 'all' };
+
 const json = (v: unknown): ToolResult => ({
   content: [{ type: 'text', text: JSON.stringify(v, null, 1) }],
 });
@@ -324,7 +331,7 @@ export interface McpTool {
     properties: Record<string, unknown>;
     required?: string[];
   };
-  run(args: Record<string, unknown>): Promise<ToolResult>;
+  run(args: Record<string, unknown>, ctx: McpCtx): Promise<ToolResult>;
 }
 
 const need = (v: unknown, name: string): string => {
@@ -332,16 +339,29 @@ const need = (v: unknown, name: string): string => {
   return v;
 };
 
+/** 团队范围收敛：当令牌 scope=team 时，设计稿必须属于该团队，否则拒绝。 */
+async function assertScope(fileId: string, ctx: McpCtx): Promise<void> {
+  if (ctx.scope !== 'team' || !ctx.teamId) return;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM design_files df JOIN projects p ON p.id = df.project_id
+     WHERE df.id = $1 AND p.team_id = $2 LIMIT 1`,
+    [fileId, ctx.teamId]
+  );
+  if (!rows[0]) throw new Error('无权访问该设计稿：超出导入令牌的团队范围');
+}
+
 export const TOOLS: McpTool[] = [
   {
     name: 'list_projects',
     description: '列出所有项目（团队 → 项目 → 设计稿），返回项目 id、名称与设计稿数量。开发前先从这里拿 projectId。',
     inputSchema: { type: 'object', properties: {} },
-    async run() {
+    async run(_args, ctx) {
       const { rows } = await pool.query(
         `SELECT p.id, p.name, count(f.id) AS file_count
          FROM projects p LEFT JOIN design_files f ON f.project_id = p.id
-         GROUP BY p.id ORDER BY p.created_at`
+         WHERE ($1::uuid IS NULL OR p.team_id = $1)
+         GROUP BY p.id ORDER BY p.created_at`,
+        [ctx.teamId]
       );
       return json(rows);
     },
@@ -354,10 +374,13 @@ export const TOOLS: McpTool[] = [
       properties: { projectId: str('项目 id，来自 list_projects') },
       required: ['projectId'],
     },
-    async run(args) {
+    async run(args, ctx) {
       const { rows } = await pool.query(
-        'SELECT id, name, source, version, status FROM design_files WHERE project_id = $1 ORDER BY created_at',
-        [need(args.projectId, 'projectId')]
+        `SELECT df.id, df.name, df.source, df.version, df.status
+         FROM design_files df JOIN projects p ON p.id = df.project_id
+         WHERE df.project_id = $1 AND ($2::uuid IS NULL OR p.team_id = $2)
+         ORDER BY df.created_at`,
+        [need(args.projectId, 'projectId'), ctx.teamId]
       );
       return json(rows);
     },
@@ -386,7 +409,7 @@ export const TOOLS: McpTool[] = [
       properties: { frameId: str('画板 id，来自 list_frames') },
       required: ['frameId'],
     },
-    async run(args) {
+    async run(args, ctx) {
       const frameId = need(args.frameId, 'frameId');
       const meta = (
         await pool.query<{ file_id: string; name: string; width: number; height: number; node_id: string }>(
@@ -395,6 +418,7 @@ export const TOOLS: McpTool[] = [
         )
       ).rows[0];
       if (!meta) return text(`画板不存在: ${frameId}`, true);
+      await assertScope(meta.file_id, ctx);
       const rows = await frameNodes(meta.file_id, frameId);
       return json({
         frame: { id: frameId, name: meta.name, width: meta.width, height: meta.height },
@@ -415,12 +439,13 @@ export const TOOLS: McpTool[] = [
       },
       required: ['frameId'],
     },
-    async run(args) {
+    async run(args, ctx) {
       const frameId = need(args.frameId, 'frameId');
       const meta = (
         await pool.query<{ file_id: string }>('SELECT file_id FROM frames WHERE id = $1', [frameId])
       ).rows[0];
       if (!meta) return text(`画板不存在: ${frameId}`, true);
+      await assertScope(meta.file_id, ctx);
       const rows = await frameNodes(meta.file_id, frameId);
       const nodeId = typeof args.nodeId === 'string' ? args.nodeId : '';
       const nodeName = typeof args.nodeName === 'string' ? args.nodeName.trim() : '';
@@ -451,8 +476,10 @@ export const TOOLS: McpTool[] = [
       properties: { fileId: str('设计稿 id，来自 list_files') },
       required: ['fileId'],
     },
-    async run(args) {
-      return designTokens(need(args.fileId, 'fileId'));
+    async run(args, ctx) {
+      const fileId = need(args.fileId, 'fileId');
+      await assertScope(fileId, ctx);
+      return designTokens(fileId);
     },
   },
   {
@@ -468,8 +495,13 @@ export const TOOLS: McpTool[] = [
       },
       required: ['frameId'],
     },
-    async run(args) {
+    async run(args, ctx) {
       const frameId = need(args.frameId, 'frameId');
+      const fm = (
+        await pool.query<{ file_id: string }>('SELECT file_id FROM frames WHERE id = $1', [frameId])
+      ).rows[0];
+      if (!fm) return text(`画板不存在: ${frameId}`, true);
+      await assertScope(fm.file_id, ctx);
       const scale = Math.min(4, Math.max(1, Number(args.scale) || 2));
       if (typeof args.nodeId === 'string' && args.nodeId) {
         return sliceImage(frameId, args.nodeId, scale);
@@ -479,11 +511,15 @@ export const TOOLS: McpTool[] = [
   },
 ];
 
-export async function callTool(name: string, args: Record<string, unknown>): Promise<ToolResult> {
+export async function callTool(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: McpCtx = EMPTY_CTX
+): Promise<ToolResult> {
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool) return text(`未知工具: ${name}`, true);
   try {
-    return await tool.run(args ?? {});
+    return await tool.run(args ?? {}, ctx);
   } catch (err) {
     return text(err instanceof Error ? err.message : String(err), true);
   }

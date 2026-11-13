@@ -5,6 +5,7 @@ import type { Unit } from '../unit';
 import { canvasBgStyle, useCanvasBg } from '../canvasBg';
 import CanvasBgPicker from '../components/CanvasBgPicker';
 import { metricToPx } from './textMetric';
+import { analyzeGradientPixels, gradientHexList, parseGradientCss, type GradientInfo } from './gradient';
 import { Maximize, Minus, Plus } from '../components/icons';
 
 interface Props {
@@ -205,13 +206,17 @@ export default function Canvas({
   // ── 吸管取色 ────────────────────────────────────────────────
   // 原图模式：把整板 PNG 画进离屏 canvas（按 src 缓存），点击处映射回自然像素取色；
   // 无原图（纯 DOM 渲染）时回退浏览器原生 EyeDropper API（Chrome 95+）。
-  const [pickPreview, setPickPreview] = useState<{ x: number; y: number; hex: string } | null>(null);
-  const [picked, setPicked] = useState<{ x: number; y: number; hex: string; rgb: string } | null>(null);
-  const [copyOk, setCopyOk] = useState(false);
+  const [pickPreview, setPickPreview] = useState<{ x: number; y: number; hex: string; isGradient: boolean } | null>(null);
+  const [picked, setPicked] = useState<{
+    x: number; y: number; hex: string; rgb: string; gradient: GradientInfo | null;
+  } | null>(null);
+  const [copyKey, setCopyKey] = useState<string | null>(null);
   const sampleCanvasRef = useRef<{ src: string; canvas: HTMLCanvasElement } | null>(null);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
 
-  /** 屏幕坐标 → 设计稿像素颜色。不在画板图内返回 null。 */
-  const sampleColorAt = useCallback((clientX: number, clientY: number): string | null => {
+  /** 屏幕坐标 → 整板原图像素坐标 + 离屏 canvas。不在画板图内返回 null。 */
+  const getSamplePoint = useCallback((clientX: number, clientY: number) => {
     const img = containerRef.current?.querySelector<HTMLImageElement>('.artboard-img');
     const ab = artboardRef.current;
     if (!img || !ab || !img.complete || !img.naturalWidth) return null;
@@ -238,8 +243,35 @@ export default function Canvas({
       entry = { src: img.currentSrc, canvas: c };
       sampleCanvasRef.current = entry;
     }
-    const data = (entry.canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(sx, sy, 1, 1).data;
+    const ctx = entry.canvas.getContext('2d') as CanvasRenderingContext2D | null;
+    if (!ctx) return null;
+    return { ctx, sx, sy, nw, nh };
+  }, []);
+
+  /** 屏幕坐标 → 设计稿像素颜色。 */
+  const sampleColorAt = useCallback((clientX: number, clientY: number): string | null => {
+    const p = getSamplePoint(clientX, clientY);
+    if (!p) return null;
+    const data = p.ctx.getImageData(p.sx, p.sy, 1, 1).data;
     return '#' + [data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }, [getSamplePoint]);
+
+  /** 优先取图层里导入的渐变定义（Figma / Sketch 原始数据，非推测）。 */
+  const findLayerGradientAt = useCallback((clientX: number, clientY: number): GradientInfo | null => {
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const hz = el?.closest('.hotzone[data-node-id]') as HTMLElement | null;
+    const id = hz?.dataset.nodeId;
+    if (!id) return null;
+    const node = nodesRef.current.find((v) => v.node_id === id);
+    const fill = node?.props?.fills?.find((f) => f.visible && f.type === 'gradient' && typeof f.css === 'string');
+    return fill ? parseGradientCss(fill.css) : null;
+  }, []);
+
+  const copyText = useCallback((text: string, key: string) => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopyKey(key);
+      window.setTimeout(() => setCopyKey((cur) => (cur === key ? null : cur)), 1500);
+    }).catch(() => {});
   }, []);
 
   const toLocal = useCallback((clientX: number, clientY: number) => {
@@ -247,14 +279,15 @@ export default function Canvas({
     return { x: clientX - rect.left, y: clientY - rect.top };
   }, []);
 
-  // 悬浮预览：吸管模式下鼠标移动实时显示所指像素的色值
+  // 悬浮预览：吸管模式下鼠标移动实时显示所指像素的色值；命中渐变图层时给出「渐变」提示
   const onEyeDropperMove = useCallback(
     (e: React.MouseEvent) => {
       if (!eyedropper) return;
       const hex = sampleColorAt(e.clientX, e.clientY);
-      setPickPreview(hex ? { ...toLocal(e.clientX, e.clientY), hex } : null);
+      const isGradient = !!findLayerGradientAt(e.clientX, e.clientY);
+      setPickPreview(hex ? { ...toLocal(e.clientX, e.clientY), hex, isGradient } : null);
     },
-    [eyedropper, sampleColorAt, toLocal]
+    [eyedropper, sampleColorAt, toLocal, findLayerGradientAt]
   );
 
   const pickColor = useCallback(
@@ -269,7 +302,7 @@ export default function Canvas({
             const hex = r.sRGBHex.toLowerCase();
             const n = parseInt(hex.slice(1), 16);
             const p = toLocal(clientX, clientY);
-            setPicked({ ...p, hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}` });
+            setPicked({ ...p, hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`, gradient: null });
             void navigator.clipboard?.writeText(hex.toUpperCase()).catch(() => {});
           })
           .catch(() => { /* 用户取消 */ });
@@ -277,21 +310,25 @@ export default function Canvas({
       }
       const hex = sampleColorAt(clientX, clientY);
       if (!hex) return;
+      // ① 图层渐变定义（权威） ② 兜底：整板图局部像素拟合，识别无图层数据时的渐变
+      let gradient = findLayerGradientAt(clientX, clientY);
+      if (!gradient) {
+        const p = getSamplePoint(clientX, clientY);
+        if (p) gradient = analyzeGradientPixels(p.ctx, p.nw, p.nh, p.sx, p.sy, 20);
+      }
       const n = parseInt(hex.slice(1), 16);
-      setPicked({ ...toLocal(clientX, clientY), hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}` });
+      setPicked({
+        ...toLocal(clientX, clientY), hex,
+        rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`,
+        gradient,
+      });
       setPickPreview(null);
-      void navigator.clipboard?.writeText(hex.toUpperCase()).catch(() => {});
+      // 识别到渐变 → 默认复制整段 CSS；纯色 → 保持原来的「复制点击处 HEX」
+      // 用独立的 'auto' 标记，避免一弹出结果卡就把「复制 CSS」按钮文案顶掉
+      copyText(gradient ? gradient.css : hex.toUpperCase(), 'auto');
     },
-    [sampleColorAt, toLocal]
+    [sampleColorAt, toLocal, getSamplePoint, findLayerGradientAt, copyText]
   );
-
-  const copyPicked = useCallback(() => {
-    if (!picked) return;
-    void navigator.clipboard?.writeText(picked.hex.toUpperCase()).then(() => {
-      setCopyOk(true);
-      window.setTimeout(() => setCopyOk(false), 1500);
-    }).catch(() => {});
-  }, [picked]);
 
   // 退出吸管 / Esc：清掉预览与结果
   useEffect(() => {
@@ -677,6 +714,11 @@ export default function Canvas({
         ref={artboardRef}
         onMouseMove={onArtboardMouseMove}
         onMouseLeave={() => { if (frameEdgeHover) setFrameEdgeHover(false); }}
+        onClick={(e) => {
+          // 吸管模式下，点击未被图层热区 / 评论钉点覆盖的画板空白与图片区域，同样取色
+          if (!eyedropper || dragMovedRef.current || spaceRef.current) return;
+          pickColor(e.clientX, e.clientY);
+        }}
       >
         {showImage && (
           /* 原图模式：直接用导入时保存的整板 PNG，与画板列表缩略图同源，完整还原设计稿 */
@@ -939,28 +981,69 @@ export default function Canvas({
         >
           <span className="eyedropper-swatch" style={{ background: pickPreview.hex }} />
           <span className="mono">{pickPreview.hex.toUpperCase()}</span>
+          {pickPreview.isGradient && <span className="grad-hint">渐变</span>}
         </div>
       )}
 
-      {/* 吸管：取色结果卡（色块 + HEX/RGB + 复制） */}
+      {/* 吸管：取色结果卡（当前点色 + 渐变色标 + 复制色号/CSS） */}
       {picked && (
         <div
           className="eyedropper-result"
           data-eyedropper-result
           style={{
-            left: Math.min(Math.max(picked.x - 40, 8), (containerRef.current?.clientWidth ?? 800) - 320),
-            top: Math.min(Math.max(picked.y + 18, 8), (containerRef.current?.clientHeight ?? 600) - 90),
+            left: Math.min(Math.max(picked.x - 40, 8), (containerRef.current?.clientWidth ?? 800) - 360),
+            top: Math.min(Math.max(picked.y + 18, 8), (containerRef.current?.clientHeight ?? 600) - 280),
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="eyedropper-swatch swatch-lg" style={{ background: picked.hex }} />
-          <div className="eyedropper-values">
-            <span className="mono">{picked.hex.toUpperCase()}</span>
-            <span className="dim mono">rgb({picked.rgb})</span>
+          <div className="eyedropper-main">
+            <span className="eyedropper-swatch swatch-lg" style={{ background: picked.hex }} />
+            <div className="eyedropper-values">
+              <span className="mono">{picked.hex.toUpperCase()}</span>
+              <span className="dim mono">rgb({picked.rgb})</span>
+            </div>
+            <button className="eyedropper-copy" data-eyedropper-copy onClick={() => copyText(picked.hex.toUpperCase(), 'hex')}>
+              {copyKey === 'hex' ? '已复制' : '复制 HEX'}
+            </button>
           </div>
-          <button className="eyedropper-copy" data-eyedropper-copy onClick={copyPicked}>
-            {copyOk ? '已复制' : '复制'}
-          </button>
+
+          {picked.gradient && (
+            <div className="eyedropper-gradient" data-eyedropper-gradient>
+              <div className="eyedropper-gradient-head">
+                <span className="grad-badge">{picked.gradient.kind === 'radial' ? '径向渐变' : '线性渐变'}</span>
+                <span className="dim">
+                  {picked.gradient.angle !== null ? `${picked.gradient.angle}° · ` : ''}
+                  {picked.gradient.source === 'layer' ? '图层定义' : `像素识别 R²=${picked.gradient.confidence}`}
+                </span>
+                {copyKey === 'auto' && <span className="grad-ok">已自动复制 CSS ✓</span>}
+              </div>
+              <div className="eyedropper-gradient-bar" style={{ background: picked.gradient.css }} />
+              <div className="grad-stop-list">
+                {picked.gradient.stops.map((s, i) => (
+                  <button
+                    key={i}
+                    className="grad-copy-chip"
+                    data-grad-stop={i}
+                    title={`复制 ${s.cssValue}`}
+                    onClick={() => copyText(s.cssValue, `stop-${i}`)}
+                  >
+                    <span className="grad-stop-dot" style={{ background: s.cssValue }} />
+                    <span className="mono">{s.hex}</span>
+                    <span className="dim">{Math.round(s.pos)}%</span>
+                    {copyKey === `stop-${i}` && <span className="grad-ok">✓</span>}
+                  </button>
+                ))}
+              </div>
+              <div className="eyedropper-gradient-actions">
+                <button data-copy-stops onClick={() => copyText(gradientHexList(picked.gradient!), 'stops')}>
+                  {copyKey === 'stops' ? '已复制 ✓' : '复制色号'}
+                </button>
+                <button data-copy-css onClick={() => copyText(picked.gradient!.css, 'css')}>
+                  {copyKey === 'css' ? '已复制 ✓' : '复制 CSS'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

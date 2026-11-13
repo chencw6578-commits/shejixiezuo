@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
-import { ChevronDown, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
+import { ChevronDown, Download, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 import { canvasBgColor, isDarkCanvas, readCanvasBg } from '../canvasBg';
 import RowMenu from '../components/RowMenu';
@@ -31,13 +31,7 @@ type View = 'projects' | 'members';
 function BrandMark() {
   return (
     <svg className="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id="brand-mark-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8ab4f8" />
-          <stop offset="1" stopColor="#0b57d0" />
-        </linearGradient>
-      </defs>
-      <rect width="24" height="24" rx="6" fill="url(#brand-mark-g)" />
+      <rect width="24" height="24" rx="6" fill="var(--brand-600)" />
       {/* 画板：设计载体 */}
       <rect x="4" y="4.5" width="11.5" height="11.5" rx="2" fill="none" stroke="#fff" strokeWidth="1.7" />
       {/* 画板内容示意线 */}
@@ -54,17 +48,11 @@ function BrandMark() {
 function ProjectMark() {
   return (
     <svg className="project-mark" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id="project-mark-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8ab4f8" />
-          <stop offset="1" stopColor="#0b57d0" />
-        </linearGradient>
-      </defs>
-      <rect width="24" height="24" rx="6" fill="url(#project-mark-g)" />
+      <rect width="24" height="24" rx="6" fill="var(--brand-600)" />
       {/* 后层画板：半透明，示意项目内更多设计稿 */}
       <rect x="9.6" y="4.9" width="9.5" height="9.5" rx="1.8" fill="none" stroke="#fff" strokeWidth="1.5" opacity="0.45" />
       {/* 前层画板：实心填充遮住后层交叠部分，形成清晰的前后层叠 */}
-      <rect x="4.9" y="9.6" width="9.5" height="9.5" rx="1.8" fill="#1a73e8" stroke="#fff" strokeWidth="1.7" />
+      <rect x="4.9" y="9.6" width="9.5" height="9.5" rx="1.8" fill="var(--brand-600)" stroke="#fff" strokeWidth="1.7" />
     </svg>
   );
 }
@@ -160,6 +148,8 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   // 项目列表 Tab：全部项目 / 最近使用 / 最近更新
   const [projectTab, setProjectTab] = useState<ProjectTab>('all');
+  // 项目搜索：按名称过滤（纯前端，不改接口与项目数据）
+  const [projectQuery, setProjectQuery] = useState('');
   // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [memberEmail, setMemberEmail] = useState('');
@@ -316,6 +306,13 @@ export default function HomePage() {
     return projects;
   }, [projectTab, projects]);
 
+  // 在 Tab 过滤/排序之后，再按名称搜索过滤（不改动接口与原始 projects 数据）
+  const filteredProjects = useMemo(() => {
+    const q = projectQuery.trim().toLowerCase();
+    if (!q) return visibleProjects;
+    return visibleProjects.filter((p) => (p.name ?? '').toLowerCase().includes(q));
+  }, [visibleProjects, projectQuery]);
+
   useEffect(loadTeams, [loadTeams]);
 
   // 团队上下文以 URL 的 ?team= 为准：URL → state 单向同步（前进/后退/直开链接都走这里）。
@@ -417,6 +414,31 @@ export default function HomePage() {
       setError('');
     } catch {
       setError('复制失败：请手动选中令牌文本复制');
+    }
+  };
+
+  // MCP 接入配置（HTTP 传输，与 Figma 插件共用同一套导入令牌）
+  const mcpEndpoint =
+    typeof window !== 'undefined' ? `${window.location.origin}/mcp` : '/mcp';
+  const mcpConfigText = JSON.stringify(
+    {
+      mcpServers: {
+        shejixiezuo: {
+          type: 'http',
+          url: mcpEndpoint,
+          headers: { Authorization: `Bearer ${newToken || '<你的导入令牌>'}` },
+        },
+      },
+    },
+    null,
+    2
+  );
+  const copyMcpConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(mcpConfigText);
+      setError('');
+    } catch {
+      setError('复制失败：请手动选中配置文本复制');
     }
   };
 
@@ -765,8 +787,16 @@ export default function HomePage() {
           </button>
         </div>
       )}
-      {/* 顶部状态栏：右侧身份头像（团队切换器已移入左侧栏顶部，侧栏从页面顶部贯通到底） */}
+      {/* 顶部状态栏：左侧 Figma 插件下载入口 + 右侧身份头像（团队切换器已移入左侧栏顶部，侧栏从页面顶部贯通到底） */}
       <header className="home-topbar">
+        <a
+          className="topbar-action figma-plugin-download"
+          href="/figma-plugin.zip"
+          download="figma-plugin.zip"
+          title="下载 Figma 插件：解压后，在 Figma 桌面端 Plugins → Development → Import plugin from manifest… 选择解压出的 manifest.json，之后粘贴网站生成的导入令牌即可使用"
+        >
+          <Download size={15} /> 下载 Figma 插件
+        </a>
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
             <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
@@ -889,12 +919,15 @@ export default function HomePage() {
           </div>
         </details>
         <nav className="side-nav">
+          {/* 分区小标题（纯视觉）：对应 AI Studio 侧栏的 EXPLORE / MANAGE 分组 */}
+          <div className="side-nav-label">工作区</div>
           <button
             className={`side-nav-item ${view === 'projects' ? 'active' : ''}`}
             onClick={() => setView('projects')}
           >
             <Folder /> 项目
           </button>
+          <div className="side-nav-label">管理</div>
           <button
             className={`side-nav-item ${view === 'members' ? 'active' : ''}`}
             onClick={() => setView('members')}
@@ -913,6 +946,27 @@ export default function HomePage() {
                 <div className="view-header-row">
                   <div className="view-header-text">
                     <h1>项目</h1>
+                  </div>
+                  <div className="project-search">
+                    <Search size={15} />
+                    <input
+                      type="search"
+                      value={projectQuery}
+                      onChange={(e) => setProjectQuery(e.target.value)}
+                      placeholder="搜索项目名称"
+                      aria-label="搜索项目"
+                    />
+                    {projectQuery && (
+                      <button
+                        type="button"
+                        className="project-search-clear"
+                        onClick={() => setProjectQuery('')}
+                        title="清空搜索"
+                        aria-label="清空搜索"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
                   <button type="button" className="new-project-btn" onClick={openCreateProject}>
                     <Plus /> 新建项目
@@ -948,7 +1002,19 @@ export default function HomePage() {
                     {projectTab === 'viewed' ? '暂无浏览记录，进入项目后会出现在这里' : '暂无项目'}
                   </p>
                 )}
-                {visibleProjects.map((p) => (
+                {visibleProjects.length > 0 && filteredProjects.length === 0 && (
+                  <p className="empty">
+                    没有匹配「{projectQuery.trim()}」的项目
+                    <button
+                      type="button"
+                      className="member-filter-reset"
+                      onClick={() => setProjectQuery('')}
+                    >
+                      清空搜索
+                    </button>
+                  </p>
+                )}
+                {filteredProjects.map((p) => (
                   <li key={p.id} className="project-card-wrap">
                     <button
                       className="file-card project-card"
@@ -1066,6 +1132,14 @@ export default function HomePage() {
                 <p className="empty">你是协作者身份，仅可查看设计稿；邀请与管理成员需要管理员权限</p>
               )}
 
+              {/* AI Studio 风格列表表头：纯展示文字，与成员行共用同一栅格，不承载任何交互 */}
+              {members.length > 0 && (
+                <div className="member-list-head" aria-hidden="true">
+                  <span className="mh-name">成员</span>
+                  <span className="mh-role">身份</span>
+                  <span className="mh-actions">操作</span>
+                </div>
+              )}
               <ul className="member-list">
                 {members.length === 0 && <p className="empty">还没有成员，点击右上角「邀请成员」邀请第一个吧</p>}
                 {members.length > 0 && filteredMembers.length === 0 && (
@@ -1365,6 +1439,51 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
+            </section>
+
+            <section className="settings-section mcp-connect">
+              <div className="settings-head">
+                <div>
+                  <h3>MCP 接入（让 AI 直接读设计稿开发）</h3>
+                  <p className="dim small">
+                    用同一个「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
+                    按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。
+                  </p>
+                </div>
+              </div>
+
+              <div className="mcp-step">
+                <span className="mcp-step-no">1</span>
+                <div>
+                  <p>在上方「令牌列表」点 <b>生成导入令牌</b>（范围选「全部团队」或当前团队），复制明文令牌（只显示一次）。</p>
+                </div>
+              </div>
+              <div className="mcp-step">
+                <span className="mcp-step-no">2</span>
+                <div>
+                  <p>把下面这段配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。</p>
+                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌取自上方刚生成的明文（未生成时留占位符）。</p>
+                </div>
+              </div>
+              <div className="mcp-step">
+                <span className="mcp-step-no">3</span>
+                <div>
+                  <p>在 AI 工具里用 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿到规格与 CSS 进行开发。</p>
+                </div>
+              </div>
+
+              <div className="mcp-config">
+                <pre><code>{mcpConfigText}</code></pre>
+                <button type="button" className="ghost-btn" onClick={() => void copyMcpConfig()}>复制配置</button>
+              </div>
+
+              <div className="mcp-clients">
+                <span className="dim small">适用客户端：</span>
+                <span className="role-badge collaborator">Cursor</span>
+                <span className="role-badge collaborator">Claude Desktop</span>
+                <span className="role-badge collaborator">Cline</span>
+                <span className="role-badge collaborator">WorkBuddy</span>
+              </div>
             </section>
           </div>
         </div>

@@ -1,12 +1,17 @@
 /**
  * MCP stdio 传输：供 Claude Desktop / Cursor 等本地 AI 工具以子进程方式连接。
  *
- * 配置示例（claude_desktop_config.json）：
+ * 启动（仓库根目录下）：
+ *   npm --prefix server run mcp:stdio
+ * 或在 server/ 目录直接：npm run mcp:stdio
+ *
+ * 配置示例（claude_desktop_config.json / .cursor/mcp.json）：
  * {
  *   "mcpServers": {
- *     "designhub": { "command": "npx", "args": ["tsx", "/workspace/server/src/mcp/stdio.ts"] }
+ *     "designhub": { "command": "npx", "args": ["tsx", "server/src/mcp/stdio.ts"] }
  *   }
  * }
+ * 注：stdio 模式为本地全开（不鉴权），与 HTTP 模式共用同一套工具实现。
  */
 import { createInterface } from 'node:readline';
 import { handleRpcMessage } from './handler.js';

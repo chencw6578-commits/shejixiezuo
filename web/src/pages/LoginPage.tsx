@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
+import { BRAND_NAME, BRAND_TAGLINE, BrandMark } from '../components/BrandLogo';
 
 /** 登录 / 注册双模式卡片页。登录成功后回到来源页或首页。 */
 export default function LoginPage() {
@@ -79,9 +80,9 @@ export default function LoginPage() {
     <div className="auth-wrap">
       <div className="auth-card">
         <div className="auth-brand">
-          <span className="logo">✦</span>
-          <strong>Design Handoff</strong>
-          <p>设计协作与交付平台</p>
+          <BrandMark size={46} className="auth-brand-mark" />
+          <strong className="auth-brand-name">{BRAND_NAME}</strong>
+          <p className="auth-brand-tagline">{BRAND_TAGLINE}</p>
         </div>
 
         <div className="auth-tabs">

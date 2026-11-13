@@ -89,14 +89,16 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   display: grid; grid-template-columns: 216px minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
   flex: 1; min-height: 0; width: 100%;
-  /* AI Studio：整页统一 #f0f4f9 蓝灰底，内容卡片/弹层为白色 */
-  --bg: #f0f4f9;
+  /* AI Studio：整页纯白底，侧栏靠 1px 浅灰分隔线区分（用户指定） */
+  --bg: #ffffff;
   --bg-panel: #ffffff;
-  --bg-elevated: #f1f4fa;
-  --border: #e1e5ec;
+  --bg-elevated: #f8f9fb;
+  --bg-hover: #f1f3f4;
+  --selected-bg: #f1f3f4;
+  --border: #e8eaed;
   --border-strong: #c4c7c5;
   --text: #1f1f1f;
-  --text-dim: #444746;
+  --text-dim: #5f6368;
   background: var(--bg);
   color: var(--text);
 }
@@ -111,6 +113,17 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   /* 顶部状态栏不画下分隔线（用户指定）：状态栏与主内容同底色，靠留白分区 */
   background: var(--bg-panel);
 }
+/* 顶栏左侧：Figma 插件下载入口（胶囊按钮，与全站 M3 风格一致） */
+.topbar-action {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); background: var(--bg-panel);
+  color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none;
+  white-space: nowrap;
+}
+.topbar-action svg { color: var(--brand-600); }
+.topbar-action:hover { border-color: var(--brand-600); color: var(--brand-700); background: var(--brand-100); }
+.topbar-action:hover svg { color: var(--brand-700); }
 .topbar-crumb { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-dim); min-width: 0; }
 .topbar-crumb b { color: var(--text); font-size: 14px; }
 .crumb-home {
@@ -188,6 +201,15 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .auth-brand .logo { font-size: 30px; color: var(--accent); display: block; }
 .auth-brand strong { font-size: 17px; display: block; margin-top: 6px; }
 .auth-brand p { font-size: 12px; color: #6b7280; margin-top: 3px; }
+/* 登录页品牌区：站点 logo「拾像素」+ 中文站名（图形见 components/BrandLogo.tsx）。
+   细体大字距 + 克制留白，保持现代简约文艺调性；其它认证页的 ✦ 装饰不受影响。 */
+.auth-brand .auth-brand-mark { display: block; margin: 0 auto 10px; }
+.auth-brand .auth-brand-name {
+  display: block; margin-top: 2px;
+  font-size: 20px; font-weight: 400; letter-spacing: 0.22em;
+  color: #22303a;
+}
+.auth-brand .auth-brand-tagline { letter-spacing: 0.08em; color: #7b8794; }
 .auth-tabs {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
   background: #f2f4f7; border-radius: 9px; padding: 4px; margin-bottom: 18px;
@@ -239,6 +261,16 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .view-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .view-header-text { flex: 1; min-width: 0; }
 .view-header-row h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 项目列表页搜索框：标题左、搜索 + 新建按钮右；与团队管理页 .member-search 同款视觉 */
+.project-search { position: relative; display: inline-flex; align-items: center; flex: 0 1 300px; min-width: 160px; margin-left: auto; }
+.project-search > svg { position: absolute; left: 11px; color: var(--text-dim); pointer-events: none; }
+.project-search input { width: 100%; padding-left: 34px; padding-right: 32px; }
+.project-search input[type='search']::-webkit-search-cancel-button { display: none; }
+.project-search-clear {
+  position: absolute; right: 5px; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--text-dim);
+}
+.project-search-clear:hover { background: transparent; color: var(--text); }
 .new-project-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; white-space: nowrap;
@@ -468,7 +500,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .frame-size { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
 
 /* ---------- 查看器 ---------- */
-.viewer { display: flex; flex-direction: column; height: 100vh; position: relative; }
+/* 画布/查看器：选中底色与首页（.home-shell）统一为浅灰 #f1f3f4，不再用全局浅蓝 --selected-bg。
+   设计稿注释本就要求「与项目画布页同一套浅灰选中底色」，此前沿用全局浅蓝属遗漏。 */
+.viewer { display: flex; flex-direction: column; height: 100vh; position: relative; --selected-bg: #f1f3f4; }
 /* viewer-body 不再定位：画布卡片（.pcanvas-stage 绝对定位）锚定 .viewer 整页铺满，顶栏浮在画布上 */
 .viewer-body { flex: 1; display: flex; min-height: 0; }
 
@@ -644,6 +678,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .unit-select-wrap .unit-select {
   cursor: pointer; appearance: none; -webkit-appearance: none; padding-right: 32px;
+  /* 与顶栏胶囊按钮（评论等）同圆角：单位下拉是 select，需单独覆盖 6px 默认 */
+  border-radius: var(--radius-pill);
 }
 .device-screen {
   position: absolute; left: 0; top: 0;
@@ -835,7 +871,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   list-style: none;
   display: inline-flex; align-items: center; gap: 6px;
   font: inherit; color: var(--text); background: var(--bg-panel);
-  border: 1px solid var(--border-strong); border-radius: 6px; /* 与顶栏按钮（评论等）同圆角 */
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill); /* 与顶栏胶囊按钮（评论等）同圆角 */
   padding: 6px 14px; cursor: pointer; user-select: none;
 }
 .export-menu summary:hover { background: var(--bg-hover); }
@@ -853,6 +889,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .icon-btn { padding: 4px 10px; font-size: 15px; }
 /* 顶栏工具开关激活态（吸管取色等） */
 .icon-btn.is-active { background: var(--brand-100); color: var(--brand-600); }
+/* 吸管按钮描边高度与「评论」一致：评论继承全局 button 的 6px 垂直内边距，icon-btn 默认 4px 偏矮；
+   评论是「图标+文字」内容更高，吸管仅图标，用 min-height 锁定两者等高（盒模型含 border） */
+.eyedropper-toggle { padding: 6px 10px; min-height: 32px; box-sizing: border-box; }
 
 /* ── 吸管取色（画板详情页）────────────────────────────────── */
 /* 模式下画布与热区光标变十字 */
@@ -872,22 +911,63 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   width: 18px; height: 18px; border-radius: 4px; flex: none;
   border: 1px solid rgba(17, 24, 39, 0.2);
 }
-/* 取色结果卡 */
+/* 取色结果卡：纯色单行；识别到渐变时向下展开色标与复制入口 */
 .eyedropper-result {
   position: absolute; z-index: 41;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 9px;
+  min-width: 300px; max-width: 340px;
   background: #fff; border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px;
   box-shadow: 0 10px 30px rgba(17, 24, 39, 0.18);
 }
+.eyedropper-main { display: flex; align-items: center; gap: 10px; }
 .eyedropper-result .eyedropper-swatch { width: 28px; height: 28px; border-radius: 6px; }
-.eyedropper-values { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.eyedropper-values { display: flex; flex-direction: column; gap: 2px; font-size: 13px; flex: 1; }
 .eyedropper-values .dim { font-size: 11px; }
 .eyedropper-copy {
+  flex: none;
   border: 1px solid var(--border); background: var(--bg-panel); border-radius: 6px;
   padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text);
 }
 .eyedropper-copy:hover { background: var(--selected-bg); }
+
+/* ── 渐变识别 / 色号复制（吸管、属性面板、设计规范页共用）── */
+.grad-hint {
+  background: var(--brand-100); color: var(--brand-600);
+  border-radius: 999px; padding: 1px 7px; font-size: 10px; font-weight: 600;
+}
+.eyedropper-gradient {
+  border-top: 1px solid var(--border); padding-top: 9px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.eyedropper-gradient-head { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.eyedropper-gradient-head .grad-ok { margin-left: auto; white-space: nowrap; }
+.grad-badge {
+  background: var(--brand-100); color: var(--brand-600);
+  border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600;
+}
+.eyedropper-gradient-bar { height: 18px; border-radius: 5px; border: 1px solid rgba(17,24,39,0.12); }
+.grad-stop-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.grad-copy-chip, .grad-stop-list .copy-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); background: var(--bg-panel); border-radius: 6px;
+  padding: 3px 7px; font-size: 11px; cursor: pointer; color: var(--text);
+}
+.grad-copy-chip:hover, .grad-stop-list .copy-chip:hover { border-color: var(--accent); background: var(--selected-bg); }
+.grad-stop-dot { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(17,24,39,0.2); flex: none; }
+.grad-ok { color: var(--ok); font-weight: 700; }
+.eyedropper-gradient-actions { display: flex; gap: 6px; }
+.eyedropper-gradient-actions button {
+  flex: 1; border: 1px solid var(--border-strong); background: var(--bg-panel);
+  border-radius: 6px; padding: 5px 8px; font-size: 11px; cursor: pointer; color: var(--text);
+}
+.eyedropper-gradient-actions button:hover { background: var(--selected-bg); }
+.grad-fill { padding: 2px 0; }
+.grad-fill .grad-stop-list { margin-top: 5px; }
+.grad-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-panel); padding: 6px; }
+.grad-card-main { width: 100%; border: 0; background: transparent; padding: 2px; }
+.grad-card-main:hover { border-color: transparent; }
+.grad-card .grad-stop-list { margin-top: 6px; }
 .mobile-only { display: none; }
 
 @media (max-width: 820px) {
@@ -925,6 +1005,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   .home-main-inner { padding: 24px 16px 40px; }
   .view-header-row { gap: 8px; }
   .new-project-btn { padding: 5px 10px; font-size: 12px; }
+  .project-search { flex: 1 1 100%; margin-left: 0; order: 3; }
 
   /* 触屏上热区点击已足够，禁掉画布的 grab 光标和拖拽选中干扰 */
   .canvas-container { cursor: default; }
@@ -1064,7 +1145,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* 品牌 Logo（纯图形）：与团队名同高对齐， flex 布局由 summary 的 gap 控制间距 */
 .brand-mark { display: block; flex: none; border-radius: 6px; }
 .team-switch-name {
-  font-size: 16px; font-weight: 600; flex: 1; max-width: 130px;
+  font-size: 14px; font-weight: 400; flex: 1; max-width: 130px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .team-switch .caret { color: var(--text-dim); font-size: 10px; }
@@ -1078,18 +1159,23 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .team-switch-row {
   display: flex; align-items: center; position: relative; border-radius: 6px;
 }
-/* 选中行整行上底色（包含右侧「⋯ 更多」按钮），按钮自身保持透明不叠色 */
+/* 选中行整行上底色（包含右侧「⋯ 更多」按钮），按钮自身保持透明不叠色；
+   文字色与各非选中项统一为黑色（var(--text)），不单独用主题色突出，保证色号一致 */
 .team-switch-row.active {
-  background: var(--selected-bg); color: var(--accent); font-weight: 600;
+  background: var(--selected-bg); color: var(--text);
 }
 .team-switch-row.active .team-switch-item,
 .team-switch-row.active .team-switch-item:hover {
   background: transparent; color: inherit; font-weight: inherit;
 }
 /* 非选中行 hover / 键盘聚焦：灰底铺满整行，把右侧「⋯ 更多」按钮一起包含进去。
-   颜色与 .home-shell button:hover 一致；⋯ 按钮自身不再叠一层方块，整行底色才连贯。 */
+   底色 #f1f3f4（用户指定，与选中行 var(--selected-bg) 同色）；
+   必须同时压掉行内按钮命中的全局 .home-shell button:hover 蓝底（--state-hover，
+   且全局按钮是 999px 胶囊圆角），否则行内会再叠一层更深、圆角更大的胶囊矩形。 */
 .team-switch-row:not(.active):hover,
-.team-switch-row:not(.active):focus-within { background: #eef1f5; }
+.team-switch-row:not(.active):focus-within { background: #f1f3f4; }
+.team-switch-row:not(.active):hover .team-switch-item,
+.team-switch-row:not(.active):focus-within .team-switch-item { background: transparent; }
 .team-switch-row .row-menu-btn:hover { background: transparent; }
 .team-switch-item {
   display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; text-align: left;
@@ -1140,10 +1226,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   min-width: 150px; cursor: pointer;
   appearance: none; -webkit-appearance: none; padding-right: 32px;
 }
-/* 团队管理页：搜索框/角色下拉圆角 6px（覆盖全局 10px）；作用域内覆盖边框变量，整页描边调浅 */
+/* 团队管理页：搜索框/角色下拉与项目页 .project-search 同款（白底 + 1px 描边 + 圆角），整页描边调浅 */
 .team-view { --border: #eef0f4; --border-strong: #dfe3e8; }
 .team-view .member-search input,
-.team-view .member-role-filter { border-radius: 6px; }
+.team-view .member-role-filter { border-radius: var(--radius); }
 .member-count { white-space: nowrap; }
 .empty .member-filter-reset {
   margin-left: 10px; padding: 2px 8px; background: transparent;
@@ -1234,6 +1320,27 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .token-row .role-badge { flex: 0 0 auto; }
 .token-row .member-remove { flex: 0 0 auto; }
 
+/* MCP 接入面板（导入令牌弹窗内） */
+.mcp-connect { margin-top: 18px; border-top: 1px dashed var(--border); padding-top: 16px; }
+.mcp-connect .settings-head h3 { font-size: 14px; margin: 0 0 4px; }
+.mcp-step { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; }
+.mcp-step-no {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 999px;
+  background: var(--accent, #2c6ecb); color: #fff; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.mcp-step p { margin: 0; font-size: 13px; line-height: 1.6; }
+.mcp-step code, .mcp-config code, .mcp-config pre { font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.mcp-step b { font-weight: 600; }
+.mcp-config {
+  margin-top: 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-code, #f6f7f9); overflow: hidden;
+}
+.mcp-config pre { margin: 0; padding: 12px 14px; max-height: 240px; overflow: auto; white-space: pre; }
+.mcp-config .ghost-btn { margin: 0 0 10px 14px; }
+.mcp-clients { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.mcp-clients .role-badge { cursor: default; }
+
 .members-empty { text-align: center; margin-top: 80px; }
 .members-empty p { font-size: 15px; }
 .members-empty .dim { margin-top: 8px; }
@@ -1253,17 +1360,24 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* 邀请方式切换（链接邀请 / 邮箱邀请） */
 .invite-mode-tabs {
   display: flex; gap: 4px; margin: 2px 0 4px;
-  background: var(--bg-subtle, #f3f4f6); border-radius: 10px; padding: 3px;
+  /* 轨道改白底 + 描边：因全站选中底色 var(--selected-bg)=#f1f3f4 与浅灰轨道 #f3f4f6 几乎同色，
+     白轨道才能让灰色选中块清晰浮出，否则选中态会糊进轨道里看不见 */
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 3px;
 }
 .invite-mode-tabs button {
   flex: 1; border: none; background: transparent; cursor: pointer;
   font-size: 13px; color: var(--text-dim); padding: 7px 0; border-radius: 6px;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.invite-mode-tabs button:hover { color: var(--text); }
+.invite-mode-tabs button:hover:not(.is-active) {
+  /* hover 背景 #f1f3f4（用户指定色号；.dlg-btn:hover 的 var(--border)=#e1e5ec 偏深，弃用），
+     覆盖全局 .home-shell button:hover 的蓝底 var(--state-hover)；选中态不参与 hover 变色 */
+  background: #f1f3f4; color: var(--text);
+}
 .invite-mode-tabs button.is-active {
-  background: var(--bg-panel); color: var(--accent); font-weight: 600;
-  box-shadow: 0 1px 4px rgba(29, 33, 41, 0.10);
+  /* 选中态：背景与全站选中（团队切换选中行 / 侧栏选中项）统一为灰色 var(--selected-bg)，
+     字体黑（var(--text)）、无阴影，保证色号一致 */
+  background: var(--selected-bg); color: var(--text); font-weight: 600;
 }
 /* 项目列表 Tab（全部项目 / 最近使用 / 最近更新）：下划线式极简 Tab；首项文字与页标题左对齐 */
 .project-tabs { display: flex; gap: 2px; margin-bottom: 18px; }
@@ -1523,6 +1637,11 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .home-topbar { background: transparent; }
 .sidebar, .inspector { background: var(--bg-panel); }
 .sidebar-section { border-bottom: 1px solid var(--border); }
+/* 左侧画板列表卡片下沿不要横线：.sidebar-grow 是侧栏最后一个分区，
+   它的 border-bottom 正好落在圆角卡片底边（截图里箭头所指的那根线）。
+   基础规则 .sidebar-grow{border-bottom:none} 会被本节同优先级的 .sidebar-section 覆盖，
+   因此必须在这里显式去掉；分区之间的其它分隔线保持不变。 */
+.sidebar-section.sidebar-grow { border-bottom: none; }
 .project-card {
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
@@ -1595,6 +1714,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar h1 svg, .team-crumb svg, .primary-link svg, .comment-toggle svg, .upload-btn svg, .export-menu summary svg {
   flex: none; color: var(--text-dim);
 }
+/* 顶栏画板标题前的图标（图片图标）跟随标题文字颜色：深色画板时与标题一起变亮，不再锁死深灰 */
+.topbar h1 svg { color: inherit; }
 .primary-link svg, .comment-toggle.is-active svg { color: var(--accent); }
 .page-caret svg { flex: none; width: 16px; height: 16px; }
 /* 未分组是容器分组，不是可选中对象：不显示选中底纹/强调条 */
@@ -1844,7 +1965,9 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 /* ===== 顶栏「分享」按钮与弹窗 ===== */
 .share-wrap { position: relative; flex: none; }
 .share-btn {
-  gap: 6px; padding: 6px 12px; border-radius: 6px;
+  /* 与顶栏「连线」等胶囊按钮同圆角（全局 button = --radius-pill），
+     不在这里覆盖成 6px 小圆角；padding / 字号保持原样不动 */
+  gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill);
   border: 1px solid var(--border-strong); background: var(--bg-panel);
   color: var(--text); cursor: pointer; font-size: var(--fs-body);
 }
@@ -2008,3 +2131,150 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 
 /* 顶栏连线开关：开启态（可编辑连线）与全站选中态统一为浅灰底；关闭态仍完整显示线条 */
 .link-toggle[aria-pressed="true"] { background: var(--selected-bg); }
+
+/* ===== 首页左侧栏：Google AI Studio 风格（用户指定，2026-11-13） =====
+   主内容区保持纯白；侧栏单独加浅灰底 #FAFAFA（参考图逐像素采样：侧栏 83% 为
+   rgb(250,250,250)，主内容 78% 为 #FFFFFF）+ 1px 浅灰右分隔线；
+   EXPLORE / BUILD / MANAGE 式分区小标题；细线图标；
+   选中/悬停浅灰圆角矩形，替换原先的蓝色胶囊。
+   全部以 .home-shell 限定作用域，不影响查看器 / 画布 / 分享页。 */
+/* 侧栏底色对所有尺寸生效：桌面是竖向栏，≤820px 是横向工具条，都与白色主区分区 */
+.home-shell .home-sidebar { background: #fafafa; }
+.home-shell .side-nav-label {
+  padding: 18px 10px 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.09em; line-height: 1.2;
+  color: #80868b;
+}
+.home-shell .side-nav-label:first-child { padding-top: 10px; }
+.home-shell .side-nav { gap: 2px; }
+.home-shell .side-nav-item {
+  gap: 10px; padding: 8px 10px; border-radius: 8px;
+  font-size: 13px; line-height: 20px; color: #3c4043;
+  background: transparent;
+}
+.home-shell .side-nav-item svg { color: #5f6368; }
+/* 覆盖 .home-shell button:hover 的淡蓝状态层，让侧栏保持中性浅灰。
+   底色改为 #FAFAFA 后，选中态需比底色深一档（参考图采样 #ECECEF），
+   hover 用中间色 #F1F3F4，形成 底 < hover < 选中 的三级层次。 */
+.home-shell .side-nav-item:hover { background: #f1f3f4; color: #202124; }
+.home-shell .side-nav-item.active,
+.home-shell .side-nav-item.active:hover {
+  background: #ececef; color: #202124; font-weight: 600;
+}
+.home-shell .side-nav-item.active svg { color: #202124; }
+.home-shell .sidebar-team-switch { padding: 0 4px 12px; margin-bottom: 10px; }
+@media (min-width: 821px) {
+  .home-shell .home-sidebar {
+    /* 底色由上方 .home-shell .home-sidebar 提供（#FAFAFA），此处只补分隔线与内边距 */
+    border-right: 1px solid #e8eaed;
+    padding: 16px 12px 20px;
+  }
+  /* 顶部团队切换器与导航之间一道极淡分隔线，对应参考图的品牌区层次 */
+  .home-shell .sidebar-team-switch { border-bottom: 1px solid #e8eaed; }
+}
+@media (max-width: 820px) {
+  /* 小屏侧栏变横向工具条，分区小标题不占位 */
+  .home-shell .side-nav-label { display: none; }
+  .home-shell .sidebar-team-switch { margin-bottom: 0; padding-bottom: 0; }
+}
+
+/* ===== 团队管理：Google AI Studio「Apps」列表排版（用户指定，2026-11-13） =====
+   纯视觉改造：白色底 + 居中的窄内容列 + 小标题 + pill 工具条 +
+   表头 + 无卡片边框的连续行（彩色圆角图标 / 主标题 / 灰色副描述 / 右侧短信息）。
+   只覆盖桌面首页的 .team-view；所有按钮、点击区、搜索、筛选、邀请、编辑、移除
+   的 DOM 与交互保持原样，不新增任何功能控件。 */
+.home-shell .team-view {
+  max-width: 1000px;
+  padding: 6px 0 0;
+}
+/* 标题缩到参考图「Apps」的层级，右上角邀请按钮位置保持不动 */
+.home-shell .team-view .view-header { margin-bottom: 16px; }
+.home-shell .team-view .view-header h1 {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: #202124;
+}
+/* 工具条：搜索框 + 角色筛选与项目页 .project-search 同款（白底 + 1px 描边 + 圆角），不再用浅灰胶囊 */
+.home-shell .team-view .member-toolbar { margin-bottom: 18px; gap: 10px; }
+.home-shell .team-view .member-search { flex: 0 1 250px; min-width: 190px; }
+.home-shell .team-view .member-search input {
+  border-radius: var(--radius); background: var(--bg-panel);
+  border: 1px solid var(--border-strong); font-size: 14px;
+}
+.home-shell .team-view .member-search input:focus { background: #fff; border-color: var(--accent); }
+.home-shell .team-view .member-search > svg { color: var(--text-dim); }
+.home-shell .team-view .member-search-clear:hover { background: transparent; }
+.home-shell .team-view .member-role-filter {
+  min-width: 128px;
+  border-radius: var(--radius); background: var(--bg-panel);
+  border: 1px solid var(--border-strong); font-size: 14px;
+}
+.home-shell .team-view .member-role-filter:focus { background: #fff; border-color: var(--accent); }
+.home-shell .team-view .member-count { color: #80868b; font-size: 12px; }
+/* 邀请成功条跟着内容列宽度走，避免右侧越界 */
+.home-shell .team-view .invite-link-box { max-width: 100%; }
+
+/* 列表表头：与成员行完全相同的 5 列栅格，只有文字、无点击区 */
+.home-shell .team-view .member-list-head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 92px 90px 84px;
+  gap: 12px; align-items: center;
+  padding: 0 10px 10px;
+  border-bottom: 1px solid #e8eaed;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #80868b;
+}
+.home-shell .team-view .member-list-head .mh-name { grid-column: 2; }
+.home-shell .team-view .member-list-head .mh-role { grid-column: 3; }
+.home-shell .team-view .member-list-head .mh-actions { grid-column: 4 / span 2; text-align: right; }
+.home-shell .team-view .member-list { margin: 0; padding: 0; }
+/* 成员行：去掉白色卡片描边与卡片间距，改为细分隔线的连续行 */
+.home-shell .team-view .member-row {
+  grid-template-columns: 36px minmax(0, 1fr) 92px 90px 84px;
+  gap: 12px; padding: 11px 10px; margin: 0;
+  background: transparent; border: 0; border-bottom: 1px solid #e8eaed; border-radius: 0;
+  transition: background 0.12s ease;
+}
+.home-shell .team-view .member-row:hover { background: #f6f8fa; border-radius: 8px; }
+/* 彩色圆角方形图标：按行序稳定轮换，字母始终为白色 */
+.home-shell .team-view .member-avatar {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: #1a73e8; color: #fff; font-size: 14px; font-weight: 600;
+}
+.home-shell .team-view .member-list > .member-row:nth-child(6n+1) .member-avatar { background: #f9ab00; }
+.home-shell .team-view .member-list > .member-row:nth-child(6n+2) .member-avatar { background: #a142f4; }
+.home-shell .team-view .member-list > .member-row:nth-child(6n+3) .member-avatar { background: #1a73e8; }
+.home-shell .team-view .member-list > .member-row:nth-child(6n+4) .member-avatar { background: #12b5cb; }
+.home-shell .team-view .member-list > .member-row:nth-child(6n+5) .member-avatar { background: #ea4335; }
+.home-shell .team-view .member-list > .member-row:nth-child(6n+6) .member-avatar { background: #34a853; }
+/* 主标题 + 单行灰色副描述（参考图的双行信息密度） */
+.home-shell .team-view .member-name { font-size: 14px; font-weight: 600; color: #202124; }
+.home-shell .team-view .member-info { gap: 3px; }
+.home-shell .team-view .member-info .small {
+  font-size: 12px; color: #80868b; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 身份徽标：改为中性浅灰小标签，与参考图右侧克制的短信息一致 */
+.home-shell .team-view .member-row .role-badge {
+  border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 500;
+  background: #f1f3f4; color: #5f6368; justify-self: start;
+  white-space: nowrap; /* 「协作 · 只读」等长标签不换行，保持各行单行等高 */
+}
+.home-shell .team-view .member-row .role-badge.owner { background: #fef3c7; color: #92400e; }
+/* 操作按钮保留原有文字与内边距（点击区不变），只把观感调成极淡的图标按钮 */
+.home-shell .team-view .member-action {
+  color: #5f6368; font-size: 12px; padding: 4px 8px; border-radius: 8px;
+}
+.home-shell .team-view .member-action:hover,
+.home-shell .team-view .member-action.is-active:hover { background: #e8eaed; color: #202124; }
+.home-shell .team-view .member-action.is-active { background: #e8eaed; color: #202124; }
+.home-shell .team-view .member-action svg { color: inherit; }
+.home-shell .team-view .empty { color: #80868b; }
+
+@media (max-width: 640px) {
+  /* 小屏沿用原本的 flex 流式回退，表头不占位 */
+  .home-shell .team-view .member-list-head { display: none; }
+  .home-shell .team-view .member-row {
+    display: flex; flex-wrap: wrap; padding: 10px 8px;
+    border-bottom: 1px solid #e8eaed;
+  }
+  .home-shell .team-view .member-toolbar { flex-wrap: wrap; }
+  .home-shell .team-view .member-search { flex: 1 1 100%; }
+}

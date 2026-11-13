@@ -2,12 +2,24 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import type { SpecData } from '../types';
+import { gradientHexList, parseGradientCss } from '../viewer/gradient';
 
 export default function SpecPage() {
   const { fileId = '' } = useParams();
   const [file, setFile] = useState<{ name: string } | null>(null);
   const [spec, setSpec] = useState<SpecData | null>(null);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');
+
+  const copy = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text).then(
+      () => {
+        setCopied(key);
+        setTimeout(() => setCopied((cur) => (cur === key ? '' : cur)), 1500);
+      },
+      () => undefined
+    );
+  };
 
   useEffect(() => {
     api.getFile(fileId).then((f) => setFile({ name: f.name })).catch((e) => setError(e.message));
@@ -53,14 +65,48 @@ export default function SpecPage() {
 
         {spec.gradients.length > 0 && (
           <section className="spec-section">
-            <h2>渐变</h2>
+            <h2>渐变 <span className="dim">点击复制色号或整段 CSS</span></h2>
             <div className="color-grid">
-              {spec.gradients.map((g, i) => (
-                <div key={i} className="color-card" title={g.css}>
-                  <span className="color-chip color-chip-lg" style={{ background: g.css }} />
-                  <span className="dim">×{g.count}</span>
-                </div>
-              ))}
+              {spec.gradients.map((g, i) => {
+                const grad = parseGradientCss(g.css);
+                return (
+                  <div key={i} className="grad-card" data-spec-gradient>
+                    <button
+                      className="color-card grad-card-main"
+                      title="点击复制渐变 CSS"
+                      onClick={() => copy(grad?.css ?? g.css, `css-${i}`)}
+                    >
+                      <span className="color-chip color-chip-lg" style={{ background: grad?.css ?? g.css }} />
+                      <span className="dim">×{g.count} · {copied === `css-${i}` ? '已复制 ✓' : '复制 CSS'}</span>
+                    </button>
+                    <div className="grad-stop-list">
+                      {(grad?.stops ?? []).map((s, j) => (
+                        <button
+                          key={j}
+                          className="grad-copy-chip"
+                          data-spec-stop={j}
+                          title={`复制 ${s.cssValue}`}
+                          onClick={() => copy(s.cssValue, `${i}-${j}`)}
+                        >
+                          <span className="grad-stop-dot" style={{ background: s.cssValue }} />
+                          <span className="mono">{s.hex}</span>
+                          <span className="dim">{Math.round(s.pos)}%</span>
+                          {copied === `${i}-${j}` && <span className="grad-ok">✓</span>}
+                        </button>
+                      ))}
+                      {grad && (
+                        <button
+                          className="grad-copy-chip"
+                          title="复制全部色号"
+                          onClick={() => copy(gradientHexList(grad), `hex-${i}`)}
+                        >
+                          {copied === `hex-${i}` ? '已复制 ✓' : '全部色号'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
