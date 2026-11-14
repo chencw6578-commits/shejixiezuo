@@ -14,7 +14,8 @@ export const config = {
     'postgres://postgres:postgres@localhost:5432/designhub'
   ),
   storage: {
-    driver: (process.env.STORAGE_DRIVER ?? 'local') as 'local' | 's3',
+    // local: 本地磁盘（常驻部署）；s3: S3 兼容对象存储；blob: Vercel Blob（Serverless 默认）
+    driver: (process.env.STORAGE_DRIVER ?? 'local') as 'local' | 's3' | 'blob',
     localDir: process.env.STORAGE_LOCAL_DIR ?? 'storage',
     s3: {
       endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
@@ -23,6 +24,12 @@ export const config = {
       accessKeyId: process.env.S3_ACCESS_KEY ?? 'minioadmin',
       secretAccessKey: process.env.S3_SECRET_KEY ?? 'minioadmin',
       publicBaseUrl: process.env.S3_PUBLIC_BASE_URL ?? '',
+      /**
+       * MinIO / AWS S3 的公网基址通常不含 bucket（拼成 base/bucket/key）；
+       * Cloudflare R2 的 r2.dev / 自定义域公开地址已经直接指向桶（拼成 base/key），
+       * 这类平台要设为 false，否则图片 URL 会多一层桶名而 404。
+       */
+      publicIncludeBucket: (process.env.S3_PUBLIC_INCLUDE_BUCKET ?? 'true') !== 'false',
     },
   },
 };

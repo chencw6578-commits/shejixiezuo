@@ -8,6 +8,7 @@ import {
   verifyPassword,
 } from '../auth.js';
 import { consumeEmailToken, sendPasswordResetEmail, sendVerificationEmail } from '../email/index.js';
+import { runInBackground } from '../queue.js';
 
 export const authRouter = Router();
 
@@ -61,9 +62,12 @@ authRouter.post('/register', async (req, res) => {
   const user = { uid: rows[0].id, email };
   setSessionCookie(res, user);
   // 软验证：注册即登录可用，验证邮件异步发送，失败不阻断注册
-  sendVerificationEmail(user.uid, email).catch((err) => {
-    console.error('[auth] send verification email failed:', err?.message ?? err);
-  });
+  // runInBackground：Serverless 下挂 waitUntil，避免响应发出后实例冻结导致邮件丢失
+  runInBackground(
+    sendVerificationEmail(user.uid, email).catch((err) => {
+      console.error('[auth] send verification email failed:', err?.message ?? err);
+    })
+  );
   res.status(201).json({ id: user.uid, email, name: name || email.split('@')[0] });
 });
 
@@ -121,9 +125,11 @@ authRouter.post('/resend-verification', async (req, res) => {
   );
   const row = rows[0];
   if (row && !row.verified) {
-    sendVerificationEmail(row.id, target).catch((err) => {
-      console.error('[auth] resend verification email failed:', err?.message ?? err);
-    });
+    runInBackground(
+      sendVerificationEmail(row.id, target).catch((err) => {
+        console.error('[auth] resend verification email failed:', err?.message ?? err);
+      })
+    );
   }
   res.json({ ok: true });
 });
@@ -139,9 +145,11 @@ authRouter.post('/forgot-password', async (req, res) => {
     [email]
   );
   if (rows[0]) {
-    sendPasswordResetEmail(rows[0].id, email).catch((err) => {
-      console.error('[auth] send password reset email failed:', err?.message ?? err);
-    });
+    runInBackground(
+      sendPasswordResetEmail(rows[0].id, email).catch((err) => {
+        console.error('[auth] send password reset email failed:', err?.message ?? err);
+      })
+    );
   }
   res.json({ ok: true });
 });

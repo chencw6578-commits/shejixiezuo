@@ -107,6 +107,72 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/**
+ * 大文件直传（Vercel Serverless 请求体硬上限 4.5MB）。
+ * 先向后端申请一个「只能 PUT 到指定 key」的预签名 URL，浏览器把文件直接送到
+ * 对象存储，再只把 key 交给后端解析。常驻部署 / 预签名不可用时返回 null，
+ * 前端自动回退原来的 multipart 上传，行为完全不变。
+ */
+interface DirectUpload {
+  key: string;
+  contentType: string;
+}
+
+async function directUpload(file: File): Promise<DirectUpload | null> {
+  // 设计稿各浏览器给出的 MIME 五花八门，统一按二进制流签名；
+  // 图片保留真实类型（后续入库要按扩展名落盘），JSON 单独标识。
+  const contentType = /^image\/(png|jpeg|webp|gif)$/i.test(file.type)
+    ? file.type
+    : file.type === 'application/json'
+      ? 'application/json'
+      : 'application/octet-stream';
+  const q = new URLSearchParams({ filename: file.name || 'upload.bin', contentType });
+  let pre: {
+    mode: string;
+    uploadUrl?: string;
+    key?: string;
+    contentType?: string;
+    token?: string;
+  };
+  try {
+    pre = await request(`/api/upload/presign?${q.toString()}`);
+  } catch {
+    return null;
+  }
+
+  // Vercel Blob：服务端签发受限令牌，浏览器直接 PUT 到 Blob（文件不经过函数，
+  // 因此不受 4.5MB 请求体上限约束）；大文件由 SDK 自动分片。
+  if (pre.mode === 'blob' && pre.token && pre.key) {
+    try {
+      const { put } = await import('@vercel/blob/client');
+      await put(pre.key, file, {
+        access: 'public',
+        token: pre.token,
+        contentType: pre.contentType ?? contentType,
+        multipart: true,
+      });
+      return { key: pre.key, contentType: pre.contentType ?? contentType };
+    } catch (err) {
+      console.warn('[upload] Blob 直传失败，回退普通上传:', err);
+      return null;
+    }
+  }
+
+  if (pre.mode !== 'direct' || !pre.uploadUrl || !pre.key) return null;
+  const put = await fetch(pre.uploadUrl, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': pre.contentType ?? contentType },
+  });
+  if (!put.ok) {
+    // 对象存储 CORS / 凭据未配好时不要让上传功能整体失效：
+    // 回退到原 multipart 路径（小文件仍可用，大文件会由平台返回明确的 413）。
+    console.warn('[upload] 直传失败，回退普通上传:', put.status, '（请检查对象存储 CORS 与凭据）');
+    return null;
+  }
+  return { key: pre.key, contentType: pre.contentType ?? contentType };
+}
+
 export interface CommentItem {
   id: string;
   frame_id: string;
@@ -219,14 +285,35 @@ export const api = {
     }),
 
   /** 导入 Figma 插件导出的 JSON（服务端不调用 Figma REST，不受限流影响） */
-  importFigmaJson: (json: string | object, projectId?: string) =>
-    request<{ id: string; name: string; frameCount: number; nodeCount: number; skipped: number }>(
-      '/api/import/figma-json',
-      { method: 'POST', body: JSON.stringify({ json, projectId }) }
-    ),
+  importFigmaJson: async (
+    json: string | object,
+    projectId?: string
+  ): Promise<{ id: string; name: string; frameCount: number; nodeCount: number; skipped: number }> => {
+    const text = typeof json === 'string' ? json : JSON.stringify(json);
+    const direct = await directUpload(
+      new File([text], 'figma-export.json', { type: 'application/json' })
+    );
+    if (direct) {
+      return request('/api/import/figma-json/from-storage', {
+        method: 'POST',
+        body: JSON.stringify({ key: direct.key, projectId }),
+      });
+    }
+    return request('/api/import/figma-json', {
+      method: 'POST',
+      body: JSON.stringify({ json, projectId }),
+    });
+  },
 
   /** 上传 .sketch / .psd 文件导入（可指定所属项目） */
   uploadDesign: async (file: File, projectId?: string): Promise<{ id: string; name: string }> => {
+    const direct = await directUpload(file);
+    if (direct) {
+      return request('/api/upload/from-storage', {
+        method: 'POST',
+        body: JSON.stringify({ key: direct.key, filename: file.name, projectId }),
+      });
+    }
     const fd = new FormData();
     fd.append('file', file);
     if (projectId) fd.append('projectId', projectId);
@@ -243,6 +330,20 @@ export const api = {
     width = 0,
     height = 0
   ): Promise<{ id: string; name: string }> => {
+    const direct = await directUpload(file);
+    if (direct) {
+      return request('/api/upload/image/from-storage', {
+        method: 'POST',
+        body: JSON.stringify({
+          key: direct.key,
+          filename: file.name || 'clip.png',
+          contentType: direct.contentType,
+          projectId,
+          width,
+          height,
+        }),
+      });
+    }
     const fd = new FormData();
     fd.append('file', file);
     if (projectId) fd.append('projectId', projectId);

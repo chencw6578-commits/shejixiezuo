@@ -1,22 +1,24 @@
-import express, { Router } from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { pool } from '../db.js';
+import { getStorage } from '../storage/index.js';
+import { config } from '../config.js';
 import { editGuard } from './authz.js';
 import { PluginImportError, parsePluginExport } from '../figma/pluginImport.js';
 import { importPluginJson, newErrorId, userFacingFailure } from '../jobs/importFile.js';
+import { isValidUploadKey, removeUploaded } from './presign.js';
 
 export const importJsonRouter = Router();
 
-// 插件导出的大文件可能超过全局 1mb 限制，这里单独放宽到 20mb
+// 插件导出的大文件可能超过全局 1mb 限制，这里单独放宽到 20mb（常驻部署）
 importJsonRouter.use(express.json({ limit: '20mb' }));
 
 /**
  * 接收 Figma 插件导出的 JSON 并落库（不调用 Figma REST，不受限流影响）。
- * body: { json: object | string, projectId?, fileName? }
+ * 两条通道共用：
+ *   - POST /figma-json            body: { json: object | string, projectId?, fileName? }
+ *   - POST /figma-json/from-storage body: { key, projectId? }（大 JSON 直传对象存储后回传 key）
  */
-importJsonRouter.post('/figma-json', async (req, res) => {
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const raw = body.json ?? body.payload ?? req.body;
-
+async function doImport(req: Request, res: Response, raw: unknown, body: Record<string, unknown>) {
   let payload: unknown = raw;
   if (typeof raw === 'string') {
     try {
@@ -74,5 +76,32 @@ importJsonRouter.post('/figma-json', async (req, res) => {
     const errId = newErrorId();
     console.error(`[plugin-import] unexpected error ${errId}:`, err);
     return res.status(502).json({ error: userFacingFailure(errId) });
+  }
+}
+
+importJsonRouter.post('/figma-json', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const raw = body.json ?? body.payload ?? req.body;
+  return doImport(req, res, raw, body);
+});
+
+/** Vercel 直传通道：JSON 文本已由浏览器 PUT 到对象存储，这里只收一个 key */
+importJsonRouter.post('/figma-json/from-storage', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (!isValidUploadKey(body.key)) {
+    return res.status(400).json({ error: '无效的上传凭证' });
+  }
+  if (config.storage.driver === 'local') {
+    return res.status(400).json({ error: '当前部署未启用对象存储，请改用普通导入' });
+  }
+  try {
+    const storage = await getStorage();
+    const text = (await storage.get(body.key)).toString('utf8');
+    void removeUploaded(body.key).catch(() => {});
+    return doImport(req, res, text, body);
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-import] read uploaded json failed ${errId}:`, err);
+    return res.status(400).json({ error: '读取上传的 JSON 失败，请重新导入' });
   }
 });

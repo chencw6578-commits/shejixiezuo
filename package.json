@@ -1,0 +1,12 @@
+{
+  "name": "shejixiezuo-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vercel Serverless deployment shell: static web/ + single Express function in api/",
+  "scripts": {
+    "vercel-build": "npm --prefix web run build && npm --prefix server run build"
+  },
+  "dependencies": {
+    "@vercel/functions": "^3.11.3"
+  }
+}

@@ -1,6 +1,7 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { S3Client } from '@aws-sdk/client-s3';
+import { put as blobPut, head as blobHead } from '@vercel/blob';
 import { config } from '../config.js';
 
 export interface Storage {
@@ -41,6 +42,27 @@ class LocalStorage implements Storage {
   }
 }
 
+/**
+ * S3 兼容客户端工厂（R2 / MinIO / AWS S3 通用）。预签名直传路由也复用它，
+ * 保证签名 URL 与实际读写走同一份 endpoint / bucket / 凭据配置。
+ */
+export async function createS3Client(): Promise<{
+  s3: typeof import('@aws-sdk/client-s3');
+  client: S3Client;
+}> {
+  const s3 = await import('@aws-sdk/client-s3');
+  const client = new s3.S3Client({
+    endpoint: config.storage.s3.endpoint,
+    region: config.storage.s3.region,
+    forcePathStyle: true, // MinIO / Cloudflare R2 兼容
+    credentials: {
+      accessKeyId: config.storage.s3.accessKeyId,
+      secretAccessKey: config.storage.s3.secretAccessKey,
+    },
+  });
+  return { s3, client };
+}
+
 class S3Storage implements Storage {
   private constructor(
     private s3: typeof import('@aws-sdk/client-s3'),
@@ -48,16 +70,7 @@ class S3Storage implements Storage {
   ) {}
 
   static async create(): Promise<S3Storage> {
-    const s3 = await import('@aws-sdk/client-s3');
-    const client = new s3.S3Client({
-      endpoint: config.storage.s3.endpoint,
-      region: config.storage.s3.region,
-      forcePathStyle: true, // MinIO 兼容
-      credentials: {
-        accessKeyId: config.storage.s3.accessKeyId,
-        secretAccessKey: config.storage.s3.secretAccessKey,
-      },
-    });
+    const { s3, client } = await createS3Client();
     return new S3Storage(s3, client);
   }
 
@@ -72,9 +85,12 @@ class S3Storage implements Storage {
       })
     );
     if (config.storage.s3.publicBaseUrl) {
-      return `${config.storage.s3.publicBaseUrl.replace(/\/$/, '')}/${config.storage.s3.bucket}/${key}`;
+      const base = config.storage.s3.publicBaseUrl.replace(/\/$/, '');
+      const prefix = config.storage.s3.publicIncludeBucket ? `/${config.storage.s3.bucket}` : '';
+      return `${base}${prefix}/${key}`;
     }
-    // 无公网基址时使用预签名 URL（最长 7 天）
+    // 无公网基址时使用预签名 URL（最长 7 天）。
+    // 注意：生产环境必须配置 S3_PUBLIC_BASE_URL，否则存进数据库的图片地址会过期。
     const { GetObjectCommand } = this.s3;
     const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
     return getSignedUrl(
@@ -95,6 +111,37 @@ class S3Storage implements Storage {
   }
 }
 
+/**
+ * Vercel Blob 存储（Serverless 部署专用）。
+ *
+ * Vercel 函数文件系统只读，缩略图/切图必须落到对象存储。Blob 是 Vercel 自带服务，
+ * 建 Store 后自动注入 BLOB_READ_WRITE_TOKEN，无需额外账号、密钥或信用卡。
+ * public blob 的 URL 长期有效，存进数据库不会像 S3 预签名 URL 那样 7 天过期。
+ */
+class BlobStorage implements Storage {
+  async put(key: string, data: Buffer, contentType: string): Promise<string> {
+    const result = await blobPut(safeKey(key), data, {
+      access: 'public',
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+    return result.url;
+  }
+
+  async get(key: string): Promise<Buffer> {
+    // key 可能是 pathname（直传临时对象），也可能是历史存库的完整 URL
+    let url = key;
+    if (!/^https?:\/\//i.test(key)) {
+      const info = await blobHead(safeKey(key));
+      url = info.url;
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`读取 Blob 失败 (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+}
+
 let storage: Promise<Storage> | null = null;
 
 export function getStorage(): Promise<Storage> {
@@ -102,7 +149,9 @@ export function getStorage(): Promise<Storage> {
     storage =
       config.storage.driver === 's3'
         ? S3Storage.create()
-        : Promise.resolve(new LocalStorage(config.storage.localDir));
+        : config.storage.driver === 'blob'
+          ? Promise.resolve(new BlobStorage())
+          : Promise.resolve(new LocalStorage(config.storage.localDir));
   }
   return storage;
 }
