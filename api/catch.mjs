@@ -1,9 +1,9 @@
 /**
  * Vercel Serverless 单函数入口：把 /api/* 请求原样交给 Express app。
  *
- * 文件名 [...path] 是 Vercel 的 catch-all 动态路由，所有 /api/... 路径都会命中
- * 这一个函数（Vercel 不会为 api/ 下每个文件单独建函数）。业务路由全部复用
- * server/dist/app.js，与本地 / Docker 常驻部署是同一份代码。
+ * vercel.json 用 rewrites 把所有 /api/(.*) 捕获到本函数（Vercel 的 [...path]
+ * 动态路由只匹配单段，多段路径会被平台层挡成 404）。捕获的子路径放在 __vp
+ * query 里；下面会把它还原成原始 req.url，Express 路由才能正确匹配。
  *
  * 静态前端由 Vercel CDN 从 web/dist 提供，不经过此函数。
  */
@@ -31,7 +31,27 @@ function stripVercelHelpers(req, res) {
   }
 }
 
+/**
+ * 还原 rewrite 前的真实 API 路径。
+ *
+ * Vercel 对 rewrite 到函数时 req.url 的处理有两种可能（原始 URL / destination
+ * URL，或两者 query 合并），这里对三种情况都成立：
+ *  - 有 __vp：用它重建 /api/<子路径>，并保留其它原始 query 参数
+ *  - 无 __vp：说明 req.url 本来就是原始路径，直接返回
+ */
+function restoreOriginalUrl(req) {
+  const q = req.url?.indexOf('?') ?? -1;
+  if (q < 0) return;
+  const params = new URLSearchParams(req.url.slice(q + 1));
+  const vp = params.get('__vp');
+  if (!vp) return;
+  params.delete('__vp');
+  const rest = params.toString();
+  req.url = `/api/${vp}${rest ? `?${rest}` : ''}`;
+}
+
 export default async function handler(req, res) {
+  restoreOriginalUrl(req);
   stripVercelHelpers(req, res);
   try {
     await ensureDb();
