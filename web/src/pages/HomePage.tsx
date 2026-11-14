@@ -191,6 +191,8 @@ export default function HomePage() {
   const [switchOpen, setSwitchOpen] = useState(false);
   // 导入令牌从侧栏页改为头像下拉入口 + 弹窗展示
   const [tokenModal, setTokenModal] = useState(false);
+  // MCP 接入：首页顶栏一级入口（与「下载 Figma 插件」并排），独立弹窗内完成生成令牌 + 复制配置
+  const [mcpModal, setMcpModal] = useState(false);
   const avatarMenuRef = useRef<HTMLDetailsElement | null>(null);
   const teamSwitchRef = useRef<HTMLDetailsElement | null>(null);
 
@@ -797,6 +799,14 @@ export default function HomePage() {
         >
           <Download size={15} /> 下载 Figma 插件
         </a>
+        <button
+          type="button"
+          className="topbar-action mcp-entry"
+          onClick={() => setMcpModal(true)}
+          title="让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 直接读取设计稿"
+        >
+          <KeyRound size={15} /> MCP 接入
+        </button>
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
             <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
@@ -1469,6 +1479,110 @@ export default function HomePage() {
                 <span className="mcp-step-no">3</span>
                 <div>
                   <p>在 AI 工具里用 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿到规格与 CSS 进行开发。</p>
+                </div>
+              </div>
+
+              <div className="mcp-config">
+                <pre><code>{mcpConfigText}</code></pre>
+                <button type="button" className="ghost-btn" onClick={() => void copyMcpConfig()}>复制配置</button>
+              </div>
+
+              <div className="mcp-clients">
+                <span className="dim small">适用客户端：</span>
+                <span className="role-badge collaborator">Cursor</span>
+                <span className="role-badge collaborator">Claude Desktop</span>
+                <span className="role-badge collaborator">Cline</span>
+                <span className="role-badge collaborator">WorkBuddy</span>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* MCP 接入弹窗：首页顶栏一级入口，与「下载 Figma 插件」并排。
+          复用导入令牌的生成逻辑与配置文本，一次完成「生成令牌 → 复制配置」 */}
+      {mcpModal && (
+        <div className="dlg-overlay" onClick={() => setMcpModal(false)}>
+          <div
+            className="dlg token-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="MCP 接入"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="token-modal-head">
+              <div>
+                <h2>MCP 接入 · 让 AI 直接读设计稿开发</h2>
+                <p className="dim small">
+                  Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取图层规格与 CSS，按真实数据还原界面，不用再猜间距和颜色。
+                </p>
+              </div>
+              <button
+                type="button"
+                className="token-modal-close"
+                aria-label="关闭"
+                onClick={() => setMcpModal(false)}
+              >
+                <X />
+              </button>
+            </header>
+
+            <section className="settings-section">
+              <div className="mcp-step">
+                <span className="mcp-step-no">1</span>
+                <div>
+                  <p>
+                    生成「导入令牌」（与 Figma 插件同一套），明文只显示这一次。
+                    {!activeTeam && <b> 请先在左侧新建或选择一个团队。</b>}
+                  </p>
+                  <div className="token-create mcp-generate-row">
+                    <select
+                      value={tokenScope}
+                      aria-label="令牌作用范围"
+                      disabled={!activeTeam}
+                      onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
+                    >
+                      <option value="all">全部团队</option>
+                      <option value="team">仅当前团队</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="new-project-btn"
+                      disabled={!activeTeam || busy}
+                      onClick={() => void createToken()}
+                    >
+                      <Plus /> 生成导入令牌
+                    </button>
+                  </div>
+                  {newToken && (
+                    <div className="token-once">
+                      <div className="token-once-head">新令牌（只显示这一次）</div>
+                      <div className="token-once-body">
+                        <code>{newToken}</code>
+                        <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
+                      </div>
+                      <p className="dim small">已自动填入下方配置；请自行保存，关闭后无法再查看明文。</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mcp-step">
+                <span className="mcp-step-no">2</span>
+                <div>
+                  <p>
+                    把下面配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。
+                  </p>
+                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌未生成时是占位符，需要替换成上一步的明文。</p>
+                </div>
+              </div>
+
+              <div className="mcp-step">
+                <span className="mcp-step-no">3</span>
+                <div>
+                  <p>
+                    在 AI 工具里按 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿规格与 CSS 开发。
+                  </p>
                 </div>
               </div>
 

@@ -2,10 +2,10 @@
  * MCP HTTP 传输（Streamable HTTP 简化实现：JSON 响应模式）。
  *
  * 授权：与 Figma 插件共用同一套 import_tokens。
- *   - 无 Authorization：本地开发全开（ctx = 全部）
+ *   - 无 Authorization：仅本地开发放行（或显式 MCP_ALLOW_ANONYMOUS=1）；线上返回 401
  *   - Bearer === 环境变量 MCP_TOKEN：管理员全开
  *   - Bearer 匹配 import_tokens（仅存哈希）：按令牌 scope 收敛到团队
- *   - Bearer 非法：返回 401
+ *   - Bearer 非法 / 已撤销：返回 401
  * 这样 AI 编码工具只能读到该用户/团队的设计稿，而不是全库。
  *
  * AI 工具接入：
@@ -31,8 +31,15 @@ interface CtxResult {
 async function resolveCtx(req: Request): Promise<CtxResult> {
   const header = (req.headers.authorization ?? '').trim();
   const m = /^Bearer\s+(.+)$/i.exec(header);
-  // 无令牌：本地开发放开（与改动前行为一致）
-  if (!m) return { ctx: { teamId: null, scope: 'all' }, ok: true };
+  // 无令牌：只允许本地开发（非 production 且非 Vercel）或显式开关。
+  // 线上环境若放开匿名，任何人知道 /mcp URL 就能以 scope=all 读全库设计稿，
+  // 因此默认拒绝；/mcp 与 /api/mcp 共用本校验。
+  if (!m) {
+    const allowAnonymous =
+      (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) ||
+      process.env.MCP_ALLOW_ANONYMOUS === '1';
+    return { ctx: { teamId: null, scope: 'all' }, ok: allowAnonymous };
+  }
   const bearer = m[1];
 
   // 可选的管理员全开令牌（环境变量）
@@ -69,7 +76,10 @@ mcpRouter.get('/mcp', (_req, res) => {
 mcpRouter.post('/mcp', async (req: Request, res: Response) => {
   const { ctx, ok } = await resolveCtx(req);
   if (!ok) {
-    res.status(401).json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'unauthorized' } });
+    res.status(401).json({
+      jsonrpc: '2.0', id: null,
+      error: { code: -32001, message: 'unauthorized: Bearer <导入令牌> required' },
+    });
     return;
   }
   const body = req.body as

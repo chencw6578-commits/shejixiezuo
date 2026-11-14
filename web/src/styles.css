@@ -124,6 +124,12 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-action svg { color: var(--brand-600); }
 .topbar-action:hover { border-color: var(--brand-600); color: var(--brand-700); background: var(--brand-100); }
 .topbar-action:hover svg { color: var(--brand-700); }
+/* 顶栏「MCP 接入」是 button，需压掉 .home-shell button:hover 的蓝色状态层，
+   保持与「下载 Figma 插件」完全一致的 hover 底色、描边与图标颜色 */
+.home-shell .topbar-action.mcp-entry:hover {
+  background: var(--brand-100); border-color: var(--brand-600); color: var(--brand-700);
+}
+.home-shell .topbar-action.mcp-entry:hover svg { color: var(--brand-700); }
 .topbar-crumb { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-dim); min-width: 0; }
 .topbar-crumb b { color: var(--text); font-size: 14px; }
 .crumb-home {
@@ -135,9 +141,20 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .crumb-sep { color: var(--border-strong); }
 /* home-body 仅作 DOM 分组，子元素直接参与 home-shell 的 Grid 排布 */
 .home-body { display: contents; }
-/* 验证提示条横跨两列；无提示条时该行为空行（高度 0） */
-.verify-banner { grid-column: 1 / -1; }
-/* 左侧栏：跨「状态栏 + 主区」两行，从页面顶部贯通到底 */
+/* 验证提示条只在右侧主区（第 2 列），左端与顶栏对齐，不再横跨到左侧导航栏上方；
+   无提示条时该行为空行（高度 0） */
+.verify-banner { grid-column: 2; grid-row: 1; }
+/* 提示条所在行的左侧区域延续侧栏底色与右边框，避免侧栏顶角出现白块、竖线断点；
+   仅桌面 Grid 布局生效（≤820px 会退回上下堆叠的 flex 布局） */
+@media (min-width: 821px) {
+  .home-shell::before {
+    content: '';
+    grid-column: 1; grid-row: 1;
+    background: #fafafa;
+    border-right: 1px solid #e8eaed;
+  }
+}
+/* 左侧栏：跨「状态栏 + 主区」两行，位置保持不变 */
 .home-sidebar { grid-column: 1; grid-row: 2 / 4; }
 .home-main { grid-column: 2; grid-row: 3; min-width: 0; }
 
@@ -1320,8 +1337,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .token-row .role-badge { flex: 0 0 auto; }
 .token-row .member-remove { flex: 0 0 auto; }
 
-/* MCP 接入面板（导入令牌弹窗内） */
+/* MCP 接入面板（导入令牌弹窗内 / 首页顶栏独立弹窗共用） */
 .mcp-connect { margin-top: 18px; border-top: 1px dashed var(--border); padding-top: 16px; }
+/* 顶栏 MCP 弹窗里的令牌生成行：与上方说明留白，窄屏可换行 */
+.mcp-generate-row { margin-top: 10px; flex-wrap: wrap; }
 .mcp-connect .settings-head h3 { font-size: 14px; margin: 0 0 4px; }
 .mcp-step { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; }
 .mcp-step-no {
