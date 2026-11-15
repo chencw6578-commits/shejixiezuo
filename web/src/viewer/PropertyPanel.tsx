@@ -196,7 +196,8 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         format: presetFormat ?? format,
         scale: presetScale ?? Number(scale),
       });
-      api.download(r.url, `${selected.name}${presetScale && presetScale !== 1 ? `@${presetScale}x` : Number(scale) !== 1 ? `@${scale}x` : ''}.${(presetFormat ?? format).toLowerCase()}`);
+      // 等下载真正触发后再提示成功；跨域 / 网络失败会落入下方 catch 显示错误
+      await api.download(r.url, `${selected.name}${presetScale && presetScale !== 1 ? `@${presetScale}x` : Number(scale) !== 1 ? `@${scale}x` : ''}.${(presetFormat ?? format).toLowerCase()}`);
       const from = r.resolvedFrom
         ? `（按 Figma 标记的父级「${r.resolvedFrom.name}」${r.resolvedFrom.format} ${r.resolvedFrom.scale}x 导出）`
         : '';

@@ -632,12 +632,33 @@ export const api = {
     URL.revokeObjectURL(a.href);
   },
 
-  download: (url: string, filename: string) => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  /**
+   * 下载单张切图：先取回内存，再用同源 blob: URL 触发保存。
+   *
+   * 切图存在 Vercel Blob（跨源），跨源 URL 上的 <a download> 会被浏览器忽略；
+   * 而 Blob 响应是 Content-Disposition: inline，于是变成在窗口里打开图片。
+   * 线上 Blob 实测带 Access-Control-Allow-Origin: *，可直接 fetch，无需改后端。
+   */
+  download: async (url: string, filename: string): Promise<void> => {
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch {
+      throw new Error('切图文件读取失败：请检查网络或跨域设置后重试');
+    }
+    if (!res.ok) throw new Error(`切图下载失败 (${res.status})`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      // 不能立刻 revoke：部分浏览器要等下载任务取完 blob 数据才安全
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    }
   },
 };
