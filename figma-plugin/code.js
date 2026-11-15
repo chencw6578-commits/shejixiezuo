@@ -3,13 +3,19 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.5.8';
+const PLUGIN_VERSION = '1.5.9';
 const BUILD_DATE = '2026-11-15';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
 // 令牌单独存一份：偏好整包写入失败时（老版本字段不兼容等），令牌仍能被记住，
 // 避免出现「每次启动都要重新粘贴令牌」。
 const TOKEN_KEY = 'designhub-token';
+// v1.5.9：manifest.json 里写死的固定插件 id。
+// Figma 只在 manifest 存在 id 时才启用 clientStorage（否则报 "Cannot access client storage
+// without a plugin ID"），而 clientStorage 是插件唯一能跨文件、跨会话、跨重启读回凭证的地方。
+// 这里只是把 id 报给 UI 便于排查，实际隔离由 Figma 按 id 执行。
+// ⚠️ id 一旦确定就不能改：改了等于换了一个插件，clientStorage 里的旧数据全部读不到。
+const PLUGIN_ID = '1800000000000000001';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ARTBOARD_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
 
@@ -614,10 +620,13 @@ async function exportBoardsJson(boardIds, ctx) {
 }
 
 async function loadPrefs() {
-  // v1.5.5 存储探针：manifest 无稳定插件 id 时，Figma 会禁用 clientStorage（已知行为，
-  // 官方论坛确认报 "Cannot access client storage without a plugin ID"），pluginData 命名空间
-  // 也会随会话漂移——这是「令牌每次都要重填」的根因。探针结果回传 UI，门禁页直接显示原因。
-  const probe = { clientOk: false, clientErr: '', pluginIdMissing: false };
+  // v1.5.9 存储探针：Figma 只在 manifest.json 存在 id 时才启用 clientStorage，
+  // 否则报 "Cannot access client storage without a plugin ID"（官方论坛确认的行为）。
+  // 插件 UI 跑在 data: URL 的 iframe 里，origin=null，浏览器本地存储与 cookie 都用不了；
+  // 文档 pluginData 又只跟着当前文件走。因此 clientStorage 是唯一能跨文件、跨会话、
+  // 跨重启读回凭证的地方——manifest 里少了 id，令牌就必然每次都要重填。
+  // 现在 manifest 已写死固定 id，这里的探针用来确认 Figma 是否真的接受了它。
+  const probe = { clientOk: false, clientErr: '', pluginIdMissing: false, manifestId: PLUGIN_ID };
   try {
     await figma.clientStorage.setAsync('__probe__', { t: Date.now() });
     const back = await figma.clientStorage.getAsync('__probe__');
@@ -689,12 +698,16 @@ async function loadPrefs() {
 }
 
 async function savePrefs(prefs) {
-  // v1.5.8 三路保存 + 令牌单独存一份。
+  // v1.5.9 三路保存 + 令牌单独存一份。
   // 关键点：偏好整包写失败时令牌仍能单独写住 → 下次启动不用重新粘贴。
+  // 另记 tokenIn：让 UI 能区分「已存进本地（跨文件都算）」与「只存进当前文件」。
   const result = {
     client: false, doc: false, page: false,
     clientErr: '', docErr: '', pageErr: '',
     tokenSaved: false, tokenCleared: false,
+    // v1.5.9：令牌最终落到哪一路（client 优先，其次 doc，最后 page）。
+    // client = 跨文件、跨会话、跨重启都读得到；doc/page 只在当前文件里有效。
+    tokenIn: '',
   };
   const token = typeof prefs.token === 'string' && /^imp_/.test(prefs.token) ? prefs.token : '';
   try {
@@ -724,14 +737,17 @@ async function savePrefs(prefs) {
     try {
       await figma.clientStorage.setAsync(TOKEN_KEY, token);
       result.tokenSaved = true;
+      result.tokenIn = result.tokenIn || 'client';
     } catch (err) { /* clientStorage 不可用时忽略 */ }
     try {
       figma.root.setPluginData(TOKEN_KEY, token);
       result.tokenSaved = true;
+      result.tokenIn = result.tokenIn || 'doc';
     } catch (err) { /* 忽略 */ }
     try {
       figma.currentPage.setPluginData(TOKEN_KEY, token);
       result.tokenSaved = true;
+      result.tokenIn = result.tokenIn || 'page';
     } catch (err) { /* 忽略 */ }
   } else {
     try { await figma.clientStorage.setAsync(TOKEN_KEY, ''); } catch (err) { /* 忽略 */ }
@@ -757,6 +773,7 @@ figma.ui.onmessage = async (msg) => {
         type: 'boot',
         pluginVersion: PLUGIN_VERSION,
         buildDate: BUILD_DATE,
+        pluginId: PLUGIN_ID,
         fileName: figma.root.name || 'Figma 文件',
         pageName: figma.currentPage.name,
       });

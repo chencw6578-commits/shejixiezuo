@@ -31,7 +31,7 @@
 | `clientStorage` | 本机 Figma 插件存储（按插件 id） | 是 | 是 |
 | 文档内 `pluginData` | 当前 Figma 文件 | 否 | 否 |
 | 当前页 `pluginData` | 当前 Figma 文件 | 否 | 否 |
-| iframe `localStorage` | 浏览器缓存 | 是 | 是 |
+| iframe `localStorage` | 浏览器缓存（真实 Figma 里 origin=null，读取即抛错，仅作降级） | 否 | 否 |
 
 - 网络失败、超时、CORS 或服务端 5xx：令牌**保留**，界面提示「连接失败（当前地址），令牌已保留」并提供 **重试**；
   若当前地址是本机而本机没跑后端，v1.5.6 起会自动改用线上服务重试一次；
@@ -47,7 +47,7 @@ Figma 对**没有固定插件 id 的开发插件**会禁用 `clientStorage`（�
 3. 把本仓库 `figma-plugin/manifest.json` 加上同一行 `"id": "…"`（上一行末尾要补逗号）；
 4. 回到 **Plugins → Development** 重新 **Import plugin from manifest…** 选择本仓库的 manifest。
 
-加完 id 后 `clientStorage` 可用，令牌跨文件、跨会话都能记住；插件发布后 Figma 会自动分配 id，无需手动处理。
+加完 id 后 `clientStorage` 可用，令牌跨文件、跨会话都能记住。v1.5.9 起 `manifest.json` **已内置固定插件 id**，正常导入后无需任何手工操作。
 
 ### 4. 日常使用：在 Figma 选中画板 → 点上传
 
@@ -152,7 +152,8 @@ v1.5.6 之前默认地址是 `http://localhost:4000`，老安装的偏好里可�
 
 先看粘贴页底部那行「原因 / 诊断」，它会直接说明是哪种情况：
 
-- 显示「Figma 对没有固定插件 id 的开发插件禁用了本地存储」→ 按上文「每次打开都要重填？」补上 `manifest.json` 的 `id`，一劳永逸；
+- 显示「本地存储没生效：当前导入的 manifest 没带上插件 id」→ 重新 Import v1.5.9 的 `manifest.json`（已内置 id），或把 `id` 换成 Figma 分配的 id；
+- ⚠️ 插件 id 不能改：clientStorage 按 id 隔离，id 一变，之前记住的令牌全部读不到（等于换了一个插件）；
 - 显示「令牌没能保存」→ 三路存储都不可用，换台机器或换个 Figma 账号同样会失效；
 - 显示「已读到上次保存的令牌（…）但校验未通过」→ 令牌已被网站撤销，重新生成再粘贴。
 
@@ -165,7 +166,7 @@ v1.5.6 之前默认地址是 `http://localhost:4000`，老安装的偏好里可�
 
 - 令牌只在服务端存 sha256 哈希；明文仅在生成时返回一次，不写入日志、不写进前端构建产物。
 - 插件把令牌、服务器地址、三级选择存在本机 Figma 插件存储（`figma.clientStorage`），
-  必要时兜底写入当前 Figma 文件的 `pluginData` 与浏览器 `localStorage`；不会发给第三方。
+  必要时兜底写入当前 Figma 文件的 `pluginData`；不会发给第三方。
 - 注意：写入文档内 `pluginData` 的令牌会随文件保存，**该文件的协作者理论上能读到插件数据**。
   在协作文件里使用建议补上 `manifest.json` 的插件 `id`，让令牌只留在本机。
 - 位图切图按 `scale` 存为 PNG 资源，画板缩略图同步更新。
