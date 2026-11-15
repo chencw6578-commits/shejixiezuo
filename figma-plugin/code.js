@@ -3,7 +3,7 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.5.6';
+const PLUGIN_VERSION = '1.5.7';
 const BUILD_DATE = '2026-11-15';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
@@ -25,6 +25,13 @@ const IMAGE_CHUNK_BYTES = 262143;
 const MAX_SLICES_PER_BOARD = 120;
 // 位图填充识别的递归深度上限：防止超深嵌套把导出卡住
 const MAX_WALK_DEPTH = 24;
+// v1.5.7 单次导出看门狗：实测（2026-11-15 上传停在 73%）某些矢量节点的 SVG 导出
+// 会在 Figma 原生层挂起 >120 秒不返回，但主线程 JS 事件循环仍活着（ping 照回 pong、
+// busy=true），只是发不出 progress；UI 只按 progress 计时就会误判「主线程无响应」。
+const EXPORT_HEARTBEAT_MS = 8000;
+const SVG_EXPORT_TIMEOUT_MS = 20000;
+const PNG_SLICE_EXPORT_TIMEOUT_MS = 45000;
+const BOARD_IMAGE_EXPORT_TIMEOUT_MS = 60000;
 
 // 启动第一句就开窗：避免任何加载逻辑让用户觉得「点了没反应」
 try {
@@ -120,6 +127,53 @@ function postProgress(ctx, stage, done, message, silenceMs) {
     total: ctx.total || 1,
     message: message || '',
     silenceMs: silenceMs || SILENCE_NODES_MS,
+  });
+}
+
+/**
+ * v1.5.7：带心跳 + 硬超时的单次导出。
+ * 复现场景：逐图层切图 1/6「ChevronRightOutline」的 SVG 导出卡住 ≥120 秒不返回，
+ * 期间主线程仍可应答 ping（pong 正常、busy=true），但没有任何 progress 消息，
+ * 于是 UI 的静默计时耗尽，把整板导出判成「主线程 120 秒没有响应」。
+ * exportAsync 等待期间主线程事件循环是空闲的（pong 就是证据），所以这里可以用定时器：
+ *   ① 每 8 秒补发一条 progress，让 UI 的静默计时不断续命；
+ *   ② 单次导出设硬上限，超时就放弃这一份格式（PNG@4x 已保底），继续后续图层。
+ * Figma 没有取消导出的 API：超时后底层 exportAsync 仍可能继续，迟到的结果会被丢弃。
+ */
+function exportWithWatchdog(node, opts, ctx, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let waited = 0;
+    const beat = setInterval(() => {
+      if (settled) return;
+      waited += EXPORT_HEARTBEAT_MS;
+      postProgress(ctx, 'images', (ctx && ctx.index) || 0,
+        label + '（仍在导出，已等待 ' + Math.round(waited / 1000) + 's）…', SILENCE_IMAGE_MS);
+    }, EXPORT_HEARTBEAT_MS);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      clearInterval(beat);
+      const err = new Error('导出超时（' + Math.round(timeoutMs / 1000) + 's），已跳过该格式');
+      err.exportTimeout = true;
+      reject(err);
+    }, timeoutMs);
+    Promise.resolve()
+      .then(() => node.exportAsync(opts))
+      .then((bytes) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearInterval(beat);
+        resolve(bytes);
+      })
+      .catch((err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearInterval(beat);
+        reject(err);
+      });
   });
 }
 
@@ -367,12 +421,15 @@ async function exportSlices(rootNode, ctx, timings) {
   const nodes = collectSliceNodes(rootNode, MAX_SLICES_PER_BOARD);
   const warnings = [];
   const slices = [];
+  // v1.5.7：某张矢量 SVG 一旦导出超时，本次导出后续图层就不再尝试 SVG（PNG@4x 照常），
+  // 避免每个矢量都等满超时、把整板拖成几分钟。
+  let svgDisabled = false;
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
     checkGen(ctx);
     const label = '逐图层切图 ' + (i + 1) + '/' + nodes.length + '：「' + n.name + '」';
     const vector = !hasImageFill(n, MAX_WALK_DEPTH);
-    const wanted = vector
+    const wanted = vector && !svgDisabled
       ? [['PNG', 4], ['SVG', 1]]
       : [['PNG', 4]];
     for (let w = 0; w < wanted.length; w++) {
@@ -382,7 +439,10 @@ async function exportSlices(rootNode, ctx, timings) {
         postProgress(ctx, 'images', ctx.index, label + '（' + format + ' 导出中）…', SILENCE_IMAGE_MS);
         await nextTask();
         const t0 = nowMs();
-        const bytes = await n.exportAsync({ format: format, constraint: { type: 'SCALE', value: scale } });
+        const bytes = await exportWithWatchdog(n,
+          { format: format, constraint: { type: 'SCALE', value: scale } },
+          ctx, label + '（' + format + '）',
+          format === 'SVG' ? SVG_EXPORT_TIMEOUT_MS : PNG_SLICE_EXPORT_TIMEOUT_MS);
         timings.exportMs += nowMs() - t0;
         if (!bytes || !bytes.length) {
           warnings.push('「' + n.name + '」的 ' + format + ' 切图导出为空，已跳过');
@@ -397,7 +457,12 @@ async function exportSlices(rootNode, ctx, timings) {
         const chunks = await sendSliceChunks(ctx, bufferKey, bytes);
         slices.push({ key: bufferKey, nodeId: n.id, name: n.name, format: format, scale: scale, chunks: chunks });
       } catch (err) {
-        warnings.push('「' + n.name + '」的 ' + format + ' 切图导出失败：' + (err instanceof Error ? err.message : String(err)));
+        if (format === 'SVG' && err && err.exportTimeout) {
+          svgDisabled = true;
+          warnings.push('「' + n.name + '」的 SVG 导出超时，已跳过；本次导出后续图层不再尝试 SVG（PNG@4x 不受影响）');
+        } else {
+          warnings.push('「' + n.name + '」的 ' + format + ' 切图导出失败：' + (err instanceof Error ? err.message : String(err)));
+        }
       }
       await nextTask();
     }
@@ -456,10 +521,10 @@ async function exportBoard(boardId, scale, includeImage, includeSlices, ctx) {
 
     const tExport = nowMs();
     try {
-      const bytes = await node.exportAsync({
+      const bytes = await exportWithWatchdog(node, {
         format: 'PNG',
         constraint: { type: 'SCALE', value: scale },
-      });
+      }, ctx, '整板位图（PNG @' + scale + 'x）', BOARD_IMAGE_EXPORT_TIMEOUT_MS);
       timings.exportMs = nowMs() - tExport;
       imageBytes = bytes.length;
       if (bytes.length > MAX_IMAGE_BYTES) {

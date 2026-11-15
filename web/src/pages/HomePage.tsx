@@ -140,18 +140,34 @@ function readLastTeamId() {
   }
 }
 
+/**
+ * 项目列表的会话内缓存（按团队）：从项目详情返回时 HomePage 会重新挂载，
+ * 先用上次结果渲染、再由接口刷新，避免列表异步加载期间闪出「暂无项目」。
+ * 仅在当前 SPA 会话有效，刷新页面会重新拉取。
+ */
+const projectCache = new Map<string, Project[]>();
+const projectCacheKey = (team: string) => team || '__all__';
+
 export default function HomePage() {
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<View>('projects');
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
+  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
+  // 会话缓存命中时直接渲染上次列表；未命中才走加载态
+  const [projects, setProjects] = useState<Project[]>(
+    () => projectCache.get(projectCacheKey(activeTeam)) ?? []
+  );
+  const [projectsLoading, setProjectsLoading] = useState(
+    () => !projectCache.has(projectCacheKey(activeTeam))
+  );
+  // 请求序号：团队快速切换时，旧请求的迟到结果不得覆盖新团队的列表
+  const projectReqId = useRef(0);
   // 项目列表 Tab：全部项目 / 最近使用 / 最近更新
   const [projectTab, setProjectTab] = useState<ProjectTab>('all');
   // 项目搜索：按名称过滤（纯前端，不改接口与项目数据）
   const [projectQuery, setProjectQuery] = useState('');
-  // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
-  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
   // 最近一次生成的邀请链接：只展示给操作者，可复制（链接邀请不绑定邮箱，可多人使用）
@@ -219,10 +235,10 @@ export default function HomePage() {
     return () => window.clearTimeout(timer);
   }, [error]);
   const [busy, setBusy] = useState(false);
-  // 团队导入令牌（Figma 插件用）：newToken 只在生成后展示一次
+  // 团队访问令牌（通用凭据）：newToken 只在生成后展示一次
   const [tokens, setTokens] = useState<ImportToken[]>([]);
   const [newToken, setNewToken] = useState('');
-  // 令牌作用范围：默认「全部团队」，插件里可先选团队再选项目
+  // 令牌作用范围：默认「全部团队」
   const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
   const navigate = useNavigate();
   const dialogs = useDialogs();
@@ -285,10 +301,23 @@ export default function HomePage() {
   }, []);
 
   const loadProjects = useCallback(() => {
+    const key = projectCacheKey(activeTeam);
+    const reqId = ++projectReqId.current;
+    setProjectsLoading(true);
     api
       .listProjects(activeTeam || undefined)
-      .then((rows) => setProjects(Array.isArray(rows) ? rows : []))
-      .catch((e) => setError(e.message));
+      .then((rows) => {
+        if (reqId !== projectReqId.current) return;
+        const list = Array.isArray(rows) ? rows : [];
+        projectCache.set(key, list);
+        setProjects(list);
+      })
+      .catch((e) => {
+        if (reqId === projectReqId.current) setError(e.message);
+      })
+      .finally(() => {
+        if (reqId === projectReqId.current) setProjectsLoading(false);
+      });
   }, [activeTeam]);
 
   // 按 Tab 过滤/排序：全部=原顺序；最近使用=localStorage 记录倒序；最近更新=按最后更新时间倒序
@@ -357,6 +386,11 @@ export default function HomePage() {
     const fallback = stored && teams.some((t) => t.id === stored) ? stored : teams[0].id;
     switchTeam(fallback, true);
   }, [teams, activeTeam, switchTeam]);
+
+  // 切换团队时先切到该团队的缓存（没有就清空），避免短暂显示上一团队的项目
+  useEffect(() => {
+    setProjects(projectCache.get(projectCacheKey(activeTeam)) ?? []);
+  }, [activeTeam]);
 
   useEffect(loadProjects, [loadProjects]);
 
@@ -442,34 +476,11 @@ export default function HomePage() {
     }
   };
 
-  // 「导入令牌」弹窗内嵌的静态配置：用该弹窗刚生成的明文，未生成时留占位符。
-  const mcpConfigText = JSON.stringify(
-    {
-      mcpServers: {
-        shejixiezuo: {
-          type: 'http',
-          url: mcpEndpoint,
-          headers: { Authorization: `Bearer ${newToken || '<你的导入令牌>'}` },
-        },
-      },
-    },
-    null,
-    2
-  );
-  const copyMcpConfig = async () => {
-    try {
-      await navigator.clipboard.writeText(mcpConfigText);
-      setError('');
-    } catch {
-      setError('复制失败：请手动选中配置文本复制');
-    }
-  };
-
   const revokeToken = async (id: string) => {
     if (!activeTeam) return;
     const ok = await dialogs.confirm({
       title: '撤销导入令牌',
-      message: '撤销后该记录会从列表删除且不可恢复。由于 MCP 与 Figma 插件共用同一套凭据，使用该令牌的插件和 MCP 客户端都会立即失效（返回 401），两边都需要重新生成并填写新令牌。',
+      message: '撤销后该记录会从列表删除且不可恢复，该令牌立即失效（401），需要重新生成。',
       confirmText: '撤销并删除',
       danger: true,
     });
@@ -1028,7 +1039,10 @@ export default function HomePage() {
               </div>
 
               <ul className="project-grid">
-                {visibleProjects.length === 0 && (
+                {visibleProjects.length === 0 && projectsLoading && (
+                  <p className="empty">加载中…</p>
+                )}
+                {visibleProjects.length === 0 && !projectsLoading && (
                   <p className="empty">
                     {projectTab === 'viewed' ? '暂无浏览记录，进入项目后会出现在这里' : '暂无项目'}
                   </p>
@@ -1408,7 +1422,6 @@ export default function HomePage() {
             <header className="token-modal-head">
               <div>
                 <h2>导入令牌 · {activeTeamName}</h2>
-                <p className="dim small">为 Figma 插件生成「导入令牌」，插件用它调用导入接口，不需要浏览器登录状态</p>
               </div>
               <button
                 type="button"
@@ -1425,7 +1438,7 @@ export default function HomePage() {
                 <div>
                   <h3>令牌列表</h3>
                   <p className="dim small">
-                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；MCP 接入共用这套凭据（另见下方说明），撤销即删除记录，插件与 MCP 客户端同时失效（401）。
+                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后立即失效（401）。
                   </p>
                 </div>
                 <div className="token-create">
@@ -1450,7 +1463,7 @@ export default function HomePage() {
                     <code>{newToken}</code>
                     <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
                   </div>
-                  <p className="dim small">粘贴到 Figma 插件的「导入令牌」输入框，之后无法再从网站查看明文。</p>
+                  <p className="dim small">请立即保存，之后无法再从网站查看明文。</p>
                 </div>
               )}
 
@@ -1472,51 +1485,6 @@ export default function HomePage() {
               </ul>
             </section>
 
-            <section className="settings-section mcp-connect">
-              <div className="settings-head">
-                <div>
-                  <h3>MCP 接入（让 AI 直接读设计稿开发）</h3>
-                  <p className="dim small">
-                    用上方生成的「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
-                    按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。注意：MCP 侧只提供读取工具，但该凭据本身也能用于 Figma 插件上传，请勿外泄。
-                    支持 OAuth 2.1 的客户端请用顶栏「MCP 接入」（配置只有 url，令牌只读且按团队隔离）。
-                  </p>
-                </div>
-              </div>
-
-              <div className="mcp-step">
-                <span className="mcp-step-no">1</span>
-                <div>
-                  <p>在上方「令牌列表」点 <b>生成导入令牌</b>（范围选「全部团队」或当前团队），复制明文令牌（只显示一次）。</p>
-                </div>
-              </div>
-              <div className="mcp-step">
-                <span className="mcp-step-no">2</span>
-                <div>
-                  <p>把下面这段配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。</p>
-                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌取自上方刚生成的明文（未生成时留占位符）。</p>
-                </div>
-              </div>
-              <div className="mcp-step">
-                <span className="mcp-step-no">3</span>
-                <div>
-                  <p>在 AI 工具里用 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿到规格与 CSS 进行开发。</p>
-                </div>
-              </div>
-
-              <div className="mcp-config">
-                <pre><code>{mcpConfigText}</code></pre>
-                <button type="button" className="ghost-btn" onClick={() => void copyMcpConfig()}>复制配置</button>
-              </div>
-
-              <div className="mcp-clients">
-                <span className="dim small">适用客户端：</span>
-                <span className="role-badge collaborator">Cursor</span>
-                <span className="role-badge collaborator">Claude Desktop</span>
-                <span className="role-badge collaborator">Cline</span>
-                <span className="role-badge collaborator">WorkBuddy</span>
-              </div>
-            </section>
           </div>
         </div>
       )}

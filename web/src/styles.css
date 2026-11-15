@@ -1330,11 +1330,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .token-row .role-badge { flex: 0 0 auto; }
 .token-row .member-remove { flex: 0 0 auto; }
 
-/* MCP 接入面板（导入令牌弹窗内 / 首页顶栏独立弹窗共用） */
-.mcp-connect { margin-top: 18px; border-top: 1px dashed var(--border); padding-top: 16px; }
-/* 顶栏 MCP 弹窗里的令牌生成行：与上方说明留白，窄屏可换行 */
-.mcp-generate-row { margin-top: 10px; flex-wrap: wrap; }
-.mcp-connect .settings-head h3 { font-size: 14px; margin: 0 0 4px; }
+/* 首页顶栏「MCP 接入」弹窗 */
 .mcp-step { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; }
 .mcp-step-no {
   flex: 0 0 auto; width: 22px; height: 22px; border-radius: 999px;

@@ -115,7 +115,7 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 
 - 需要令牌就在网站头像菜单「导入令牌」生成；已发出的旧配置继续可用。
 - 线上（`VERCEL` 或 `NODE_ENV=production`）**强制鉴权**：无有效 Bearer 返回 401，并带 `WWW-Authenticate` 指引 OAuth 发现。
-- 导入令牌与 Figma 插件共用 `import_tokens`：撤销后两边同时失效，且该令牌也能调用 `/api/plugin/*` 上传，不要当只读密钥外泄。`MCP_TOKEN` 是部署级管理员凭据（`scope=all`），UI 不引导使用。
+- 静态访问令牌存于 `import_tokens`，是通用凭据：撤销后所有使用该令牌的客户端同时失效，且该令牌也能调用 `/api/plugin/*` 上传，不要当只读密钥外泄。`MCP_TOKEN` 是部署级管理员凭据（`scope=all`），UI 不引导使用。
 - 本地开发允许匿名访问；线上如确需放开，必须显式设 `MCP_ALLOW_ANONYMOUS=1`（不建议）。`/mcp` 与 `/api/mcp` 指向同一个 router，Vercel 上由 rewrite 保证两条路径都可达。
 
 **stdio 传输（本地子进程）**

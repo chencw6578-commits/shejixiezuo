@@ -352,7 +352,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.5.6';
+  var UI_VERSION = '1.5.7';
   // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
   var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
   var UNASSIGNED_TEAM = 'unassigned';
@@ -428,12 +428,25 @@
   // 单个 exportAsync 就可能超过半分钟，30/90 秒的旧阈值实测会误判「无响应」，放宽到 120 秒。
   var STAGE_TIMEOUT_MS = { nodes: 120000, images: 120000, upload: 60000 };
   var HEARTBEAT_TIMEOUT_MS = STAGE_TIMEOUT_MS.nodes;
-  function timeoutText(ms) {
+  // v1.5.7：单次 export-board 的硬上限。pong 续命只延长「静默窗口」，不会无限等待；
+  // 主线程真死时也会在最后一次回声后触发超时。
+  var HARD_TIMEOUT_MS = 300000;
+  function timeoutText(ms, hardExpired) {
     var now = Date.now();
-    var idle = state.lastPongAt && (now - state.lastPongAt) < 30000 && !state.mainBusy;
-    var headline = idle
-      ? '导出结果未回传（主线程空闲且能应答 ping，疑似 Figma 丢弃了插件消息）：'
-      : '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：';
+    var freshPong = state.lastPongAt && (now - state.lastPongAt) < 30000;
+    var idle = freshPong && !state.mainBusy;
+    var headline;
+    if (hardExpired) {
+      headline = '导出超过 ' + Math.round(HARD_TIMEOUT_MS / 60000) + ' 分钟仍未完成（Figma 导出卡住）：';
+    } else if (freshPong && state.mainBusy) {
+      // 主线程还能回 pong 且自报 busy：不是「无响应」，别再误报成主线程卡死
+      headline = '主线程仍在工作，但长时间没有新进度（最后一次进度 ' +
+        (state.lastProgressAt ? Math.round((now - state.lastProgressAt) / 1000) + ' 秒前' : '无') + '）：';
+    } else if (idle) {
+      headline = '导出结果未回传（主线程空闲且能应答 ping，疑似 Figma 丢弃了插件消息）：';
+    } else {
+      headline = '插件主线程 ' + Math.round(ms / 1000) + ' 秒没有响应（Figma 可能正在处理大画板）：';
+    }
     var lines = headline + '请点「重试」，仍不行再关闭插件重新打开';
     // v1.5.1：报错自证版本——UI 与主线程版本不一致 = Figma 缓存了旧插件代码
     lines += '\n版本：UI ' + UI_VERSION +
@@ -465,13 +478,18 @@
   function ask(message, timeoutMs) {
     var requestId = 'r' + (++seq);
     return new Promise(function (resolve, reject) {
-      var entry = { resolve: resolve, reject: reject, timer: null };
+      var entry = { resolve: resolve, reject: reject, timer: null, startedAt: Date.now() };
       entry.silenceMs = timeoutMs || HEARTBEAT_TIMEOUT_MS;
       entry.arm = function (ms) {
         // 心跳只允许延长预算、不允许缩短：一次 ask 覆盖整个画板导出，中途会混用
         // nodes(60s)/images(120s) 两档消息，若小值覆盖大值，紧跟的长 exportAsync 会被误杀
         if (typeof ms === 'number' && ms > 0 && ms > entry.silenceMs) entry.silenceMs = ms;
         clearTimeout(entry.timer);
+        // v1.5.7：pong/progress 续命不能无限续，单次导出最多等 5 分钟
+        var left = HARD_TIMEOUT_MS - (Date.now() - entry.startedAt);
+        var delay = left <= 0 ? 1000 : Math.min(entry.silenceMs, left);
+        // 这次到点是不是因为硬上限到期（而不是普通静默超时），决定报错文案
+        entry.hardDue = left <= 0 || left < entry.silenceMs;
         entry.timer = setTimeout(function () {
           pending.delete(requestId);
           imageChunkBufs.delete(requestId);
@@ -479,8 +497,8 @@
           imageChunkBufs.forEach(function (_, k) {
             if (k.indexOf(requestId + ':') === 0) imageChunkBufs.delete(k);
           });
-          reject(new Error(timeoutText(entry.silenceMs)));
-        }, entry.silenceMs);
+          reject(new Error(timeoutText(entry.silenceMs, entry.hardDue)));
+        }, delay);
       };
       entry.arm();
       pending.set(requestId, entry);
@@ -1571,6 +1589,12 @@
       state.mainBusy = !!msg.busy;
       state.lastPongVersion = msg.pluginVersion || state.lastPongVersion;
       state.lastPongGen = typeof msg.gen === 'number' ? msg.gen : state.lastPongGen;
+      // v1.5.7：主线程自报「仍在执行任务」时 pong 也算一次心跳。某些矢量 SVG 导出
+      // 会在 Figma 原生层挂起，JS 事件循环仍活着（pong 正常）却发不出 progress；
+      // 过去只认 progress，120 秒后就把整板导出误判成「主线程无响应」杀掉。
+      if (state.mainBusy) {
+        pending.forEach(function (_, rid) { heartbeat(rid, STAGE_TIMEOUT_MS.images); });
+      }
       return;
     }
     if (msg.type === 'image-chunk') {
