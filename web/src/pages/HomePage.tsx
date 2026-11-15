@@ -235,10 +235,10 @@ export default function HomePage() {
     return () => window.clearTimeout(timer);
   }, [error]);
   const [busy, setBusy] = useState(false);
-  // 团队导入令牌（Figma 插件用）：newToken 只在生成后展示一次
+  // 团队访问令牌（通用凭据）：newToken 只在生成后展示一次
   const [tokens, setTokens] = useState<ImportToken[]>([]);
   const [newToken, setNewToken] = useState('');
-  // 令牌作用范围：默认「全部团队」，插件里可先选团队再选项目
+  // 令牌作用范围：默认「全部团队」
   const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
   const navigate = useNavigate();
   const dialogs = useDialogs();
@@ -480,7 +480,7 @@ export default function HomePage() {
     if (!activeTeam) return;
     const ok = await dialogs.confirm({
       title: '撤销导入令牌',
-      message: '撤销后该记录会从列表删除且不可恢复，使用该令牌的 Figma 插件会立即失效（401），需要重新生成并填写新令牌。',
+      message: '撤销后该记录会从列表删除且不可恢复，该令牌立即失效（401），需要重新生成。',
       confirmText: '撤销并删除',
       danger: true,
     });
@@ -1422,7 +1422,6 @@ export default function HomePage() {
             <header className="token-modal-head">
               <div>
                 <h2>导入令牌 · {activeTeamName}</h2>
-                <p className="dim small">为 Figma 插件生成「导入令牌」，插件用它调用导入接口，不需要浏览器登录状态</p>
               </div>
               <button
                 type="button"
@@ -1439,7 +1438,7 @@ export default function HomePage() {
                 <div>
                   <h3>令牌列表</h3>
                   <p className="dim small">
-                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后使用该令牌的 Figma 插件会立即失效（401）。
+                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后立即失效（401）。
                   </p>
                 </div>
                 <div className="token-create">
@@ -1464,7 +1463,7 @@ export default function HomePage() {
                     <code>{newToken}</code>
                     <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
                   </div>
-                  <p className="dim small">粘贴到 Figma 插件的「导入令牌」输入框，之后无法再从网站查看明文。</p>
+                  <p className="dim small">请立即保存，之后无法再从网站查看明文。</p>
                 </div>
               )}
 
