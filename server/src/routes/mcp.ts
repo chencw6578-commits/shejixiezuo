@@ -12,8 +12,8 @@
  *   让支持 OAuth 的客户端自动发起授权，而不是只报一句「缺令牌」。
  *
  * AI 工具接入：
- *   方式一（推荐）url: <服务地址>/mcp，配置里不写 headers，客户端自动完成授权
- *   方式二（兼容）url + headers: Authorization: Bearer <导入令牌>
+ *   OAuth 2.1（推荐）url: <服务地址>/mcp，配置里不写 headers，客户端自动完成授权
+ *   静态令牌（兼容旧配置）url + headers: Authorization: Bearer <导入令牌>
  */
 import { Router, type Request, type Response } from 'express';
 import { createHash } from 'node:crypto';
@@ -85,7 +85,7 @@ mcpRouter.get('/mcp', (req, res) => {
     version: SERVER_INFO.version,
     transport: 'streamable-http (JSON response mode)',
     usage: 'POST JSON-RPC 2.0 messages here; methods: initialize, tools/list, tools/call',
-    auth: '方式一：OAuth 2.1 授权（配置无需 headers）；方式二：Authorization: Bearer <导入令牌>',
+    auth: 'OAuth 2.1 授权（配置无需 headers）；静态令牌：Authorization: Bearer <导入令牌>',
     authorization_servers: [publicOrigin(req)],
     resource_metadata: `${publicOrigin(req)}/.well-known/oauth-protected-resource/mcp`,
   });

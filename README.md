@@ -76,7 +76,7 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 
 **7 个工具**：`list_projects` → `list_files` → `list_frames` 定位画板；`get_frame_tree` 理解布局；`get_node` 获取图层完整规格（几何/填充/描边/阴影/文字 + 生成好的 CSS），支持名称模糊匹配；`get_design_tokens` 聚合高频颜色/字体/圆角；`get_image` 返回画板缩略图或单图层切图 PNG（base64，多模态模型可直接「看图」）。
 
-**方式一（推荐）：OAuth 2.1 授权，配置只有 url**
+**接入配置：OAuth 2.1（推荐）**
 
 ```json
 {
@@ -99,7 +99,7 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 - 未登录时 `/authorize` 302 到 `/login?next=...`，沿用网站原有的邮箱登录 / 限流 / 注册流程。
 - Vercel 上由 `vercel.json` 把 `/.well-known/*`、`/authorize`、`/token`、`/register`、`/revoke` rewrite 到 `/api/oauth/*`（复用 `api/catch.mjs` 的 `__vp` 机制）；本地常驻由 `app.use(oauthRouter)` 直接暴露同样的路径。
 
-**方式二（兼容）：静态访问令牌**
+**静态令牌（兼容旧配置）**
 
 ```json
 {
@@ -113,14 +113,12 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 }
 ```
 
-- 给不支持 OAuth 的客户端用；已发出的旧配置继续可用，不会因方式一上线而失效。
+- 需要令牌就在网站头像菜单「导入令牌」生成；已发出的旧配置继续可用。
 - 线上（`VERCEL` 或 `NODE_ENV=production`）**强制鉴权**：无有效 Bearer 返回 401，并带 `WWW-Authenticate` 指引 OAuth 发现。
-- Bearer 可以是团队「导入令牌」（与 Figma 插件共用 `import_tokens`，按令牌 scope 收敛到团队），也可以是部署环境变量 `MCP_TOKEN`（管理员全开）。
-- **共用凭据的边界**：首页顶栏「MCP 接入」弹窗生成的是独立的「MCP 访问令牌」（独立 state、独立明文，不会串进「导入令牌」弹窗），但两者写入同一张 `import_tokens` 表 —— 撤销任一条记录，Figma 插件与 MCP 客户端**同时失效**。MCP 侧只暴露 7 个读取工具，但该令牌本身也能调用 `/api/plugin/*` 的上传接口，不要当作只读密钥外泄。UI 不引导使用 `MCP_TOKEN`，它是部署级管理员凭据（`scope=all`，可读全库）。
-- 本地开发允许匿名访问；线上如确需放开，必须显式设 `MCP_ALLOW_ANONYMOUS=1`（不建议）。
-- `/mcp` 与 `/api/mcp` 指向同一个 router，Vercel 上由 rewrite 保证两条路径都可达。
+- 导入令牌与 Figma 插件共用 `import_tokens`：撤销后两边同时失效，且该令牌也能调用 `/api/plugin/*` 上传，不要当只读密钥外泄。`MCP_TOKEN` 是部署级管理员凭据（`scope=all`），UI 不引导使用。
+- 本地开发允许匿名访问；线上如确需放开，必须显式设 `MCP_ALLOW_ANONYMOUS=1`（不建议）。`/mcp` 与 `/api/mcp` 指向同一个 router，Vercel 上由 rewrite 保证两条路径都可达。
 
-**接入方式二：stdio 传输（本地子进程）**
+**stdio 传输（本地子进程）**
 
 ```
 {

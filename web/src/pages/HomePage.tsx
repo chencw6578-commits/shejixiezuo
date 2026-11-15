@@ -191,7 +191,7 @@ export default function HomePage() {
   const [switchOpen, setSwitchOpen] = useState(false);
   // 导入令牌从侧栏页改为头像下拉入口 + 弹窗展示
   const [tokenModal, setTokenModal] = useState(false);
-  // MCP 接入：首页顶栏一级入口（与「下载 Figma 插件」并排），独立弹窗内完成生成令牌 + 复制配置
+  // MCP 接入：首页顶栏一级入口（与「下载 Figma 插件」并排），弹窗只提供 OAuth 配置
   const [mcpModal, setMcpModal] = useState(false);
   const avatarMenuRef = useRef<HTMLDetailsElement | null>(null);
   const teamSwitchRef = useRef<HTMLDetailsElement | null>(null);
@@ -224,11 +224,6 @@ export default function HomePage() {
   const [newToken, setNewToken] = useState('');
   // 令牌作用范围：默认「全部团队」，插件里可先选团队再选项目
   const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
-  // MCP 接入弹窗独立状态：凭据仍写入同一张 import_tokens（撤销互通、列表共用），
-  // 但明文 / 范围 / 忙碌状态各自独立，避免插件弹窗生成的令牌被悄悄填进 AI 工具配置。
-  const [mcpNewToken, setMcpNewToken] = useState('');
-  const [mcpTokenScope, setMcpTokenScope] = useState<ImportToken['scope']>('all');
-  const [mcpBusy, setMcpBusy] = useState(false);
   const navigate = useNavigate();
   const dialogs = useDialogs();
 
@@ -396,9 +391,8 @@ export default function HomePage() {
   }, [activeTeam]);
 
   useEffect(() => {
+    // 切换团队时清掉上一次生成的明文，避免旧团队令牌被误用
     setNewToken('');
-    // 切换团队时同步清掉 MCP 弹窗的明文，避免旧团队的令牌残留在配置里
-    setMcpNewToken('');
     loadTokens();
   }, [loadTokens]);
 
@@ -426,53 +420,10 @@ export default function HomePage() {
     }
   };
 
-  /** MCP 弹窗独立生成：仍写入 import_tokens（可在令牌列表撤销），但明文只进 mcpNewToken */
-  const createMcpToken = async () => {
-    if (!activeTeam || mcpBusy) return;
-    setMcpBusy(true);
-    setError('');
-    try {
-      const created = await api.createImportToken(activeTeam, mcpTokenScope);
-      setMcpNewToken(created.token);
-      loadTokens();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setMcpBusy(false);
-    }
-  };
-
-  const copyMcpToken = async () => {
-    try {
-      await navigator.clipboard.writeText(mcpNewToken);
-      setError('');
-    } catch {
-      setError('复制失败：请手动选中令牌文本复制');
-    }
-  };
-
-  // MCP 配置文本分两份：导入令牌弹窗内嵌的说明沿用该弹窗生成的插件令牌；
-  // 顶栏独立 MCP 弹窗只用自己的 mcpNewToken，两者互不串台。
   const mcpEndpoint =
     typeof window !== 'undefined' ? `${window.location.origin}/mcp` : '/mcp';
-  const buildMcpConfig = (token: string, placeholder: string) =>
-    JSON.stringify(
-      {
-        mcpServers: {
-          shejixiezuo: {
-            type: 'http',
-            url: mcpEndpoint,
-            headers: { Authorization: `Bearer ${token || placeholder}` },
-          },
-        },
-      },
-      null,
-      2
-    );
-  const mcpConfigText = buildMcpConfig(newToken, '<你的导入令牌>');
-  const mcpModalConfigText = buildMcpConfig(mcpNewToken, '<你的 MCP 访问令牌>');
-  // 方式一：OAuth 2.1 授权。配置里只有 url，令牌由客户端自动获取并随每个请求发送，
-  // 用户不需要（也不应该）手动复制粘贴任何令牌。
+
+  // 顶栏 MCP 弹窗：OAuth 2.1 授权，配置里只有 url，令牌由客户端自动获取并随请求发送。
   const mcpOAuthConfigText = JSON.stringify(
     {
       mcpServers: {
@@ -490,17 +441,24 @@ export default function HomePage() {
       setError('复制失败：请手动选中配置文本复制');
     }
   };
+
+  // 「导入令牌」弹窗内嵌的静态配置：用该弹窗刚生成的明文，未生成时留占位符。
+  const mcpConfigText = JSON.stringify(
+    {
+      mcpServers: {
+        shejixiezuo: {
+          type: 'http',
+          url: mcpEndpoint,
+          headers: { Authorization: `Bearer ${newToken || '<你的导入令牌>'}` },
+        },
+      },
+    },
+    null,
+    2
+  );
   const copyMcpConfig = async () => {
     try {
       await navigator.clipboard.writeText(mcpConfigText);
-      setError('');
-    } catch {
-      setError('复制失败：请手动选中配置文本复制');
-    }
-  };
-  const copyMcpModalConfig = async () => {
-    try {
-      await navigator.clipboard.writeText(mcpModalConfigText);
       setError('');
     } catch {
       setError('复制失败：请手动选中配置文本复制');
@@ -1521,7 +1479,7 @@ export default function HomePage() {
                   <p className="dim small">
                     用上方生成的「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
                     按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。注意：MCP 侧只提供读取工具，但该凭据本身也能用于 Figma 插件上传，请勿外泄。
-                    支持 OAuth 2.1 的客户端请用顶栏「MCP 接入」里的方式一（配置只有 url，令牌只读且按团队隔离）。
+                    支持 OAuth 2.1 的客户端请用顶栏「MCP 接入」（配置只有 url，令牌只读且按团队隔离）。
                   </p>
                 </div>
               </div>
@@ -1563,9 +1521,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* MCP 接入弹窗：方式一 OAuth 2.1（配置只有 url，令牌由客户端自动获取）、
-          方式二静态访问令牌（旧配置兼容）。方式二凭据仍写入 import_tokens，
-          但用独立 state，不与「导入令牌」弹窗串台。 */}
+      {/* MCP 接入弹窗：只给 OAuth 2.1 配置（type + url）。
+          静态令牌统一走头像菜单「导入令牌」，此处不重复生成流程。 */}
       {mcpModal && (
         <div className="dlg-overlay" onClick={() => setMcpModal(false)}>
           <div
@@ -1579,8 +1536,7 @@ export default function HomePage() {
               <div>
                 <h2>MCP 接入 · 让 AI 直接读设计稿开发</h2>
                 <p className="dim small">
-                  Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取图层规格与 CSS，按真实数据还原界面，不用再猜间距和颜色。
-                  支持 OAuth 2.1 的客户端（如 WorkBuddy 自定义连接器）只需复制一个 url，不必手动填令牌。
+                  Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取图层规格与 CSS，按真实数据还原界面。
                 </p>
               </div>
               <button
@@ -1597,10 +1553,8 @@ export default function HomePage() {
               <div className="mcp-step">
                 <span className="mcp-step-no">1</span>
                 <div>
-                  <p>
-                    <b>方式一（推荐）· OAuth 2.1 授权登录</b>：配置里只写 url，不需要任何令牌。首次连接时客户端会自动打开本站登录与授权页，选择要授权的团队后由客户端自己获取令牌。
-                  </p>
-                  <p className="dim small">该令牌只读、只能访问你选中的团队，且不能用于 Figma 插件上传。每个请求仍会带令牌，只是不用手填（MCP 规范要求）。</p>
+                  <p>把下面这段配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。</p>
+                  <p className="dim small">首次连接会自动打开本站登录与授权页，选好团队后由客户端自己获取令牌，不用手填。</p>
                 </div>
               </div>
 
@@ -1613,63 +1567,9 @@ export default function HomePage() {
                 <span className="mcp-step-no">2</span>
                 <div>
                   <p>
-                    <b>方式二 · 访问令牌连接</b>：客户端不支持 OAuth 时用下面这套。生成「MCP 访问令牌」（与 Figma 插件共用同一套凭据，但在此独立生成与管理），明文只显示这一次。
-                    {!activeTeam && <b> 请先在左侧新建或选择一个团队。</b>}
-                  </p>
-                  <div className="token-create mcp-generate-row">
-                    <select
-                      value={mcpTokenScope}
-                      aria-label="MCP 令牌作用范围"
-                      disabled={!activeTeam}
-                      onChange={(e) => setMcpTokenScope(e.target.value as ImportToken['scope'])}
-                    >
-                      <option value="all">全部团队</option>
-                      <option value="team">仅当前团队</option>
-                    </select>
-                    <button
-                      type="button"
-                      className="new-project-btn"
-                      disabled={!activeTeam || mcpBusy}
-                      onClick={() => void createMcpToken()}
-                    >
-                      <Plus /> 生成 MCP 访问令牌
-                    </button>
-                  </div>
-                  {mcpNewToken && (
-                    <div className="token-once">
-                      <div className="token-once-head">MCP 访问令牌（只显示这一次）</div>
-                      <div className="token-once-body">
-                        <code>{mcpNewToken}</code>
-                        <button type="button" className="ghost-btn" onClick={() => void copyMcpToken()}>复制</button>
-                      </div>
-                      <p className="dim small">已自动填入下方配置，请立即保存；该凭据同时具备 Figma 插件的上传权限，请勿外泄，撤销令牌会同时影响插件与 MCP 客户端。</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mcp-step">
-                <span className="mcp-step-no">3</span>
-                <div>
-                  <p>
-                    把下面这段带令牌的配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。
-                  </p>
-                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌未生成时是占位符，需要替换成上一步生成的 MCP 访问令牌明文。</p>
-                </div>
-              </div>
-
-              <div className="mcp-step">
-                <span className="mcp-step-no">4</span>
-                <div>
-                  <p>
                     在 AI 工具里按 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿规格与 CSS 开发。
                   </p>
                 </div>
-              </div>
-
-              <div className="mcp-config">
-                <pre><code>{mcpModalConfigText}</code></pre>
-                <button type="button" className="ghost-btn" onClick={() => void copyMcpModalConfig()}>复制配置</button>
               </div>
 
               <div className="mcp-clients">
@@ -1679,6 +1579,8 @@ export default function HomePage() {
                 <span className="role-badge collaborator">Cline</span>
                 <span className="role-badge collaborator">WorkBuddy</span>
               </div>
+
+              <p className="dim small">客户端不支持 OAuth？到头像菜单「导入令牌」生成静态令牌。</p>
             </section>
           </div>
         </div>
