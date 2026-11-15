@@ -1,18 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Navigate, createBrowserRouter, RouterProvider, useLocation } from 'react-router-dom';
 import { api } from './api';
+// 首屏（登录 / 项目列表）保持同步加载；其余页面按需拆包，
+// 避免 Viewer / ProjectCanvas 等大页面被打进主 chunk 拖慢首次渲染。
 import HomePage from './pages/HomePage';
-import ProjectCanvasPage from './pages/ProjectCanvasPage';
-import FilePage from './pages/FilePage';
-import SpecPage from './pages/SpecPage';
-import ViewerPage from './pages/ViewerPage';
 import LoginPage from './pages/LoginPage';
-import VerifyPage from './pages/VerifyPage';
-import InvitePage from './pages/InvitePage';
-import ResetPage from './pages/ResetPage';
-import SharePage from './pages/SharePage';
 import './styles.css';
+
+const lazyPage = (factory: () => Promise<{ default: React.ComponentType }>) => {
+  const Page = lazy(factory);
+  return (
+    <Suspense fallback={<div className="page-msg">加载中…</div>}>
+      <Page />
+    </Suspense>
+  );
+};
 
 /** 登录守卫：未登录跳转 /login 并记录来源页，登录后回跳 */
 function Protected({ children }: { children: React.ReactNode }) {
@@ -33,17 +36,17 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
-  { path: '/verify', element: <VerifyPage /> },
-  { path: '/invite', element: <InvitePage /> },
-  { path: '/reset', element: <ResetPage /> },
+  { path: '/verify', element: lazyPage(() => import('./pages/VerifyPage')) },
+  { path: '/invite', element: lazyPage(() => import('./pages/InvitePage')) },
+  { path: '/reset', element: lazyPage(() => import('./pages/ResetPage')) },
   // 公开只读分享：刻意不套 Protected，未登录也能直接查看
-  { path: '/share/:token', element: <SharePage /> },
+  { path: '/share/:token', element: lazyPage(() => import('./pages/SharePage')) },
   { path: '/', element: <Protected><HomePage /></Protected> },
   { path: '/projects', element: <Protected><HomePage /></Protected> },
-  { path: '/projects/:projectId', element: <Protected><ProjectCanvasPage /></Protected> },
-  { path: '/files/:fileId', element: <Protected><FilePage /></Protected> },
-  { path: '/files/:fileId/spec', element: <Protected><SpecPage /></Protected> },
-  { path: '/files/:fileId/frames/:frameId', element: <Protected><ViewerPage /></Protected> },
+  { path: '/projects/:projectId', element: <Protected>{lazyPage(() => import('./pages/ProjectCanvasPage'))}</Protected> },
+  { path: '/files/:fileId', element: <Protected>{lazyPage(() => import('./pages/FilePage'))}</Protected> },
+  { path: '/files/:fileId/spec', element: <Protected>{lazyPage(() => import('./pages/SpecPage'))}</Protected> },
+  { path: '/files/:fileId/frames/:frameId', element: <Protected>{lazyPage(() => import('./pages/ViewerPage'))}</Protected> },
 ]);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

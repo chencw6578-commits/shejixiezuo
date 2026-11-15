@@ -75,7 +75,7 @@ function CoverCell({ frame }: { frame: ProjectCoverFrame }) {
   return (
     <span className="project-cover-cell" title={frame.name}>
       {showImg ? (
-        <img src={frame.thumb_url!} alt={frame.name} loading="lazy" onError={() => setFailed(true)} />
+        <img src={frame.thumb_url!} alt={frame.name} loading="lazy" decoding="async" onError={() => setFailed(true)} />
       ) : (
         <span className="project-cover-cell-name">{frame.name}</span>
       )}
@@ -1075,7 +1075,7 @@ export default function HomePage() {
                         {p.cover_frames && p.cover_frames.length > 0 ? (
                           <ProjectCover frames={p.cover_frames} />
                         ) : p.cover ? (
-                          <img className="project-cover-single" src={p.cover} alt={p.name} loading="lazy" />
+                          <img className="project-cover-single" src={p.cover} alt={p.name} loading="lazy" decoding="async" />
                         ) : null}
                       </span>
                       <span className="file-name"><ProjectMark /> {p.name}</span>

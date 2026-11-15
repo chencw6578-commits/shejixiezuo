@@ -196,30 +196,59 @@ export interface AuthUser {
 /** 邮箱验证提示条的「本次登录不再提示」标记（sessionStorage；登录成功时由 LoginPage 清除） */
 export const VERIFY_BANNER_DISMISS_KEY = 'shejixiezuo:verify-banner-dismissed';
 
+/**
+ * 首屏里 Protected 守卫与 HomePage 会各调一次 /api/auth/me（实测 2 次 RTT）。
+ * 2 秒内复用上一次成功结果；失败绝不缓存，登出 / 登录 / 注册 / 改昵称立即失效，
+ * 避免会话切换后旧身份残留。TTL 很短，不影响跨页面导航时的重新校验。
+ */
+let meCache: { at: number; user: AuthUser } | null = null;
+const invalidateMe = () => { meCache = null; };
+
 export const api = {
   // ---------- 登录注册 ----------
-  register: (email: string, password: string, name?: string) =>
-    request<AuthUser>('/api/auth/register', {
+  register: async (email: string, password: string, name?: string) => {
+    const user = await request<AuthUser>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
-    }),
+    });
+    invalidateMe();
+    return user;
+  },
 
-  login: (email: string, password: string) =>
-    request<AuthUser>('/api/auth/login', {
+  login: async (email: string, password: string) => {
+    const user = await request<AuthUser>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
-    }),
+    });
+    invalidateMe();
+    return user;
+  },
 
-  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  logout: async () => {
+    try {
+      return await request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+    } finally {
+      invalidateMe();
+    }
+  },
 
-  me: () => request<AuthUser>('/api/auth/me'),
+  me: () => {
+    if (meCache && Date.now() - meCache.at < 2000) return Promise.resolve(meCache.user);
+    return request<AuthUser>('/api/auth/me').then((user) => {
+      meCache = { at: Date.now(), user };
+      return user;
+    });
+  },
 
   /** 修改当前账号昵称（users.name 为头像下拉与团队成员列表共用的唯一真源） */
-  updateMe: (name: string) =>
-    request<AuthUser>('/api/auth/me', {
+  updateMe: async (name: string) => {
+    const user = await request<AuthUser>('/api/auth/me', {
       method: 'PATCH',
       body: JSON.stringify({ name }),
-    }),
+    });
+    invalidateMe();
+    return user;
+  },
 
   /** 邮箱验证：邮件链接落地后凭 token 核验 */
   verifyEmail: (token: string) =>
