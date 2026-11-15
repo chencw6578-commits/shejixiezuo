@@ -3,10 +3,13 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.5.7';
+const PLUGIN_VERSION = '1.5.8';
 const BUILD_DATE = '2026-11-15';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
+// 令牌单独存一份：偏好整包写入失败时（老版本字段不兼容等），令牌仍能被记住，
+// 避免出现「每次启动都要重新粘贴令牌」。
+const TOKEN_KEY = 'designhub-token';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ARTBOARD_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
 
@@ -624,30 +627,76 @@ async function loadPrefs() {
     probe.clientErr = msg;
     if (/plugin ID/i.test(msg)) probe.pluginIdMissing = true;
   }
-  // v1.5.3 双通道恢复：clientStorage（按插件 ID 隔离，跨文件）+ 文档内 pluginData（与插件 ID 无关）。
-  let prefs = {};
-  const src = { client: false, doc: false };
+  // v1.5.8 三路恢复 + 令牌单独读：
+  //   clientStorage（按插件 ID 隔离，跨文件、私有）
+  //   文档根 pluginData（随文件保存，跨会话）
+  //   当前页 pluginData（根不可写时的兜底）
+  // 令牌另外从 TOKEN_KEY 读：偏好整包读失败也不影响令牌恢复。
+  const prefs = {};
+  const src = { client: false, doc: false, page: false };
+  let token = '';
+  let tokenSrc = '';
+
+  const pick = (p) => { if (p && typeof p === 'object') Object.assign(prefs, p); };
+  const takeToken = (p, from) => {
+    if (!token && p && typeof p.token === 'string' && /^imp_/.test(p.token)) {
+      token = p.token;
+      tokenSrc = from;
+    }
+  };
+
   try {
     const p = await figma.clientStorage.getAsync(PREFS_KEY);
-    if (p && typeof p === 'object') { prefs = Object.assign({}, prefs, p); src.client = true; }
+    if (p && typeof p === 'object') { pick(p); src.client = true; takeToken(p, 'client'); }
   } catch (err) {
     console.warn('[prefs] clientStorage 读取失败：' + ((err && err.message) || err));
   }
   try {
+    const t = await figma.clientStorage.getAsync(TOKEN_KEY);
+    if (typeof t === 'string' && /^imp_/.test(t)) { token = t; tokenSrc = 'client'; }
+  } catch (err) { /* clientStorage 不可用时忽略 */ }
+
+  try {
     const raw = figma.root.getPluginData(PREFS_KEY);
     if (raw) {
       const docPrefs = JSON.parse(raw);
-      if (docPrefs && typeof docPrefs === 'object') { prefs = Object.assign({}, prefs, docPrefs); src.doc = true; }
+      if (docPrefs && typeof docPrefs === 'object') { pick(docPrefs); src.doc = true; takeToken(docPrefs, 'doc'); }
     }
   } catch (err) {
     console.warn('[prefs] 文档内偏好读取失败：' + ((err && err.message) || err));
   }
-  return { prefs, src, probe };
+  try {
+    const raw = figma.root.getPluginData(TOKEN_KEY);
+    if (typeof raw === 'string' && /^imp_/.test(raw) && !token) { token = raw; tokenSrc = 'doc'; }
+  } catch (err) { /* 忽略 */ }
+
+  try {
+    const raw = figma.currentPage.getPluginData(PREFS_KEY);
+    if (raw) {
+      const pagePrefs = JSON.parse(raw);
+      if (pagePrefs && typeof pagePrefs === 'object') { pick(pagePrefs); src.page = true; takeToken(pagePrefs, 'page'); }
+    }
+  } catch (err) {
+    console.warn('[prefs] 页面内偏好读取失败：' + ((err && err.message) || err));
+  }
+  try {
+    const raw = figma.currentPage.getPluginData(TOKEN_KEY);
+    if (typeof raw === 'string' && /^imp_/.test(raw) && !token) { token = raw; tokenSrc = 'page'; }
+  } catch (err) { /* 忽略 */ }
+
+  if (token) prefs.token = token;
+  return { prefs, src, probe, tokenSrc: tokenSrc };
 }
 
 async function savePrefs(prefs) {
-  // v1.5.3 双通道保存；v1.5.4 返回各通道写入结果（成功/失败原因），不再静默吞掉
-  const result = { client: false, doc: false, clientErr: '', docErr: '' };
+  // v1.5.8 三路保存 + 令牌单独存一份。
+  // 关键点：偏好整包写失败时令牌仍能单独写住 → 下次启动不用重新粘贴。
+  const result = {
+    client: false, doc: false, page: false,
+    clientErr: '', docErr: '', pageErr: '',
+    tokenSaved: false, tokenCleared: false,
+  };
+  const token = typeof prefs.token === 'string' && /^imp_/.test(prefs.token) ? prefs.token : '';
   try {
     await figma.clientStorage.setAsync(PREFS_KEY, prefs);
     result.client = true;
@@ -661,6 +710,34 @@ async function savePrefs(prefs) {
   } catch (err) {
     result.docErr = String((err && err.message) || err);
     console.warn('[prefs] 文档内偏好保存失败：' + result.docErr);
+  }
+  try {
+    figma.currentPage.setPluginData(PREFS_KEY, JSON.stringify(prefs));
+    result.page = true;
+  } catch (err) {
+    result.pageErr = String((err && err.message) || err);
+    console.warn('[prefs] 页面内偏好保存失败：' + result.pageErr);
+  }
+
+  // 令牌单独写：任一通道成功即可；令牌为空时顺手清掉三路残留。
+  if (token) {
+    try {
+      await figma.clientStorage.setAsync(TOKEN_KEY, token);
+      result.tokenSaved = true;
+    } catch (err) { /* clientStorage 不可用时忽略 */ }
+    try {
+      figma.root.setPluginData(TOKEN_KEY, token);
+      result.tokenSaved = true;
+    } catch (err) { /* 忽略 */ }
+    try {
+      figma.currentPage.setPluginData(TOKEN_KEY, token);
+      result.tokenSaved = true;
+    } catch (err) { /* 忽略 */ }
+  } else {
+    try { await figma.clientStorage.setAsync(TOKEN_KEY, ''); } catch (err) { /* 忽略 */ }
+    try { figma.root.setPluginData(TOKEN_KEY, ''); } catch (err) { /* 忽略 */ }
+    try { figma.currentPage.setPluginData(TOKEN_KEY, ''); } catch (err) { /* 忽略 */ }
+    result.tokenCleared = true;
   }
   return result;
 }
