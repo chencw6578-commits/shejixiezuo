@@ -476,34 +476,11 @@ export default function HomePage() {
     }
   };
 
-  // 「导入令牌」弹窗内嵌的静态配置：用该弹窗刚生成的明文，未生成时留占位符。
-  const mcpConfigText = JSON.stringify(
-    {
-      mcpServers: {
-        shejixiezuo: {
-          type: 'http',
-          url: mcpEndpoint,
-          headers: { Authorization: `Bearer ${newToken || '<你的导入令牌>'}` },
-        },
-      },
-    },
-    null,
-    2
-  );
-  const copyMcpConfig = async () => {
-    try {
-      await navigator.clipboard.writeText(mcpConfigText);
-      setError('');
-    } catch {
-      setError('复制失败：请手动选中配置文本复制');
-    }
-  };
-
   const revokeToken = async (id: string) => {
     if (!activeTeam) return;
     const ok = await dialogs.confirm({
       title: '撤销导入令牌',
-      message: '撤销后该记录会从列表删除且不可恢复。由于 MCP 与 Figma 插件共用同一套凭据，使用该令牌的插件和 MCP 客户端都会立即失效（返回 401），两边都需要重新生成并填写新令牌。',
+      message: '撤销后该记录会从列表删除且不可恢复，使用该令牌的 Figma 插件会立即失效（401），需要重新生成并填写新令牌。',
       confirmText: '撤销并删除',
       danger: true,
     });
@@ -1462,7 +1439,7 @@ export default function HomePage() {
                 <div>
                   <h3>令牌列表</h3>
                   <p className="dim small">
-                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；MCP 接入共用这套凭据（另见下方说明），撤销即删除记录，插件与 MCP 客户端同时失效（401）。
+                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销后使用该令牌的 Figma 插件会立即失效（401）。
                   </p>
                 </div>
                 <div className="token-create">
@@ -1509,51 +1486,6 @@ export default function HomePage() {
               </ul>
             </section>
 
-            <section className="settings-section mcp-connect">
-              <div className="settings-head">
-                <div>
-                  <h3>MCP 接入（让 AI 直接读设计稿开发）</h3>
-                  <p className="dim small">
-                    用上方生成的「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
-                    按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。注意：MCP 侧只提供读取工具，但该凭据本身也能用于 Figma 插件上传，请勿外泄。
-                    支持 OAuth 2.1 的客户端请用顶栏「MCP 接入」（配置只有 url，令牌只读且按团队隔离）。
-                  </p>
-                </div>
-              </div>
-
-              <div className="mcp-step">
-                <span className="mcp-step-no">1</span>
-                <div>
-                  <p>在上方「令牌列表」点 <b>生成导入令牌</b>（范围选「全部团队」或当前团队），复制明文令牌（只显示一次）。</p>
-                </div>
-              </div>
-              <div className="mcp-step">
-                <span className="mcp-step-no">2</span>
-                <div>
-                  <p>把下面这段配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。</p>
-                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌取自上方刚生成的明文（未生成时留占位符）。</p>
-                </div>
-              </div>
-              <div className="mcp-step">
-                <span className="mcp-step-no">3</span>
-                <div>
-                  <p>在 AI 工具里用 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿到规格与 CSS 进行开发。</p>
-                </div>
-              </div>
-
-              <div className="mcp-config">
-                <pre><code>{mcpConfigText}</code></pre>
-                <button type="button" className="ghost-btn" onClick={() => void copyMcpConfig()}>复制配置</button>
-              </div>
-
-              <div className="mcp-clients">
-                <span className="dim small">适用客户端：</span>
-                <span className="role-badge collaborator">Cursor</span>
-                <span className="role-badge collaborator">Claude Desktop</span>
-                <span className="role-badge collaborator">Cline</span>
-                <span className="role-badge collaborator">WorkBuddy</span>
-              </div>
-            </section>
           </div>
         </div>
       )}
