@@ -219,11 +219,16 @@ export default function HomePage() {
     return () => window.clearTimeout(timer);
   }, [error]);
   const [busy, setBusy] = useState(false);
-  // 团队导入令牌：newToken 只在生成后展示一次
+  // 团队导入令牌（Figma 插件用）：newToken 只在生成后展示一次
   const [tokens, setTokens] = useState<ImportToken[]>([]);
   const [newToken, setNewToken] = useState('');
   // 令牌作用范围：默认「全部团队」，插件里可先选团队再选项目
   const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
+  // MCP 接入弹窗独立状态：凭据仍写入同一张 import_tokens（撤销互通、列表共用），
+  // 但明文 / 范围 / 忙碌状态各自独立，避免插件弹窗生成的令牌被悄悄填进 AI 工具配置。
+  const [mcpNewToken, setMcpNewToken] = useState('');
+  const [mcpTokenScope, setMcpTokenScope] = useState<ImportToken['scope']>('all');
+  const [mcpBusy, setMcpBusy] = useState(false);
   const navigate = useNavigate();
   const dialogs = useDialogs();
 
@@ -392,6 +397,8 @@ export default function HomePage() {
 
   useEffect(() => {
     setNewToken('');
+    // 切换团队时同步清掉 MCP 弹窗的明文，避免旧团队的令牌残留在配置里
+    setMcpNewToken('');
     loadTokens();
   }, [loadTokens]);
 
@@ -419,25 +426,62 @@ export default function HomePage() {
     }
   };
 
-  // MCP 接入配置（HTTP 传输，与 Figma 插件共用同一套导入令牌）
+  /** MCP 弹窗独立生成：仍写入 import_tokens（可在令牌列表撤销），但明文只进 mcpNewToken */
+  const createMcpToken = async () => {
+    if (!activeTeam || mcpBusy) return;
+    setMcpBusy(true);
+    setError('');
+    try {
+      const created = await api.createImportToken(activeTeam, mcpTokenScope);
+      setMcpNewToken(created.token);
+      loadTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMcpBusy(false);
+    }
+  };
+
+  const copyMcpToken = async () => {
+    try {
+      await navigator.clipboard.writeText(mcpNewToken);
+      setError('');
+    } catch {
+      setError('复制失败：请手动选中令牌文本复制');
+    }
+  };
+
+  // MCP 配置文本分两份：导入令牌弹窗内嵌的说明沿用该弹窗生成的插件令牌；
+  // 顶栏独立 MCP 弹窗只用自己的 mcpNewToken，两者互不串台。
   const mcpEndpoint =
     typeof window !== 'undefined' ? `${window.location.origin}/mcp` : '/mcp';
-  const mcpConfigText = JSON.stringify(
-    {
-      mcpServers: {
-        shejixiezuo: {
-          type: 'http',
-          url: mcpEndpoint,
-          headers: { Authorization: `Bearer ${newToken || '<你的导入令牌>'}` },
+  const buildMcpConfig = (token: string, placeholder: string) =>
+    JSON.stringify(
+      {
+        mcpServers: {
+          shejixiezuo: {
+            type: 'http',
+            url: mcpEndpoint,
+            headers: { Authorization: `Bearer ${token || placeholder}` },
+          },
         },
       },
-    },
-    null,
-    2
-  );
+      null,
+      2
+    );
+  const mcpConfigText = buildMcpConfig(newToken, '<你的导入令牌>');
+  const mcpModalConfigText = buildMcpConfig(mcpNewToken, '<你的 MCP 访问令牌>');
   const copyMcpConfig = async () => {
     try {
       await navigator.clipboard.writeText(mcpConfigText);
+      setError('');
+    } catch {
+      setError('复制失败：请手动选中配置文本复制');
+    }
+  };
+  const copyMcpModalConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(mcpModalConfigText);
       setError('');
     } catch {
       setError('复制失败：请手动选中配置文本复制');
@@ -448,7 +492,7 @@ export default function HomePage() {
     if (!activeTeam) return;
     const ok = await dialogs.confirm({
       title: '撤销导入令牌',
-      message: '撤销后该记录会从列表删除且不可恢复，使用该令牌的 Figma 插件会立即失效（返回 401），需要重新填写新令牌。',
+      message: '撤销后该记录会从列表删除且不可恢复。由于 MCP 与 Figma 插件共用同一套凭据，使用该令牌的插件和 MCP 客户端都会立即失效（返回 401），两边都需要重新生成并填写新令牌。',
       confirmText: '撤销并删除',
       danger: true,
     });
@@ -1404,7 +1448,7 @@ export default function HomePage() {
                 <div>
                   <h3>令牌列表</h3>
                   <p className="dim small">
-                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；撤销即删除记录，插件立即失效（401）。
+                    令牌以 imp_ 开头，服务端只保存哈希，明文只在生成时显示一次；MCP 接入共用这套凭据（另见下方说明），撤销即删除记录，插件与 MCP 客户端同时失效（401）。
                   </p>
                 </div>
                 <div className="token-create">
@@ -1456,8 +1500,8 @@ export default function HomePage() {
                 <div>
                   <h3>MCP 接入（让 AI 直接读设计稿开发）</h3>
                   <p className="dim small">
-                    用同一个「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
-                    按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。
+                    用上方生成的「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
+                    按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。注意：MCP 侧只提供读取工具，但该凭据本身也能用于 Figma 插件上传，请勿外泄。
                   </p>
                 </div>
               </div>
@@ -1500,7 +1544,8 @@ export default function HomePage() {
       )}
 
       {/* MCP 接入弹窗：首页顶栏一级入口，与「下载 Figma 插件」并排。
-          复用导入令牌的生成逻辑与配置文本，一次完成「生成令牌 → 复制配置」 */}
+          凭据仍写入 import_tokens（列表与撤销互通），但生成 / 明文 / 范围用独立 state，
+          不与「导入令牌」弹窗串台，一次完成「生成 MCP 访问令牌 → 复制配置」 */}
       {mcpModal && (
         <div className="dlg-overlay" onClick={() => setMcpModal(false)}>
           <div
@@ -1532,15 +1577,15 @@ export default function HomePage() {
                 <span className="mcp-step-no">1</span>
                 <div>
                   <p>
-                    生成「导入令牌」（与 Figma 插件同一套），明文只显示这一次。
+                    生成「MCP 访问令牌」（与 Figma 插件共用同一套凭据，但在此独立生成与管理），明文只显示这一次。
                     {!activeTeam && <b> 请先在左侧新建或选择一个团队。</b>}
                   </p>
                   <div className="token-create mcp-generate-row">
                     <select
-                      value={tokenScope}
-                      aria-label="令牌作用范围"
+                      value={mcpTokenScope}
+                      aria-label="MCP 令牌作用范围"
                       disabled={!activeTeam}
-                      onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
+                      onChange={(e) => setMcpTokenScope(e.target.value as ImportToken['scope'])}
                     >
                       <option value="all">全部团队</option>
                       <option value="team">仅当前团队</option>
@@ -1548,20 +1593,20 @@ export default function HomePage() {
                     <button
                       type="button"
                       className="new-project-btn"
-                      disabled={!activeTeam || busy}
-                      onClick={() => void createToken()}
+                      disabled={!activeTeam || mcpBusy}
+                      onClick={() => void createMcpToken()}
                     >
-                      <Plus /> 生成导入令牌
+                      <Plus /> 生成 MCP 访问令牌
                     </button>
                   </div>
-                  {newToken && (
+                  {mcpNewToken && (
                     <div className="token-once">
-                      <div className="token-once-head">新令牌（只显示这一次）</div>
+                      <div className="token-once-head">MCP 访问令牌（只显示这一次）</div>
                       <div className="token-once-body">
-                        <code>{newToken}</code>
-                        <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
+                        <code>{mcpNewToken}</code>
+                        <button type="button" className="ghost-btn" onClick={() => void copyMcpToken()}>复制</button>
                       </div>
-                      <p className="dim small">已自动填入下方配置；请自行保存，关闭后无法再查看明文。</p>
+                      <p className="dim small">已自动填入下方配置，请立即保存；该凭据同时具备 Figma 插件的上传权限，请勿外泄，撤销令牌会同时影响插件与 MCP 客户端。</p>
                     </div>
                   )}
                 </div>
@@ -1573,7 +1618,7 @@ export default function HomePage() {
                   <p>
                     把下面配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。
                   </p>
-                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌未生成时是占位符，需要替换成上一步的明文。</p>
+                  <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌未生成时是占位符，需要替换成上一步生成的 MCP 访问令牌明文。</p>
                 </div>
               </div>
 
@@ -1587,8 +1632,8 @@ export default function HomePage() {
               </div>
 
               <div className="mcp-config">
-                <pre><code>{mcpConfigText}</code></pre>
-                <button type="button" className="ghost-btn" onClick={() => void copyMcpConfig()}>复制配置</button>
+                <pre><code>{mcpModalConfigText}</code></pre>
+                <button type="button" className="ghost-btn" onClick={() => void copyMcpModalConfig()}>复制配置</button>
               </div>
 
               <div className="mcp-clients">

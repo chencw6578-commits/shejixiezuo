@@ -92,6 +92,7 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 
 - 线上（`VERCEL` 或 `NODE_ENV=production`）**强制鉴权**：不带 Bearer 返回 401，不会放开匿名读全库。
 - Bearer 可以是团队「导入令牌」（与 Figma 插件共用 `import_tokens`，按令牌 scope 收敛到团队），也可以是部署环境变量 `MCP_TOKEN`（管理员全开）。
+- **共用凭据的边界**：首页顶栏「MCP 接入」弹窗生成的是独立的「MCP 访问令牌」（独立 state、独立明文，不会串进「导入令牌」弹窗），但两者写入同一张 `import_tokens` 表 —— 撤销任一条记录，Figma 插件与 MCP 客户端**同时失效**。MCP 侧只暴露 7 个读取工具，但该令牌本身也能调用 `/api/plugin/*` 的上传接口，不要当作只读密钥外泄。UI 不引导使用 `MCP_TOKEN`，它是部署级管理员凭据（`scope=all`，可读全库）。
 - 本地开发允许匿名访问；线上如确需放开，必须显式设 `MCP_ALLOW_ANONYMOUS=1`（不建议）。
 - `/mcp` 与 `/api/mcp` 指向同一个 router，Vercel 上由 rewrite 保证两条路径都可达。
 
