@@ -352,7 +352,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.5.7';
+  var UI_VERSION = '1.5.8';
   // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
   var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
   var UNASSIGNED_TEAM = 'unassigned';
@@ -367,6 +367,8 @@
     prefsSrc: null,
     // v1.5.5：存储探针结果（clientOk / clientErr / pluginIdMissing）
     prefsProbe: null,
+    // v1.5.8：令牌实际是从哪一路存储读到的（client / doc / page / localStorage）
+    prefsTokenSrc: '',
     baseUrl: DEFAULT_BASE_URL,
     // v1.5.6：老安装偏好里存的是 localhost，连不上时自动回退一次到线上服务
     fallbackTried: false,
@@ -571,29 +573,38 @@
     tokenInput.value = '';
     $('gateServerText').textContent = baseUrl();
     $('gateBaseUrl').value = state.baseUrl;
-    // v1.5.5 存储探针：manifest 无固定插件 id 时 Figma 禁用本地存储——这是「每次都要填令牌」的根因
+    // v1.5.8 存储探针：manifest 无固定插件 id 时 Figma 禁用 clientStorage——这是「每次都要填令牌」的根因。
+    // 令牌已改为单独存一份并增加「当前页」兜底通道；这里据实告诉用户令牌存在哪、怎么根治。
     var probe = state.prefsProbe;
     var src = state.prefsSrc;
     var hint = $('gateStorageHint');
     var lsHasToken = false;
     var lsPrefs = lsLoadPrefs();
     if (lsPrefs && typeof lsPrefs.token === 'string' && /^imp_/.test(lsPrefs.token)) lsHasToken = true;
+    var tokenSrc = state.prefsTokenSrc;
     if (probe && probe.pluginIdMissing) {
-      hint.textContent = '诊断：本插件 manifest.json 缺少固定插件 id，Figma 已禁用本地存储（探针报错：'
-        + probe.clientErr + '）——令牌因此永远记不住。修复方法：在 Figma「新建插件」占位拿到 id 后填入 manifest 并重新导入。';
+      hint.textContent = '原因：Figma 对没有固定插件 id 的开发插件禁用了本地存储，所以令牌存不住。'
+        + '根治办法（只做一次）：Figma 菜单 → Plugins → Development → New plugin，'
+        + '把它生成的 manifest.json 里的 id 值填进本插件的 manifest.json（加一行 "id": "…"），'
+        + '再重新 Import，之后令牌只需填一次。';
       hint.classList.remove('hidden');
-    } else if (src && (src.client || src.doc)) {
+    } else if (tokenSrc) {
+      hint.textContent = '诊断：已读到上次保存的令牌（'
+        + ({ client: '本地', doc: '文档内', page: '当前页', localStorage: '浏览器缓存' }[tokenSrc] || tokenSrc)
+        + '），但校验未通过或已失效，请重新粘贴。';
+      hint.classList.remove('hidden');
+    } else if (src && (src.client || src.doc || src.page)) {
       hint.textContent = '诊断：已读到上次保存的登录状态（'
-        + [src.client ? '本地' : null, src.doc ? '文档内' : null].filter(Boolean).join(' + ')
-        + '），但令牌校验未通过或已失效。';
+        + [src.client ? '本地' : null, src.doc ? '文档内' : null, src.page ? '当前页' : null].filter(Boolean).join(' + ')
+        + '），但没有读到令牌，请重新粘贴。';
       hint.classList.remove('hidden');
     } else if (lsHasToken) {
-      hint.textContent = '诊断：浏览器本地缓存里有令牌，但插件主线程两路存储都没读到（可能插件 ID 已变化）。';
+      hint.textContent = '诊断：浏览器本地缓存里有令牌，但插件主线程三路存储都没读到（可能插件 ID 已变化）。';
       hint.classList.remove('hidden');
     } else {
       hint.textContent = probe && probe.clientErr
-        ? '诊断：本地存储写入异常（' + probe.clientErr + '），三路均无已保存的登录状态。'
-        : '诊断：三路存储均无已保存的登录状态（首次使用，或上次保存失败）。';
+        ? '诊断：本地存储写入异常（' + probe.clientErr + '），四路均无已保存的登录状态。'
+        : '诊断：四路存储均无已保存的登录状态（首次使用，或上次保存失败）。';
       hint.classList.remove('hidden');
     }
     if (reason) {
@@ -996,16 +1007,30 @@
   // ---------- 偏好 ----------
   var prefsTimer = null;
   var LS_PREFS_KEY = 'designhub-plugin-prefs';
+  var LS_TOKEN_KEY = 'designhub-token';
   /** v1.5.4 第三通道：UI iframe 的 localStorage。clientStorage 按插件 ID 隔离、
-   * pluginData 存在文档内，localStorage 与两者独立，三通道互为兜底。失败静默（尽力而为）。 */
+   * pluginData 存在文档内，localStorage 与两者独立，多通道互为兜底。失败静默（尽力而为）。
+   * v1.5.8：令牌另外单独存一份，避免偏好整包写失败时把令牌一起丢掉。 */
   function lsSavePrefs(prefs) {
-    try { window.localStorage.setItem(LS_PREFS_KEY, JSON.stringify(prefs)); return true; }
-    catch (e) { return false; }
+    try {
+      window.localStorage.setItem(LS_PREFS_KEY, JSON.stringify(prefs));
+      if (typeof prefs.token === 'string' && /^imp_/.test(prefs.token)) {
+        window.localStorage.setItem(LS_TOKEN_KEY, prefs.token);
+      } else {
+        window.localStorage.setItem(LS_TOKEN_KEY, '');
+      }
+      return true;
+    } catch (e) { return false; }
   }
   function lsLoadPrefs() {
     try {
       var raw = window.localStorage.getItem(LS_PREFS_KEY);
-      return raw ? JSON.parse(raw) : null;
+      var prefs = raw ? JSON.parse(raw) : null;
+      var token = window.localStorage.getItem(LS_TOKEN_KEY);
+      if (token && /^imp_/.test(token)) {
+        prefs = Object.assign({}, prefs || {}, { token: token });
+      }
+      return prefs;
     } catch (e) { return null; }
   }
   function persistPrefs(immediate) {
@@ -1025,7 +1050,8 @@
         newGroupName: state.newGroupName,
       };
       postToPlugin({ type: 'save-prefs', prefs: prefs });
-      lsSavePrefs(prefs);
+      // 记住 UI 侧 localStorage 是否写入成功：主线程三路都不可用时，这里仍可能存住令牌
+      state.lsSaved = lsSavePrefs(prefs);
     };
     if (immediate) { send(); return; }
     prefsTimer = setTimeout(send, 300);
@@ -1055,7 +1081,9 @@
     if (typeof prefs.groupId === 'string') state.groupId = prefs.groupId;
     if (typeof prefs.newGroupName === 'string') state.newGroupName = prefs.newGroupName;
     // v1.5.4：记录偏好读取来源，门禁页据此显示「上次登录状态」存在哪
-    if (src && typeof src === 'object') state.prefsSrc = { client: !!src.client, doc: !!src.doc };
+    if (src && typeof src === 'object') {
+      state.prefsSrc = { client: !!src.client, doc: !!src.doc, page: !!src.page };
+    }
     renderSettings();
     renderTargets();
   }
@@ -1535,7 +1563,7 @@
     }
     if (msg.type === 'prefs') {
       var prefs = msg.prefs || {};
-      // v1.5.4 第三通道兜底：主线程两路都没读到令牌时，再试 UI iframe 的 localStorage
+      // v1.5.4 第三通道兜底：主线程几路都没读到令牌时，再试 UI iframe 的 localStorage
       if ((!prefs.token || !/^imp_/.test(prefs.token)) && !state.token) {
         var lsPrefs = lsLoadPrefs();
         if (lsPrefs && typeof lsPrefs.token === 'string' && /^imp_/.test(lsPrefs.token)) {
@@ -1546,21 +1574,34 @@
       }
       applyPrefs(prefs, msg.src);
       if (msg.probe) state.prefsProbe = msg.probe;
-      if (msg.src && msg.src.localStorage) persistPrefs(true); // 自愈：回写主线程两路存储
+      // v1.5.8：记录令牌实际来源（client / doc / page），门禁页据此说明令牌存在哪
+      state.prefsTokenSrc = msg.tokenSrc || (msg.src && msg.src.localStorage ? 'localStorage' : '');
+      if (msg.src && msg.src.localStorage) persistPrefs(true); // 自愈：回写主线程几路存储
       start();
       return;
     }
     if (msg.type === 'prefs-saved') {
-      // v1.5.4：保存结果可视化——写进哪路存储、哪路失败，一目了然
+      // v1.5.8：保存结果可视化——写进哪路存储、令牌有没有真的记住，一目了然
       var r = msg.result || {};
-      if (r.client && r.doc) {
-        postToPlugin({ type: 'notify', message: '登录状态已保存（本地 + 文档内）' });
-      } else if (r.doc) {
-        postToPlugin({ type: 'notify', message: '登录状态已保存到文档内（本地存储不可用：' + (r.clientErr || '未知原因') + '）' });
-      } else if (r.client) {
-        postToPlugin({ type: 'notify', message: '登录状态已保存到本地（文档内写入失败：' + (r.docErr || '未知原因') + '）' });
+      var savedWhere = [r.client ? '本地' : null, r.doc ? '文档内' : null, r.page ? '当前页' : null]
+        .filter(Boolean).join(' + ');
+      if (r.tokenSaved) {
+        postToPlugin({
+          type: 'notify',
+          message: '令牌已记住' + (savedWhere ? '（' + savedWhere + '）' : '') + '，下次打开不用再粘贴。',
+        });
+      } else if (state.lsSaved) {
+        postToPlugin({
+          type: 'notify',
+          message: '令牌已记在浏览器缓存（主线程存储不可用：'
+            + (r.clientErr || r.docErr || r.pageErr || '未知原因') + '），插件 ID 变化后会失效。',
+        });
       } else {
-        postToPlugin({ type: 'notify', message: '警告：登录状态保存失败（' + (r.clientErr || r.docErr || '两路存储均不可用') + '），下次打开需要重新粘贴令牌' });
+        postToPlugin({
+          type: 'notify',
+          message: '警告：令牌没能保存（' + (r.clientErr || r.docErr || r.pageErr || '三路存储均不可用')
+            + '），下次打开需要重新粘贴。',
+        });
       }
       return;
     }
