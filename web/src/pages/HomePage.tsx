@@ -471,6 +471,25 @@ export default function HomePage() {
     );
   const mcpConfigText = buildMcpConfig(newToken, '<你的导入令牌>');
   const mcpModalConfigText = buildMcpConfig(mcpNewToken, '<你的 MCP 访问令牌>');
+  // 方式一：OAuth 2.1 授权。配置里只有 url，令牌由客户端自动获取并随每个请求发送，
+  // 用户不需要（也不应该）手动复制粘贴任何令牌。
+  const mcpOAuthConfigText = JSON.stringify(
+    {
+      mcpServers: {
+        shejixiezuo: { type: 'http', url: mcpEndpoint },
+      },
+    },
+    null,
+    2
+  );
+  const copyMcpOAuthConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(mcpOAuthConfigText);
+      setError('');
+    } catch {
+      setError('复制失败：请手动选中配置文本复制');
+    }
+  };
   const copyMcpConfig = async () => {
     try {
       await navigator.clipboard.writeText(mcpConfigText);
@@ -1502,6 +1521,7 @@ export default function HomePage() {
                   <p className="dim small">
                     用上方生成的「导入令牌」即可让 Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取你的设计稿，
                     按图层规格与 CSS 精准还原界面，而不是凭空猜测间距与颜色。注意：MCP 侧只提供读取工具，但该凭据本身也能用于 Figma 插件上传，请勿外泄。
+                    支持 OAuth 2.1 的客户端请用顶栏「MCP 接入」里的方式一（配置只有 url，令牌只读且按团队隔离）。
                   </p>
                 </div>
               </div>
@@ -1543,9 +1563,9 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* MCP 接入弹窗：首页顶栏一级入口，与「下载 Figma 插件」并排。
-          凭据仍写入 import_tokens（列表与撤销互通），但生成 / 明文 / 范围用独立 state，
-          不与「导入令牌」弹窗串台，一次完成「生成 MCP 访问令牌 → 复制配置」 */}
+      {/* MCP 接入弹窗：方式一 OAuth 2.1（配置只有 url，令牌由客户端自动获取）、
+          方式二静态访问令牌（旧配置兼容）。方式二凭据仍写入 import_tokens，
+          但用独立 state，不与「导入令牌」弹窗串台。 */}
       {mcpModal && (
         <div className="dlg-overlay" onClick={() => setMcpModal(false)}>
           <div
@@ -1560,6 +1580,7 @@ export default function HomePage() {
                 <h2>MCP 接入 · 让 AI 直接读设计稿开发</h2>
                 <p className="dim small">
                   Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取图层规格与 CSS，按真实数据还原界面，不用再猜间距和颜色。
+                  支持 OAuth 2.1 的客户端（如 WorkBuddy 自定义连接器）只需复制一个 url，不必手动填令牌。
                 </p>
               </div>
               <button
@@ -1577,7 +1598,22 @@ export default function HomePage() {
                 <span className="mcp-step-no">1</span>
                 <div>
                   <p>
-                    生成「MCP 访问令牌」（与 Figma 插件共用同一套凭据，但在此独立生成与管理），明文只显示这一次。
+                    <b>方式一（推荐）· OAuth 2.1 授权登录</b>：配置里只写 url，不需要任何令牌。首次连接时客户端会自动打开本站登录与授权页，选择要授权的团队后由客户端自己获取令牌。
+                  </p>
+                  <p className="dim small">该令牌只读、只能访问你选中的团队，且不能用于 Figma 插件上传。每个请求仍会带令牌，只是不用手填（MCP 规范要求）。</p>
+                </div>
+              </div>
+
+              <div className="mcp-config">
+                <pre><code>{mcpOAuthConfigText}</code></pre>
+                <button type="button" className="ghost-btn" onClick={() => void copyMcpOAuthConfig()}>复制配置</button>
+              </div>
+
+              <div className="mcp-step">
+                <span className="mcp-step-no">2</span>
+                <div>
+                  <p>
+                    <b>方式二 · 访问令牌连接</b>：客户端不支持 OAuth 时用下面这套。生成「MCP 访问令牌」（与 Figma 插件共用同一套凭据，但在此独立生成与管理），明文只显示这一次。
                     {!activeTeam && <b> 请先在左侧新建或选择一个团队。</b>}
                   </p>
                   <div className="token-create mcp-generate-row">
@@ -1613,17 +1649,17 @@ export default function HomePage() {
               </div>
 
               <div className="mcp-step">
-                <span className="mcp-step-no">2</span>
+                <span className="mcp-step-no">3</span>
                 <div>
                   <p>
-                    把下面配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。
+                    把下面这段带令牌的配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。
                   </p>
                   <p className="dim small">端点 <code>{mcpEndpoint}</code> 已自动填入；令牌未生成时是占位符，需要替换成上一步生成的 MCP 访问令牌明文。</p>
                 </div>
               </div>
 
               <div className="mcp-step">
-                <span className="mcp-step-no">3</span>
+                <span className="mcp-step-no">4</span>
                 <div>
                   <p>
                     在 AI 工具里按 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿规格与 CSS 开发。

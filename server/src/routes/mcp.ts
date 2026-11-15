@@ -1,22 +1,26 @@
 /**
  * MCP HTTP 传输（Streamable HTTP 简化实现：JSON 响应模式）。
  *
- * 授权：与 Figma 插件共用同一套 import_tokens。
- *   - 无 Authorization：仅本地开发放行（或显式 MCP_ALLOW_ANONYMOUS=1）；线上返回 401
- *   - Bearer === 环境变量 MCP_TOKEN：管理员全开
- *   - Bearer 匹配 import_tokens（仅存哈希）：按令牌 scope 收敛到团队
- *   - Bearer 非法 / 已撤销：返回 401
- * 这样 AI 编码工具只能读到该用户/团队的设计稿，而不是全库。
+ * 授权（三种凭据并存，按优先级）：
+ *   1. dhat_ OAuth 2.1 访问令牌：由 /authorize 授权签发，绑定单个团队且只读，
+ *      存 oauth_access_tokens；校验 audience(resource)、过期与撤销。
+ *      它不写 import_tokens，因此无法调用 /api/plugin/* 的上传接口。
+ *   2. Bearer === 环境变量 MCP_TOKEN：管理员全开（部署级凭据，UI 不引导）
+ *   3. Bearer 匹配 import_tokens：与 Figma 插件共用，按 scope 收敛团队（旧配置兼容）
+ *   无 Authorization：仅本地开发放行或显式 MCP_ALLOW_ANONYMOUS=1；线上返回 401，
+ *   并带 WWW-Authenticate 指向 RFC 9728 protected resource metadata，
+ *   让支持 OAuth 的客户端自动发起授权，而不是只报一句「缺令牌」。
  *
  * AI 工具接入：
- *   url: <服务地址>/mcp
- *   header: Authorization: Bearer <导入令牌>
+ *   方式一（推荐）url: <服务地址>/mcp，配置里不写 headers，客户端自动完成授权
+ *   方式二（兼容）url + headers: Authorization: Bearer <导入令牌>
  */
 import { Router, type Request, type Response } from 'express';
 import { createHash } from 'node:crypto';
 import { handleRpcMessage, SERVER_INFO } from '../mcp/handler.js';
 import type { McpCtx } from '../mcp/tools.js';
 import { pool } from '../db.js';
+import { canonicalResource, publicOrigin } from './oauth.js';
 
 const hashToken = (t: string) => createHash('sha256').update(t).digest('hex');
 
@@ -42,13 +46,25 @@ async function resolveCtx(req: Request): Promise<CtxResult> {
   }
   const bearer = m[1];
 
-  // 可选的管理员全开令牌（环境变量）
+  // 1) OAuth 2.1 访问令牌：只按授权时选定的团队放行，绝不放宽到全库
+  if (bearer.startsWith('dhat_')) {
+    const { rows } = await pool.query<{ team_id: string }>(
+      `SELECT team_id FROM oauth_access_tokens
+       WHERE token_hash = $1 AND resource = $2
+         AND revoked_at IS NULL AND expires_at > now()`,
+      [hashToken(bearer), canonicalResource(req)]
+    );
+    if (!rows[0]) return { ctx: { teamId: null, scope: 'all' }, ok: false };
+    return { ctx: { teamId: rows[0].team_id, scope: 'team' }, ok: true };
+  }
+
+  // 2) 可选的管理员全开令牌（环境变量）
   const envToken = process.env.MCP_TOKEN;
   if (envToken && bearer === envToken) {
     return { ctx: { teamId: null, scope: 'all' }, ok: true };
   }
 
-  // 校验导入令牌（与 Figma 插件同一张表）
+  // 3) 校验导入令牌（与 Figma 插件同一张表，保留已发出配置的兼容性）
   const { rows } = await pool.query<{ scope: string; team_id: string }>(
     `SELECT it.scope, t.id AS team_id
      FROM import_tokens it JOIN teams t ON t.id = it.team_id
@@ -63,22 +79,30 @@ async function resolveCtx(req: Request): Promise<CtxResult> {
   };
 }
 
-mcpRouter.get('/mcp', (_req, res) => {
+mcpRouter.get('/mcp', (req, res) => {
   res.json({
     server: SERVER_INFO.name,
     version: SERVER_INFO.version,
     transport: 'streamable-http (JSON response mode)',
     usage: 'POST JSON-RPC 2.0 messages here; methods: initialize, tools/list, tools/call',
-    auth: 'Authorization: Bearer <导入令牌>（与 Figma 插件同一套 import_tokens）',
+    auth: '方式一：OAuth 2.1 授权（配置无需 headers）；方式二：Authorization: Bearer <导入令牌>',
+    authorization_servers: [publicOrigin(req)],
+    resource_metadata: `${publicOrigin(req)}/.well-known/oauth-protected-resource/mcp`,
   });
 });
 
 mcpRouter.post('/mcp', async (req: Request, res: Response) => {
   const { ctx, ok } = await resolveCtx(req);
   if (!ok) {
+    // RFC 9728：401 必须告诉客户端去哪里取 protected resource metadata，
+    // 支持 OAuth 的 MCP 客户端据此自动发现授权服务并弹出登录/同意页。
+    res.setHeader(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${publicOrigin(req)}/.well-known/oauth-protected-resource/mcp", scope="mcp:read"`
+    );
     res.status(401).json({
       jsonrpc: '2.0', id: null,
-      error: { code: -32001, message: 'unauthorized: Bearer <导入令牌> required' },
+      error: { code: -32001, message: 'unauthorized: 需要 OAuth 2.1 授权或 Bearer <导入令牌>' },
     });
     return;
   }

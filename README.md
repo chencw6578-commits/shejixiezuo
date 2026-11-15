@@ -76,13 +76,36 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 
 **7 个工具**：`list_projects` → `list_files` → `list_frames` 定位画板；`get_frame_tree` 理解布局；`get_node` 获取图层完整规格（几何/填充/描边/阴影/文字 + 生成好的 CSS），支持名称模糊匹配；`get_design_tokens` 聚合高频颜色/字体/圆角；`get_image` 返回画板缩略图或单图层切图 PNG（base64，多模态模型可直接「看图」）。
 
-**接入方式一：HTTP 传输（远程）**
+**方式一（推荐）：OAuth 2.1 授权，配置只有 url**
 
 ```json
-// Trae / Cursor 的 mcp 配置
 {
   "mcpServers": {
     "designhub": {
+      "type": "http",
+      "url": "https://<你的域名>/mcp"
+    }
+  }
+}
+```
+
+配置里不写 headers。首次连接时客户端按 MCP 2025-06-18 规范自动发现授权服务：
+401 响应的 `WWW-Authenticate` → `/.well-known/oauth-protected-resource`（RFC 9728）
+→ `/.well-known/oauth-authorization-server`（RFC 8414）→ `/register`（RFC 7591 动态注册）
+→ `/authorize`（复用网站 `dh_session` 登录态与同意页，PKCE S256、RFC 8707 resource）
+→ `/token` 换取令牌。后续每个请求仍带 `Authorization: Bearer <access-token>`，只是由客户端自动获取，不用手填。
+
+- 签发的 `dhat_` 令牌存 `oauth_access_tokens`，**只读、绑定授权时选定的单个团队**，不写入 `import_tokens`，因此不能调用 `/api/plugin/*` 的上传接口。支持 refresh 轮换与 `/revoke`（RFC 7009）。
+- 未登录时 `/authorize` 302 到 `/login?next=...`，沿用网站原有的邮箱登录 / 限流 / 注册流程。
+- Vercel 上由 `vercel.json` 把 `/.well-known/*`、`/authorize`、`/token`、`/register`、`/revoke` rewrite 到 `/api/oauth/*`（复用 `api/catch.mjs` 的 `__vp` 机制）；本地常驻由 `app.use(oauthRouter)` 直接暴露同样的路径。
+
+**方式二（兼容）：静态访问令牌**
+
+```json
+{
+  "mcpServers": {
+    "designhub": {
+      "type": "http",
       "url": "https://<你的域名>/mcp",
       "headers": { "Authorization": "Bearer <团队导入令牌>" }
     }
@@ -90,7 +113,8 @@ figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队�
 }
 ```
 
-- 线上（`VERCEL` 或 `NODE_ENV=production`）**强制鉴权**：不带 Bearer 返回 401，不会放开匿名读全库。
+- 给不支持 OAuth 的客户端用；已发出的旧配置继续可用，不会因方式一上线而失效。
+- 线上（`VERCEL` 或 `NODE_ENV=production`）**强制鉴权**：无有效 Bearer 返回 401，并带 `WWW-Authenticate` 指引 OAuth 发现。
 - Bearer 可以是团队「导入令牌」（与 Figma 插件共用 `import_tokens`，按令牌 scope 收敛到团队），也可以是部署环境变量 `MCP_TOKEN`（管理员全开）。
 - **共用凭据的边界**：首页顶栏「MCP 接入」弹窗生成的是独立的「MCP 访问令牌」（独立 state、独立明文，不会串进「导入令牌」弹窗），但两者写入同一张 `import_tokens` 表 —— 撤销任一条记录，Figma 插件与 MCP 客户端**同时失效**。MCP 侧只暴露 7 个读取工具，但该令牌本身也能调用 `/api/plugin/*` 的上传接口，不要当作只读密钥外泄。UI 不引导使用 `MCP_TOKEN`，它是部署级管理员凭据（`scope=all`，可读全库）。
 - 本地开发允许匿名访问；线上如确需放开，必须显式设 `MCP_ALLOW_ANONYMOUS=1`（不建议）。
