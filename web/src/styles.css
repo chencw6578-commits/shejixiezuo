@@ -84,8 +84,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 /* ---------- 首页（侧边栏布局，浅色主题：作用域覆盖变量，画布页保持深色不受影响） ---------- */
 .home-shell {
-  /* 左侧导航栏延伸到页面顶部（用户指定）：Grid 两列布局，
-     侧栏跨「状态栏 + 主区」两行，状态栏只盖右侧主区 */
+  /* 左侧导航栏延伸到页面顶部（用户指定）：Grid 两列三行布局，
+     侧栏跨全部三行（含验证提示条所在行），顶栏与提示条只盖右侧主区 */
   display: grid; grid-template-columns: 216px minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
   flex: 1; min-height: 0; width: 100%;
@@ -141,21 +141,14 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .crumb-sep { color: var(--border-strong); }
 /* home-body 仅作 DOM 分组，子元素直接参与 home-shell 的 Grid 排布 */
 .home-body { display: contents; }
-/* 验证提示条只在右侧主区（第 2 列），左端与顶栏对齐，不再横跨到左侧导航栏上方；
+/* 验证提示条只在右侧主区（第 2 列），左端与顶栏对齐；
    无提示条时该行为空行（高度 0） */
 .verify-banner { grid-column: 2; grid-row: 1; }
-/* 提示条所在行的左侧区域延续侧栏底色与右边框，避免侧栏顶角出现白块、竖线断点；
-   仅桌面 Grid 布局生效（≤820px 会退回上下堆叠的 flex 布局） */
-@media (min-width: 821px) {
-  .home-shell::before {
-    content: '';
-    grid-column: 1; grid-row: 1;
-    background: #fafafa;
-    border-right: 1px solid #e8eaed;
-  }
-}
-/* 左侧栏：跨「状态栏 + 主区」两行，位置保持不变 */
-.home-sidebar { grid-column: 1; grid-row: 2 / 4; }
+/* 左侧栏从页面最顶部贯通到底（含提示条所在行）：提示条出现时左栏不再空出
+   一整行，导航内容直接贴顶。侧栏自身提供 #FAFAFA 底色与右边框，
+   因此不再需要原先补左上角的 ::before 空块（会与新占位重叠）。
+   ≤820px 会退回上下堆叠的 flex 布局，grid-row 自然失效。 */
+.home-sidebar { grid-column: 1; grid-row: 1 / 4; }
 .home-main { grid-column: 2; grid-row: 3; min-width: 0; }
 
 .avatar-menu { position: relative; margin-left: auto; }
