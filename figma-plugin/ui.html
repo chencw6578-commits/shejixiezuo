@@ -219,12 +219,12 @@
     <input id="gateToken" type="text" placeholder="imp_ 开头" autocomplete="off" spellcheck="false" />
     <button id="gateSave" class="btn primary wide" type="button">保存并继续</button>
     <p class="dim small server-line">
-      服务器：<span id="gateServerText">http://localhost:4000</span>
+      服务器：<span id="gateServerText">https://shejixiezuo-gd7w.vercel.app</span>
       <button id="gateServerEdit" class="btn text" type="button">更改</button>
     </p>
     <p id="gateStorageHint" class="dim small hidden"></p>
     <div id="gateServerRow" class="hidden">
-      <input id="gateBaseUrl" type="text" placeholder="http://localhost:4000" />
+      <input id="gateBaseUrl" type="text" placeholder="https://shejixiezuo-gd7w.vercel.app" />
     </div>
   </section>
 
@@ -294,7 +294,7 @@
         <div class="field">
           <label>服务器地址</label>
           <div class="row">
-            <input id="baseUrl" class="grow" type="text" placeholder="http://localhost:4000" />
+            <input id="baseUrl" class="grow" type="text" placeholder="https://shejixiezuo-gd7w.vercel.app" />
             <button id="reconnect" class="btn" type="button">重新连接</button>
           </div>
         </div>
@@ -352,7 +352,9 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.5.5';
+  var UI_VERSION = '1.5.6';
+  // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
+  var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -365,7 +367,9 @@
     prefsSrc: null,
     // v1.5.5：存储探针结果（clientOk / clientErr / pluginIdMissing）
     prefsProbe: null,
-    baseUrl: 'http://localhost:4000',
+    baseUrl: DEFAULT_BASE_URL,
+    // v1.5.6：老安装偏好里存的是 localhost，连不上时自动回退一次到线上服务
+    fallbackTried: false,
     token: '',
     scope: '',
     // 连接状态：区分「没连上服务器」和「连上了但没选目标」，
@@ -646,7 +650,7 @@
   // ---------- 三级目标：团队 → 项目 → 编组 ----------
   function baseUrl() {
     var v = String(state.baseUrl || '').trim().replace(/\/+$/, '');
-    return v || 'http://localhost:4000';
+    return v || DEFAULT_BASE_URL;
   }
 
   function teamById(id) {
@@ -669,6 +673,13 @@
   }
 
   function renderTargetSummary() {
+    $('targetEdit').textContent = state.targetOpen ? '收起' : '更改';
+    // 断线后旧 teams/projects 仍在内存里：不能再用它们拼目标条，
+    // 否则界面显示「团队 A / 项目 1」却同时报「尚未连接到服务器」，自相矛盾。
+    if (!state.connected) {
+      $('targetSummary').textContent = '未连接服务器 / 未选项目 / 未分组';
+      return;
+    }
     var team = teamById(state.teamId);
     var project = projectById(state.projectId);
     var groupLabel = '未分组';
@@ -678,18 +689,19 @@
       if (g) groupLabel = g.name;
     }
     var parts = [
-      team ? team.name : (state.connected ? '未选团队' : '未连接服务器'),
+      team ? team.name : '未选团队',
       project ? project.name : '未选项目',
       groupLabel,
     ];
     $('targetSummary').textContent = parts.join(' / ');
-    $('targetEdit').textContent = state.targetOpen ? '收起' : '更改';
   }
 
   function renderTeams() {
     var sel = $('team');
-    if (!state.teams.length) {
-      sel.innerHTML = '<option value="">' + (state.connected ? '（没有可用的团队）' : '（未连接服务器）') + '</option>';
+    if (!state.connected) {
+      sel.innerHTML = '<option value="">（未连接服务器）</option>';
+    } else if (!state.teams.length) {
+      sel.innerHTML = '<option value="">（没有可用的团队）</option>';
     } else {
       sel.innerHTML = state.teams.map(function (t) {
         return '<option value="' + esc(t.id) + '"' + (t.id === state.teamId ? ' selected' : '') + '>' +
@@ -713,7 +725,9 @@
 
   function renderProjects() {
     var sel = $('project');
-    if (state.projects.length) {
+    if (!state.connected) {
+      sel.innerHTML = '<option value="">（未连接服务器）</option>';
+    } else if (state.projects.length) {
       sel.innerHTML = '<option value="">请选择项目…</option>' + state.projects.map(function (p) {
         return '<option value="' + esc(p.id) + '"' + (p.id === state.projectId ? ' selected' : '') + '>' +
           esc(p.name) + '（' + esc(p.frame_count) + ' 个画板）</option>';
@@ -748,6 +762,11 @@
     el.classList.toggle('err', !!isError);
   }
 
+  /** 本机地址：老安装的默认偏好是 localhost，多数用户并没有本地后端 */
+  function isLocalBaseUrl(url) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(String(url || ''));
+  }
+
   /** fetch 失败时给出可操作的排查路径；不再把所有非 localhost 失败都归因于 manifest */
   function describeConnectionError(url) {
     var m = /^https?:\/\/([^/:?#]+)/i.exec(String(url || ''));
@@ -755,7 +774,7 @@
     var host = m[1].toLowerCase();
     var check = ' 排查：在浏览器打开 ' + url + '/api/health，应看到 {"ok":true}；再检查服务端 CORS 与插件 manifest 的 networkAccess。';
     if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
-      return '连不上服务器（请求根本没发出去）：本机 ' + url + ' 没有服务在监听。请启动后端（cd server && npm run dev），或把「高级设置 → 服务器地址」改成网站实际地址。' + check;
+      return '连不上本机服务 ' + url + '（请求根本没发出去）：插件会自动改用线上服务 ' + DEFAULT_BASE_URL + '；若要连本地后端，请先启动 cd server && npm run dev。' + check;
     }
     return '无法访问 ' + url + '：可能是域名不可达、HTTPS/证书、CORS、mixed content，或该域名未在插件 manifest 的 networkAccess 中授权。' + check;
   }
@@ -847,6 +866,39 @@
     state.connectInfo += ' / ' + state.projects.length + ' 个项目';
     renderTeams();
     persistPrefs();
+  }
+
+  /**
+   * v1.5.6：老安装偏好里存的是 http://localhost:4000，而多数用户并没有本地后端。
+   * 本机连接失败时自动重试一次线上服务；401 是令牌问题，与地址无关，不回退。
+   * 回退成功后持久化新地址，用户仍可在「高级设置 → 服务器」改回本机。
+   */
+  async function connectWithFallback() {
+    try {
+      return await connect();
+    } catch (err) {
+      if (err && err.status === 401) throw err;
+      if (state.fallbackTried || !isLocalBaseUrl(baseUrl())) throw err;
+      state.fallbackTried = true;
+      var oldUrl = baseUrl();
+      state.baseUrl = DEFAULT_BASE_URL;
+      renderSettings();
+      try {
+        await connect();
+        state.connectInfo = '已自动改用线上服务 · ' + state.teams.length + ' 个团队 / ' + state.projects.length + ' 个项目';
+        renderTargets();
+        persistPrefs(true);
+        return;
+      } catch (err2) {
+        // 线上也连不上：还原原地址并抛出最初的错误，不把真实故障藏掉
+        state.baseUrl = oldUrl;
+        renderSettings();
+        state.connected = false;
+        state.connectError = (err && err.message) || String(err);
+        renderTargets();
+        throw err;
+      }
+    }
   }
 
   async function loadProjects() {
@@ -1002,7 +1054,7 @@
     renderSettings();
     renderTargets();
     try {
-      await connect();
+      await connectWithFallback();
     } catch (err) {
       state.connected = false;
       state.connectError = (err && err.message) || String(err);
@@ -1026,7 +1078,7 @@
   function retryConnect() {
     clearError();
     showMain();
-    connect().catch(function (err) {
+    connectWithFallback().catch(function (err) {
       state.connected = false;
       state.connectError = (err && err.message) || String(err);
       renderTargets();
@@ -1294,6 +1346,7 @@
   };
   $('gateBaseUrl').oninput = function () {
     state.baseUrl = $('gateBaseUrl').value.trim();
+    state.fallbackTried = false;
     $('gateServerText').textContent = baseUrl();
   };
   async function saveGateToken() {
@@ -1312,7 +1365,7 @@
     showMain();
     renderSettings();
     try {
-      await connect();
+      await connectWithFallback();
       $('meta').textContent = '已连接 ' + baseUrl();
     } catch (err) {
       state.connected = false;
@@ -1385,6 +1438,7 @@
     var next = $('baseUrl').value.trim();
     if (next === state.baseUrl) return;
     state.baseUrl = next;
+    state.fallbackTried = false; // 用户主动改地址后，允许下次再自动回退
     // 换了后端就可能换了数据库：旧团队/项目/编组不能沿用，必须重新连接
     state.connected = false;
     state.connectError = '服务器地址已修改，请点「重新连接」';
