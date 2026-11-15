@@ -13,6 +13,7 @@
 - **批量切图**：画板内全部图层（或按设计标记的预设）打包 zip 下载
 - **规范汇总页**：全文件色板 / 渐变 / 字体统计，按使用次数排序
 - **版本同步**：文件页「重新同步」按钮；或配置 Figma Webhook（FILE_UPDATE）自动重导
+- **账号与协作**：邮箱注册登录、团队三级角色（owner / admin / collaborator）、邀请链接、导入令牌、公开只读分享
 
 ## 使用流程
 
@@ -25,7 +26,7 @@
 docker run -d --name pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=designhub -p 5432:5432 postgres:16
 
 # 2. 配置
-cp .env.example server/.env   # 填入 FIGMA_TOKEN
+cp .env.example server/.env   # 填入 FIGMA_TOKEN；生产还必须设置 AUTH_SECRET
 
 # 3. 服务端
 cd server && npm i && npm run dev    # http://localhost:4000
@@ -34,25 +35,37 @@ cd server && npm i && npm run dev    # http://localhost:4000
 cd web && npm i && npm run dev       # http://localhost:5173
 ```
 
-## 生产部署（Docker Compose）
+## 环境变量（生产必查）
+
+`AUTH_SECRET` 是**生产 / Vercel 必填项**：会话 cookie 签名与公开分享链接 HMAC 共用它。缺失时服务端在启动阶段直接报错，不会回退到可猜测的默认密钥；用 `openssl rand -hex 32` 生成后写入部署环境变量。本地开发可留空（会打印警告并使用仅本地的默认值）。
+
+代码实际读取的变量以两份 `.env.example` 为准：根目录示例面向 Vercel / 根目录部署，`server/.env.example` 面向常驻服务。除 `AUTH_SECRET` 外，重点还有 `DATABASE_URL`、`STORAGE_DRIVER`（local / s3 / blob，Vercel 用 blob）、`FIGMA_TOKEN`、`MCP_TOKEN`、`WEB_BASE_URL` 与 `EMAIL_*` / `SMTP_*`。Vercel Blob 的 `BLOB_READ_WRITE_TOKEN` 由平台连接 Store 后自动注入，无需手工填写。
+
+## 生产部署
+
+**Docker Compose（常驻）**
 
 ```bash
-FIGMA_TOKEN=figd_xxx docker compose up -d --build
+FIGMA_TOKEN=figd_xxx AUTH_SECRET=<随机串> docker compose up -d --build
 # 访问 http://localhost:8080（web → nginx → server，存储走 MinIO）
 ```
+
+**Vercel（Serverless）**：`vercel.json` 把 `web/dist` 作为静态产物，`api/catch.mjs` 是唯一的 Express 函数；`/api/(.*)` 与 `/mcp` 都 rewrite 到它。需在 Vercel 项目里配置 `AUTH_SECRET`、`DATABASE_URL`，并连接 Blob Store。Serverless 文件系统只读，因此不要设 `STORAGE_DRIVER=local`。
 
 ## 架构
 
 ```
-web/     React + Vite        导入页 / 画板列表 / 画布查看器（热区层 + 图层层树 + 属性面板）
+web/     React + Vite        导入页 / 项目画布 / 画板列表 / 画布查看器（热区层 + 图层层树 + 属性面板）
 server/  Express + TS + pg
   ├─ figma/client.ts    Figma REST（限流重试 / 导出图片下载）
   ├─ figma/parse.ts     节点树解析：坐标归一化、颜色渐变转 CSS、文本样式、导出预设
   ├─ jobs/importFile.ts 导入任务（进程内队列）：入库 + 画板缩略图
   ├─ mcp/               MCP 服务（tools.ts 工具集 + handler.ts JSON-RPC + stdio 传输）
   ├─ export/local.ts    本地切图渲染（SVG 矢量 / PNG 纯 Node 光栅化）
-  ├─ storage/           本地磁盘 / S3(MinIO) 双适配器
-  └─ routes/            files（导入/列表/画板/图层）+ assets（切图导出）+ mcp（HTTP 传输）
+  ├─ storage/           本地磁盘 / S3(MinIO) / Vercel Blob 三适配器
+  └─ routes/            files / assets / auth / authz / teams / invites / share / comments / mcp 等
+api/     catch.mjs       Vercel Serverless 单函数入口（还原 rewrite 路径 + 剥离平台 helpers）
+figma-plugin/           Figma 插件：导出节点 JSON 与切图，用团队导入令牌直传
 ```
 
 数据流：Figma 文件 JSON 全量入库（`design_files.raw`）→ 解析为画板 `frames` + 图层 `nodes`（坐标归一到画板左上角）→ 画板渲染 PNG 做底图，图层 bounding box 做热区 → 切图走 Figma images API 转存对象存储。Sketch 走 JSZip 解包 + SVG 近似渲染；PSD 走 psd.js（合成图 + 图层树，尽力而为）。
@@ -70,19 +83,21 @@ server/  Express + TS + pg
 {
   "mcpServers": {
     "designhub": {
-      "url": "http://localhost:3000/mcp",
-      "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
+      "url": "https://<你的域名>/mcp",
+      "headers": { "Authorization": "Bearer <团队导入令牌>" }
     }
   }
 }
 ```
 
-- 设置了 `MCP_TOKEN` 环境变量时必带 `Authorization: Bearer` 头（或 `?token=`）；未设置则放开
-- 远程访问把 url 换成公网隧道地址即可，例如 `https://xxxx.run.pinggy-free.link/mcp`
+- 线上（`VERCEL` 或 `NODE_ENV=production`）**强制鉴权**：不带 Bearer 返回 401，不会放开匿名读全库。
+- Bearer 可以是团队「导入令牌」（与 Figma 插件共用 `import_tokens`，按令牌 scope 收敛到团队），也可以是部署环境变量 `MCP_TOKEN`（管理员全开）。
+- 本地开发允许匿名访问；线上如确需放开，必须显式设 `MCP_ALLOW_ANONYMOUS=1`（不建议）。
+- `/mcp` 与 `/api/mcp` 指向同一个 router，Vercel 上由 rewrite 保证两条路径都可达。
 
 **接入方式二：stdio 传输（本地子进程）**
 
-```json
+```
 {
   "mcpServers": {
     "designhub": {
@@ -96,9 +111,11 @@ server/  Express + TS + pg
 
 **典型 AI 对话**：「用 designhub 的 list_projects 拿到项目 → list_frames 找到『首页（浅色）』画板 → get_frame_tree 看布局 → get_node 取『登录按钮』的 CSS → get_image 看一眼设计图」→ 直接生成还原代码。
 
-## 分期
+## 分期（按代码实际状态，2026-11-15 核对）
 
 - **P1**：导入 + 查看 + 标注 + 单图层切图 ✅
 - **P2**：批量切图 zip、设计规范汇总页、手动同步 + Figma Webhook 版本同步 ✅
 - **P3**：评论协作、代码片段生成（CSS/React/Swift/Android）、Sketch 导入、PSD 导入（尽力而为）✅
-- **P4（待做）**：Design Tokens 导出、团队权限、代码片段（Flutter/小程序）、WebSocket 实时评论
+- **P3.5**：团队 / 项目两级结构、编组、画布连线、原型导出、账号登录与邮箱验证 ✅
+- **P4 已完成**：团队权限（owner/admin/collaborator + 邀请 + 只读分享）、MCP 接入、Figma 插件、Vercel Serverless 全栈部署、MCP 线上强制鉴权 ✅
+- **待做**：Design Tokens 导出（目前只有 `get_design_tokens` 聚合，无导出文件）；代码片段扩展（Flutter / 小程序）；实时评论（现为 6 秒轮询；Vercel Serverless 单函数不持长连接，直接上 WebSocket 需另起常驻服务，建议评估 SSE 或第三方实时服务）
