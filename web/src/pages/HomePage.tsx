@@ -1534,10 +1534,7 @@ export default function HomePage() {
           >
             <header className="token-modal-head">
               <div>
-                <h2>MCP 接入 · 让 AI 直接读设计稿开发</h2>
-                <p className="dim small">
-                  Cursor / Claude Desktop / Cline / WorkBuddy 通过 MCP 读取图层规格与 CSS，按真实数据还原界面。
-                </p>
+                <h2>MCP 接入</h2>
               </div>
               <button
                 type="button"
