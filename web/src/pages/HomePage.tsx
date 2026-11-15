@@ -140,18 +140,34 @@ function readLastTeamId() {
   }
 }
 
+/**
+ * 项目列表的会话内缓存（按团队）：从项目详情返回时 HomePage 会重新挂载，
+ * 先用上次结果渲染、再由接口刷新，避免列表异步加载期间闪出「暂无项目」。
+ * 仅在当前 SPA 会话有效，刷新页面会重新拉取。
+ */
+const projectCache = new Map<string, Project[]>();
+const projectCacheKey = (team: string) => team || '__all__';
+
 export default function HomePage() {
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<View>('projects');
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
+  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
+  // 会话缓存命中时直接渲染上次列表；未命中才走加载态
+  const [projects, setProjects] = useState<Project[]>(
+    () => projectCache.get(projectCacheKey(activeTeam)) ?? []
+  );
+  const [projectsLoading, setProjectsLoading] = useState(
+    () => !projectCache.has(projectCacheKey(activeTeam))
+  );
+  // 请求序号：团队快速切换时，旧请求的迟到结果不得覆盖新团队的列表
+  const projectReqId = useRef(0);
   // 项目列表 Tab：全部项目 / 最近使用 / 最近更新
   const [projectTab, setProjectTab] = useState<ProjectTab>('all');
   // 项目搜索：按名称过滤（纯前端，不改接口与项目数据）
   const [projectQuery, setProjectQuery] = useState('');
-  // 团队上下文以 URL 的 ?team= 为准；旧链接没有参数时回退到最近访问的团队
-  const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
   // 最近一次生成的邀请链接：只展示给操作者，可复制（链接邀请不绑定邮箱，可多人使用）
@@ -285,10 +301,23 @@ export default function HomePage() {
   }, []);
 
   const loadProjects = useCallback(() => {
+    const key = projectCacheKey(activeTeam);
+    const reqId = ++projectReqId.current;
+    setProjectsLoading(true);
     api
       .listProjects(activeTeam || undefined)
-      .then((rows) => setProjects(Array.isArray(rows) ? rows : []))
-      .catch((e) => setError(e.message));
+      .then((rows) => {
+        if (reqId !== projectReqId.current) return;
+        const list = Array.isArray(rows) ? rows : [];
+        projectCache.set(key, list);
+        setProjects(list);
+      })
+      .catch((e) => {
+        if (reqId === projectReqId.current) setError(e.message);
+      })
+      .finally(() => {
+        if (reqId === projectReqId.current) setProjectsLoading(false);
+      });
   }, [activeTeam]);
 
   // 按 Tab 过滤/排序：全部=原顺序；最近使用=localStorage 记录倒序；最近更新=按最后更新时间倒序
@@ -357,6 +386,11 @@ export default function HomePage() {
     const fallback = stored && teams.some((t) => t.id === stored) ? stored : teams[0].id;
     switchTeam(fallback, true);
   }, [teams, activeTeam, switchTeam]);
+
+  // 切换团队时先切到该团队的缓存（没有就清空），避免短暂显示上一团队的项目
+  useEffect(() => {
+    setProjects(projectCache.get(projectCacheKey(activeTeam)) ?? []);
+  }, [activeTeam]);
 
   useEffect(loadProjects, [loadProjects]);
 
@@ -1028,7 +1062,10 @@ export default function HomePage() {
               </div>
 
               <ul className="project-grid">
-                {visibleProjects.length === 0 && (
+                {visibleProjects.length === 0 && projectsLoading && (
+                  <p className="empty">加载中…</p>
+                )}
+                {visibleProjects.length === 0 && !projectsLoading && (
                   <p className="empty">
                     {projectTab === 'viewed' ? '暂无浏览记录，进入项目后会出现在这里' : '暂无项目'}
                   </p>
