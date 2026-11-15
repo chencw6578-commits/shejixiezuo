@@ -23,6 +23,7 @@ import { teamsRouter } from './routes/teams.js';
 import { importJsonRouter } from './routes/importJson.js';
 import { pluginRouter } from './routes/plugin.js';
 import { mcpRouter } from './routes/mcp.js';
+import { oauthRouter } from './routes/oauth.js';
 import { authRouter } from './routes/auth.js';
 import { invitesRouter } from './routes/invites.js';
 import { shareRouter } from './routes/share.js';
@@ -64,6 +65,13 @@ app.use('/api/teams', teamsRouter);
 // /api/mcp，因此这里同时注册一个 /api 前缀的入口，两个端点指向同一个 router。
 app.use(mcpRouter);
 app.use('/api', mcpRouter);
+
+// MCP OAuth 2.1 授权服务。本地常驻直接暴露标准外部路径；Vercel 上由 vercel.json
+// 把 /.well-known/*、/authorize、/token、/register、/revoke rewrite 到 /api/oauth/*，
+// 两条挂载指向同一个 router，保证两种运行模型下端点完全一致。
+// 必须挂在下方 SPA fallback 之前，否则 /.well-known/* 会拿到 index.html。
+app.use(oauthRouter);
+app.use('/api/oauth', oauthRouter);
 
 // 本地存储静态服务（S3/R2 模式下不需要）。Serverless 文件系统只读，跳过。
 if (config.storage.driver === 'local' && !process.env.VERCEL) {

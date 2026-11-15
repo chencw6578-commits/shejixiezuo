@@ -25,7 +25,8 @@
 第一次打开只有「粘贴导入令牌」一个输入框。粘贴第 1 步复制的 `imp_` 令牌，点 **保存并继续**。
 令牌保存在本机 Figma 插件存储里，下次打开直接进入主界面，**不需要重复粘贴**：
 
-- 网络失败、超时、CORS 或服务端 5xx：令牌**保留**，界面提示「连接失败，令牌已保留」并提供 **重试**，重试成功即进入主界面；
+- 网络失败、超时、CORS 或服务端 5xx：令牌**保留**，界面提示「连接失败（当前地址），令牌已保留」并提供 **重试**；
+  若当前地址是本机而本机没跑后端，v1.5.6 起会自动改用线上服务重试一次；
 - 只有服务端明确返回 **401 / 令牌已撤销** 时才会清空本地令牌并回到粘贴界面；
 - 想换令牌：**高级设置** 里的「更改令牌」入口（不会每次打开强制出现）。
 
@@ -63,27 +64,27 @@
 底部次要入口 **仅导出 JSON** 会导出所选画板的 JSON，可复制或下载。
 网站项目页的导入面板也支持粘贴这份 JSON（`POST /api/import/figma-json`）。
 
-## 换服务器地址 / 部署到公网域名
+## 服务器地址（默认连线上）
 
-插件界面跑在 Figma 的沙箱 iframe 里，请求会同时受 **Figma manifest 白名单** 和 **服务端 CORS** 两道限制。换地址时必须同时改两处，只改一处就会被拦：
+插件默认连接线上服务 `https://shejixiezuo-gd7w.vercel.app`，**开箱即用，不需要在本机跑后端**。
+在浏览器打开 `https://shejixiezuo-gd7w.vercel.app/api/health`，看到 `{"ok":true,…}` 即表示服务正常。
 
-1. 插件 **高级设置 → 服务器地址** 改成新地址（必须完整写 `http://` 或 `https://`，不能只写域名）；
-2. `manifest.json` 的 `networkAccess` 里加上新域名，例如：
+`manifest.json` 的 `allowedDomains: ["*"]` 已允许任意域名（Figma 官方 manifest 文档：`allowedDomains`
+适用于已发布插件，`devAllowedDomains` 只是开发期的附加白名单）。因此**换地址不需要改 manifest**，
+只要在插件「高级设置 → 服务器地址」填完整地址（带 `http://` 或 `https://`），点「重新连接」即可。
+旧版文档里「换域名必须同步改 networkAccess」的说法已过时。修改插件文件后仍须重新
+**Plugins → Development → Import plugin from manifest…**（或重启 Figma），开发插件不会热更新。
 
-```json
-"networkAccess": {
-  "allowedDomains": ["https://design.example.com"],
-  "devAllowedDomains": ["http://localhost:4000"],
-  "reasoning": "导出向导需要把画板 JSON 与 PNG 位图上传到协作网站"
-}
-```
+### 老安装自动回退（v1.5.6+）
 
-改完 manifest 必须重新 **Plugins → Development → Import plugin from manifest…**（或重启 Figma）才生效，开发插件不会热更新。
-**换域名要同步改 `networkAccess`**：漏改时 Figma 会直接拦截请求，插件提示「该域名未在插件 manifest 中授权（networkAccess）」。
+v1.5.6 之前默认地址是 `http://localhost:4000`，老安装的偏好里可能还存着它。本机没跑后端时，
+插件会**自动重试一次线上服务**并持久化新地址，界面提示「已自动改用线上服务」；401（令牌问题）不回退。
+本地开发者要连本机：本机后端在跑时地址可用，不会触发回退；也可在「高级设置 → 服务器地址」
+手动填回 `http://localhost:4000` 再点「重新连接」——用户主动改地址会重置回退标记。
 
-3. 服务端：`/api/plugin/*` 已对 `null`（Figma 沙箱 iframe 的 Origin）、`https://www.figma.com`、`https://figma.com`
-   与本地开发来源（`http://localhost:*` / `http://127.0.0.1:*`）开放跨域，并正确处理 `OPTIONS` 预检、允许 `Authorization` 头。
-   如果你的来源不在白名单，需要改 `server/src/routes/plugin.ts` 里的 `pluginCors`。
+服务端 `/api/plugin/*` 已对 `null`（Figma 沙箱 iframe 的 Origin）、`https://www.figma.com`、`https://figma.com`
+与本地开发来源（`http://localhost:*` / `http://127.0.0.1:*`）开放跨域，并正确处理 `OPTIONS` 预检、允许 `Authorization` 头。
+自建域名若不在白名单，需要改 `server/src/routes/plugin.ts` 里的 `pluginCors`。
 
 ## 常见问题
 
@@ -110,10 +111,11 @@
 
 - **401**：令牌填错或已在网站撤销 → 回团队设置重新生成并粘贴。
 - **403**：令牌作用范围不允许访问该团队/项目 → 换「全部团队」范围的令牌，或改选令牌所属团队。
-- **连不上服务器，请确认网站已启动、地址正确**：服务没起、端口或地址错（默认 `http://localhost:4000`）；
-  先在浏览器打开 `http://localhost:4000/api/health`，能看到 `{"ok":true,…}` 就说明服务正常。
-- **该域名未在插件 manifest 中授权（networkAccess）**：地址能解析但不是 Figma 允许的域名；
-  把新域名写进 `manifest.json` 的 `networkAccess`，重新导入插件（见上文「换服务器地址 / 部署到公网域名」）。
+- **连不上服务器**：先看顶部常显的「已连接 / 未连接服务器」状态与地址。默认是线上服务
+  `https://shejixiezuo-gd7w.vercel.app`；在浏览器打开它的 `/api/health`，能看到 `{"ok":true,…}` 就说明服务正常。
+  老安装若还存着 `http://localhost:4000`，本机没跑后端时会自动回退到线上（v1.5.6+）。
+- **域名 / TLS / CORS / mixed content**：请求没发出去时，错误文案会列出可能原因并附 `/api/health` 排查指引。
+  `allowedDomains: ["*"]` 已允许任意域名，一般不必改 `manifest.json`（见上文「服务器地址」）。
 - **插件主线程 90 秒没有响应**：单张切图导出超过 90 秒。先在 Figma 里关闭「位图切图」重试（只导结构）；
   仍需要位图时降低倍率（3x → 2x）或拆分大画板，再用「重试」继续（已成功的画板不会重做）。
 - **上传请求超时（60s），服务器无响应**：请求发出去了但 60 秒没回来，问题在服务端或网络链路；

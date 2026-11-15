@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool } from '../db.js';
-import { getSessionUser } from '../auth.js';
+import { getSessionUser, sessionSecret } from '../auth.js';
 
 /**
  * 项目公开只读分享。
  *
  * 链接形态：/share/<body>.<sig>，其中 body = base64url({v,sid,pid})，
  * sig = HMAC-SHA256(AUTH_SECRET, 'share:' + body)。
+ * 密钥统一取自 auth.ts 的 sessionSecret()：生产缺 AUTH_SECRET 直接拒绝启动，
+ * 不再回退到可猜测的硬编码值。
  * - 库里只存分享记录 id（sid），不存明文 token；DB 泄露也无法伪造链接。
  * - 同一个项目始终签发同一个链接（幂等），复制一次即可长期用。
  * - 关闭分享 = 删除该记录，所有据此签发的链接立即失效，无需轮换密钥。
@@ -15,11 +17,10 @@ import { getSessionUser } from '../auth.js';
  */
 export const shareRouter = Router();
 
-const secret = () => process.env.AUTH_SECRET ?? 'designhub-dev-secret';
 const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
 function signature(body: string): string {
-  return createHmac('sha256', secret()).update(`share:${body}`).digest('base64url');
+  return createHmac('sha256', sessionSecret()).update(`share:${body}`).digest('base64url');
 }
 
 function issueToken(sid: string, pid: string): string {

@@ -236,6 +236,46 @@ CREATE TABLE IF NOT EXISTS frame_links (
 );
 ALTER TABLE frame_links ADD COLUMN IF NOT EXISTS from_side TEXT NOT NULL DEFAULT 'right';
 CREATE INDEX IF NOT EXISTS idx_frame_links_project ON frame_links(project_id);
+
+-- MCP OAuth 2.1 授权服务（规范 2025-06-18）：动态注册的客户端、一次性授权码、
+-- 可撤销的访问令牌。明文令牌只在响应里出现一次，库里只存 sha256 哈希。
+-- 这些令牌专供 /mcp 读取，不写入 import_tokens，因此不能调用 /api/plugin/* 的上传接口。
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id     TEXT PRIMARY KEY,
+  client_name   TEXT NOT NULL DEFAULT '',
+  redirect_uris JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS oauth_auth_codes (
+  code_hash             TEXT PRIMARY KEY,
+  client_id             TEXT NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+  redirect_uri          TEXT NOT NULL,
+  code_challenge        TEXT NOT NULL,
+  code_challenge_method TEXT NOT NULL DEFAULT 'S256',
+  resource              TEXT NOT NULL,
+  uid                   UUID NOT NULL,
+  team_id               UUID REFERENCES teams(id) ON DELETE CASCADE,
+  scope                 TEXT NOT NULL DEFAULT 'team',
+  expires_at            TIMESTAMPTZ NOT NULL,
+  used_at               TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS oauth_access_tokens (
+  token_hash         TEXT PRIMARY KEY,
+  refresh_hash       TEXT UNIQUE,
+  client_id          TEXT NOT NULL,
+  uid                UUID NOT NULL,
+  team_id            UUID REFERENCES teams(id) ON DELETE CASCADE,
+  scope              TEXT NOT NULL DEFAULT 'team',
+  resource           TEXT NOT NULL,
+  expires_at         TIMESTAMPTZ NOT NULL,
+  refresh_expires_at TIMESTAMPTZ,
+  revoked_at         TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON oauth_auth_codes(expires_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires ON oauth_access_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_tokens_refresh ON oauth_access_tokens(refresh_hash);
 `;
 
 let initialized: Promise<void> | null = null;

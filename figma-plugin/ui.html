@@ -219,12 +219,12 @@
     <input id="gateToken" type="text" placeholder="imp_ 开头" autocomplete="off" spellcheck="false" />
     <button id="gateSave" class="btn primary wide" type="button">保存并继续</button>
     <p class="dim small server-line">
-      服务器：<span id="gateServerText">http://localhost:4000</span>
+      服务器：<span id="gateServerText">https://shejixiezuo-gd7w.vercel.app</span>
       <button id="gateServerEdit" class="btn text" type="button">更改</button>
     </p>
     <p id="gateStorageHint" class="dim small hidden"></p>
     <div id="gateServerRow" class="hidden">
-      <input id="gateBaseUrl" type="text" placeholder="http://localhost:4000" />
+      <input id="gateBaseUrl" type="text" placeholder="https://shejixiezuo-gd7w.vercel.app" />
     </div>
   </section>
 
@@ -294,7 +294,7 @@
         <div class="field">
           <label>服务器地址</label>
           <div class="row">
-            <input id="baseUrl" class="grow" type="text" placeholder="http://localhost:4000" />
+            <input id="baseUrl" class="grow" type="text" placeholder="https://shejixiezuo-gd7w.vercel.app" />
             <button id="reconnect" class="btn" type="button">重新连接</button>
           </div>
         </div>
@@ -352,7 +352,9 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.5.5';
+  var UI_VERSION = '1.5.6';
+  // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
+  var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -365,9 +367,16 @@
     prefsSrc: null,
     // v1.5.5：存储探针结果（clientOk / clientErr / pluginIdMissing）
     prefsProbe: null,
-    baseUrl: 'http://localhost:4000',
+    baseUrl: DEFAULT_BASE_URL,
+    // v1.5.6：老安装偏好里存的是 localhost，连不上时自动回退一次到线上服务
+    fallbackTried: false,
     token: '',
     scope: '',
+    // 连接状态：区分「没连上服务器」和「连上了但没选目标」，
+    // 避免把网络故障误报成截图里的「请先选择目标项目」
+    connected: false,
+    connectError: '',
+    connectInfo: '',
     // 三级目标：团队 → 项目 → 编组
     teams: [],
     teamId: '',
@@ -641,7 +650,7 @@
   // ---------- 三级目标：团队 → 项目 → 编组 ----------
   function baseUrl() {
     var v = String(state.baseUrl || '').trim().replace(/\/+$/, '');
-    return v || 'http://localhost:4000';
+    return v || DEFAULT_BASE_URL;
   }
 
   function teamById(id) {
@@ -664,6 +673,13 @@
   }
 
   function renderTargetSummary() {
+    $('targetEdit').textContent = state.targetOpen ? '收起' : '更改';
+    // 断线后旧 teams/projects 仍在内存里：不能再用它们拼目标条，
+    // 否则界面显示「团队 A / 项目 1」却同时报「尚未连接到服务器」，自相矛盾。
+    if (!state.connected) {
+      $('targetSummary').textContent = '未连接服务器 / 未选项目 / 未分组';
+      return;
+    }
     var team = teamById(state.teamId);
     var project = projectById(state.projectId);
     var groupLabel = '未分组';
@@ -678,12 +694,13 @@
       groupLabel,
     ];
     $('targetSummary').textContent = parts.join(' / ');
-    $('targetEdit').textContent = state.targetOpen ? '收起' : '更改';
   }
 
   function renderTeams() {
     var sel = $('team');
-    if (!state.teams.length) {
+    if (!state.connected) {
+      sel.innerHTML = '<option value="">（未连接服务器）</option>';
+    } else if (!state.teams.length) {
       sel.innerHTML = '<option value="">（没有可用的团队）</option>';
     } else {
       sel.innerHTML = state.teams.map(function (t) {
@@ -693,16 +710,24 @@
     }
     var hint = $('teamHint');
     hint.classList.remove('err');
-    if (state.scope === 'team') {
-      hint.textContent = '此令牌只作用于当前团队；如需切换团队，请在网站生成「全部团队」范围的令牌。';
-    } else {
-      hint.textContent = '可以选择账号下任意团队。';
-    }
+    var scopeText = state.scope === 'team'
+      ? '此令牌只作用于当前团队；如需切换团队，请在网站生成「全部团队」范围的令牌。'
+      : '可以选择账号下任意团队。';
+    // 常显连的是哪个地址、拿到几个团队；「没连上」与「连上了但 0 个团队」一眼可分
+    var status = state.connectInfo
+      ? state.connectInfo
+      : (state.connected ? '' : '尚未连接 ' + baseUrl() + (state.connectError ? '：' + state.connectError : ''));
+    // 完整错误在顶部错误框里；这里只留一行，避免撑开目标区
+    if (status.length > 110) status = status.slice(0, 110) + '…';
+    hint.textContent = (status ? status + ' · ' : '') + scopeText;
+    hint.classList.toggle('err', !state.connected && !!state.connectError);
   }
 
   function renderProjects() {
     var sel = $('project');
-    if (state.projects.length) {
+    if (!state.connected) {
+      sel.innerHTML = '<option value="">（未连接服务器）</option>';
+    } else if (state.projects.length) {
       sel.innerHTML = '<option value="">请选择项目…</option>' + state.projects.map(function (p) {
         return '<option value="' + esc(p.id) + '"' + (p.id === state.projectId ? ' selected' : '') + '>' +
           esc(p.name) + '（' + esc(p.frame_count) + ' 个画板）</option>';
@@ -737,15 +762,21 @@
     el.classList.toggle('err', !!isError);
   }
 
-  /** fetch 失败时区分：服务器未启动 / 地址错误 vs 域名未在 manifest 授权 */
+  /** 本机地址：老安装的默认偏好是 localhost，多数用户并没有本地后端 */
+  function isLocalBaseUrl(url) {
+    return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(String(url || ''));
+  }
+
+  /** fetch 失败时给出可操作的排查路径；不再把所有非 localhost 失败都归因于 manifest */
   function describeConnectionError(url) {
     var m = /^https?:\/\/([^/:?#]+)/i.exec(String(url || ''));
     if (!m) return '服务器地址不正确：请检查高级设置里的地址（需要以 http:// 或 https:// 开头）';
     var host = m[1].toLowerCase();
+    var check = ' 排查：在浏览器打开 ' + url + '/api/health，应看到 {"ok":true}；再检查服务端 CORS 与插件 manifest 的 networkAccess。';
     if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
-      return '连不上服务器（HTTP 000 = 请求根本没发出去）：请到「高级设置 → 服务器」检查地址是否为后端实际端口（本地默认 http://localhost:4000），并确认后端已启动。当前地址：' + url;
+      return '连不上本机服务 ' + url + '（请求根本没发出去）：插件会自动改用线上服务 ' + DEFAULT_BASE_URL + '；若要连本地后端，请先启动 cd server && npm run dev。' + check;
     }
-    return '无法访问 ' + url + '：该域名未在插件 manifest 中授权（networkAccess），请同步修改 manifest.json 后重新导入插件';
+    return '无法访问 ' + url + '：可能是域名不可达、HTTPS/证书、CORS、mixed content，或该域名未在插件 manifest 的 networkAccess 中授权。' + check;
   }
 
   /** 网络打点：URL、请求体字节数、状态码/错误、耗时，成功失败都显示并打到插件控制台 */
@@ -815,6 +846,9 @@
   /** 校验令牌并拉取团队列表；401 回到粘贴令牌态 */
   async function connect() {
     clearError();
+    state.connected = false;
+    state.connectInfo = '';
+    renderTargetSummary();
     var me = await api('/api/plugin/me');
     state.scope = me.scope === 'team' ? 'team' : 'all';
     state.teams = await api('/api/plugin/teams');
@@ -824,9 +858,47 @@
     if (!state.teamId || !teamById(state.teamId)) {
       state.teamId = teamById(me.teamId) ? me.teamId : (state.teams[0] ? state.teams[0].id : '');
     }
+    state.connected = true;
+    state.connectError = '';
+    state.connectInfo = '已连接 ' + baseUrl() + ' · ' + state.teams.length + ' 个团队';
     renderTargets();
     if (state.teamId) await loadProjects();
+    state.connectInfo += ' / ' + state.projects.length + ' 个项目';
+    renderTeams();
     persistPrefs();
+  }
+
+  /**
+   * v1.5.6：老安装偏好里存的是 http://localhost:4000，而多数用户并没有本地后端。
+   * 本机连接失败时自动重试一次线上服务；401 是令牌问题，与地址无关，不回退。
+   * 回退成功后持久化新地址，用户仍可在「高级设置 → 服务器」改回本机。
+   */
+  async function connectWithFallback() {
+    try {
+      return await connect();
+    } catch (err) {
+      if (err && err.status === 401) throw err;
+      if (state.fallbackTried || !isLocalBaseUrl(baseUrl())) throw err;
+      state.fallbackTried = true;
+      var oldUrl = baseUrl();
+      state.baseUrl = DEFAULT_BASE_URL;
+      renderSettings();
+      try {
+        await connect();
+        state.connectInfo = '已自动改用线上服务 · ' + state.teams.length + ' 个团队 / ' + state.projects.length + ' 个项目';
+        renderTargets();
+        persistPrefs(true);
+        return;
+      } catch (err2) {
+        // 线上也连不上：还原原地址并抛出最初的错误，不把真实故障藏掉
+        state.baseUrl = oldUrl;
+        renderSettings();
+        state.connected = false;
+        state.connectError = (err && err.message) || String(err);
+        renderTargets();
+        throw err;
+      }
+    }
   }
 
   async function loadProjects() {
@@ -982,8 +1054,11 @@
     renderSettings();
     renderTargets();
     try {
-      await connect();
+      await connectWithFallback();
     } catch (err) {
+      state.connected = false;
+      state.connectError = (err && err.message) || String(err);
+      renderTargets();
       if (err && err.status === 401) {
         // 只有服务端明确返回 401（令牌无效/已撤销）才清空本地令牌
         state.token = '';
@@ -995,7 +1070,7 @@
         postToPlugin({ type: 'notify', message: '导入令牌已失效，请重新粘贴' });
       } else {
         // 网络失败/超时/CORS/5xx：保留已存令牌，给重试
-        showError('连接失败，令牌已保留：' + ((err && err.message) || String(err)), function () { retryConnect(); });
+        showError('连接失败（' + baseUrl() + '），令牌已保留：' + state.connectError, function () { retryConnect(); });
       }
     }
   }
@@ -1003,13 +1078,16 @@
   function retryConnect() {
     clearError();
     showMain();
-    connect().catch(function (err) {
+    connectWithFallback().catch(function (err) {
+      state.connected = false;
+      state.connectError = (err && err.message) || String(err);
+      renderTargets();
       if (err && err.status === 401) {
         state.token = '';
         persistPrefs();
         showGate('令牌已失效或已撤销：' + err.message);
       } else {
-        showError('连接失败，令牌已保留：' + ((err && err.message) || String(err)), retryConnect);
+        showError('连接失败（' + baseUrl() + '），令牌已保留：' + state.connectError, retryConnect);
       }
     });
   }
@@ -1051,6 +1129,13 @@
     var ids = state.boards.map(function (b) { return b.id; });
     if (!ids.length) { showError('请先在 Figma 里选中要导出的画板'); return; }
     if (!state.token) { showGate('请先粘贴导入令牌'); return; }
+    // 团队/项目列表来自服务端：没连上时不能报「请先选择目标项目」，那会把真正故障盖掉
+    if (!state.connected) {
+      showError('尚未连接到服务器 ' + baseUrl() + '：'
+        + (state.connectError || '请在「高级设置」确认服务器地址')
+        + '。团队与项目是从服务器读取的，连不上就不会有选项。', retryConnect);
+      return;
+    }
     if (!state.projectId) { showError('请先选择目标项目'); return; }
     if (state.groupId === '__new__' && !state.newGroupName.trim()) {
       showError('请填写新编组名称，或把编组改为「未分组」');
@@ -1261,6 +1346,7 @@
   };
   $('gateBaseUrl').oninput = function () {
     state.baseUrl = $('gateBaseUrl').value.trim();
+    state.fallbackTried = false;
     $('gateServerText').textContent = baseUrl();
   };
   async function saveGateToken() {
@@ -1279,15 +1365,18 @@
     showMain();
     renderSettings();
     try {
-      await connect();
+      await connectWithFallback();
       $('meta').textContent = '已连接 ' + baseUrl();
     } catch (err) {
+      state.connected = false;
+      state.connectError = (err && err.message) || String(err);
+      renderTargets();
       if (err && err.status === 401) {
         state.token = '';
         persistPrefs();
         showGate('令牌无效或已撤销：' + err.message);
       } else {
-        showError(((err && err.message) || String(err)), retryConnect);
+        showError('连接失败（' + baseUrl() + '）：' + state.connectError, retryConnect);
       }
     }
   }
@@ -1346,7 +1435,21 @@
 
   // 高级设置
   $('baseUrl').oninput = function () {
-    state.baseUrl = $('baseUrl').value.trim();
+    var next = $('baseUrl').value.trim();
+    if (next === state.baseUrl) return;
+    state.baseUrl = next;
+    state.fallbackTried = false; // 用户主动改地址后，允许下次再自动回退
+    // 换了后端就可能换了数据库：旧团队/项目/编组不能沿用，必须重新连接
+    state.connected = false;
+    state.connectError = '服务器地址已修改，请点「重新连接」';
+    state.connectInfo = '';
+    state.teams = [];
+    state.projects = [];
+    state.groups = [];
+    state.teamId = '';
+    state.projectId = '';
+    state.groupId = '';
+    renderTargets();
     persistPrefs();
   };
   $('reconnect').onclick = function () { retryConnect(); };

@@ -8,6 +8,14 @@ export default function LoginPage() {
   const nav = useNavigate();
   const loc = useLocation();
   const from = (loc.state as { from?: string } | null)?.from ?? '/';
+  // MCP OAuth 授权需要回到服务端 /authorize（不是前端路由），必须整页跳转；
+  // 只接受本站相对路径，避免 ?next= 变成开放重定向。
+  const nextParam = new URLSearchParams(loc.search).get('next');
+  const oauthNext = nextParam && /^\/(?!\/)/.test(nextParam) ? nextParam : null;
+  const goNext = useCallback(() => {
+    if (oauthNext) window.location.assign(oauthNext);
+    else nav(from, { replace: true });
+  }, [oauthNext, nav, from]);
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -25,10 +33,10 @@ export default function LoginPage() {
   useEffect(() => {
     api
       .me()
-      .then(() => nav(from, { replace: true }))
+      .then(goNext)
       .catch(() => undefined)
       .finally(() => setChecked(true));
-  }, [from, nav]);
+  }, [goNext]);
 
   const submit = useCallback(
     async (e: React.FormEvent) => {
@@ -45,17 +53,17 @@ export default function LoginPage() {
         if (mode === 'register') {
           // 软验证：已登录可用，先提示验证邮件已发出
           setRegistered(user.email);
-          setTimeout(() => nav(from, { replace: true }), 2500);
+          setTimeout(goNext, 2500);
           return;
         }
-        nav(from, { replace: true });
+        goNext();
       } catch (ex) {
         setErr(ex instanceof Error ? ex.message : String(ex));
       } finally {
         setBusy(false);
       }
     },
-    [mode, email, password, name, nav, from]
+    [mode, email, password, name, goNext]
   );
 
   if (registered) {

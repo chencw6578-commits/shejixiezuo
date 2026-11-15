@@ -21,6 +21,34 @@
       "destination": "/api/catch?__vp=mcp"
     },
     {
+      "source": "/.well-known/oauth-protected-resource/mcp",
+      "destination": "/api/catch?__vp=oauth/prm"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "/api/catch?__vp=oauth/prm"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server",
+      "destination": "/api/catch?__vp=oauth/asm"
+    },
+    {
+      "source": "/authorize",
+      "destination": "/api/catch?__vp=oauth/authorize"
+    },
+    {
+      "source": "/token",
+      "destination": "/api/catch?__vp=oauth/token"
+    },
+    {
+      "source": "/register",
+      "destination": "/api/catch?__vp=oauth/register"
+    },
+    {
+      "source": "/revoke",
+      "destination": "/api/catch?__vp=oauth/revoke"
+    },
+    {
       "source": "/:path((?!api/|mcp|storage/|assets/|figma-plugin.zip).*)",
       "destination": "/index.html"
     }

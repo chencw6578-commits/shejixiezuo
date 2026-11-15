@@ -7,7 +7,35 @@ import type { Request, Response, NextFunction } from 'express';
  * - 会话：HMAC 签名的无状态 token，HttpOnly cookie（30 天）
  */
 
-const SECRET = process.env.AUTH_SECRET ?? 'designhub-dev-secret';
+const DEV_SECRET = 'designhub-dev-secret';
+
+/**
+ * 会话签名与公开分享链接 HMAC 共用的密钥。
+ *
+ * 生产环境（Vercel 或 NODE_ENV=production）缺少 AUTH_SECRET 时立即抛错，
+ * 绝不使用可猜测的默认密钥——否则任何人都能伪造管理员会话或分享链接。
+ * 校验发生在模块加载时（import 即 fail fast），避免"带病启动"后部分接口可用。
+ * 本地开发允许缺省以便开箱即用，但打印一次性警告。
+ */
+function resolveSecret(): string {
+  const v = process.env.AUTH_SECRET?.trim();
+  if (v) return v;
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'AUTH_SECRET is required in production/Vercel. '
+      + 'Generate one with `openssl rand -hex 32` and set it in the deployment environment.'
+    );
+  }
+  console.warn('[auth] AUTH_SECRET 未设置，使用开发默认密钥（仅限本地，切勿用于生产）');
+  return DEV_SECRET;
+}
+
+const SECRET = resolveSecret();
+
+/** 供其它模块（如公开分享链接 HMAC）复用同一个密钥口径 */
+export function sessionSecret(): string {
+  return SECRET;
+}
 export const SESSION_COOKIE = 'dh_session';
 const SESSION_DAYS = 30;
 
