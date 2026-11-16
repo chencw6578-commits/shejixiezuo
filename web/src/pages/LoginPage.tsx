@@ -87,8 +87,8 @@ export default function LoginPage() {
     <div className="auth-wrap">
       <div className="auth-card">
         <div className="auth-brand">
-          <img src="/logo-mark.png" className="auth-brand-mark" alt="半格" />
-          <img src="/logo-word.png" className="auth-brand-word" alt="半格" />
+          <img src="/logo-mark.png" className="auth-brand-mark" alt="稿厘" />
+          <img src="/logo-word.png" className="auth-brand-word" alt="稿厘" />
         </div>
 
         <div className="auth-tabs">
