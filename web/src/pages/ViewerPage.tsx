@@ -981,6 +981,7 @@ export default function ViewerPage() {
           comments={comments}
           commentMode={commentMode}
           eyedropper={eyedropper}
+          onExitEyedropper={() => setEyedropper(false)}
           onAddComment={onAddComment}
           onOpenComment={(id) => setActiveCommentId(id)}
         />
