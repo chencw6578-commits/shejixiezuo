@@ -1,310 +1,118 @@
-import type { ReactNode, SVGProps } from 'react';
+import type { SVGProps } from 'react';
+import {
+  AlignCenterHorizontal as AlignCenterHorizontalLucide,
+  AlignCenterVertical as AlignCenterVerticalLucide,
+  AlignEndHorizontal as AlignEndHorizontalLucide,
+  AlignEndVertical as AlignEndVerticalLucide,
+  AlignHorizontalDistributeCenter as AlignHorizontalDistributeCenterLucide,
+  AlignStartHorizontal as AlignStartHorizontalLucide,
+  AlignStartVertical as AlignStartVerticalLucide,
+  AlignVerticalDistributeCenter as AlignVerticalDistributeCenterLucide,
+  ArrowLeft as ArrowLeftLucide,
+  ArrowLeftRight as ArrowLeftRightLucide,
+  Check as CheckLucide,
+  ChevronDown as ChevronDownLucide,
+  ChevronRight as ChevronRightLucide,
+  ChevronsUpDown as ChevronsUpDownLucide,
+  Copy as CopyLucide,
+  Download as DownloadLucide,
+  ExternalLink as ExternalLinkLucide,
+  FileText as FileTextLucide,
+  Folder as FolderLucide,
+  FolderClosed as FolderClosedLucide,
+  FolderMinus as FolderMinusLucide,
+  FolderPlus as FolderPlusLucide,
+  Image as ImageLucide,
+  KeyRound as KeyRoundLucide,
+  Layers as LayersLucide,
+  Link as LinkLucide,
+  LogOut as LogOutLucide,
+  Mail as MailLucide,
+  Maximize as MaximizeLucide,
+  Menu as MenuLucide,
+  MessageSquare as MessageSquareLucide,
+  Minus as MinusLucide,
+  MoreHorizontal as MoreHorizontalLucide,
+  Palette as PaletteLucide,
+  PanelRight as PanelRightLucide,
+  Pencil as PencilLucide,
+  Pipette as PipetteLucide,
+  Plus as PlusLucide,
+  Scissors as ScissorsLucide,
+  Search as SearchLucide,
+  Share2 as Share2Lucide,
+  Trash2 as Trash2Lucide,
+  Upload as UploadLucide,
+  Users as UsersLucide,
+  X as XLucide,
+  type LucideIcon,
+} from 'lucide-react';
 
 /**
- * Remix Icon（https://remixicon.com/）官方路径，v4.x，Apache 2.0 许可。
- * 线性图标用 *-line 变体，填充图标用 *-fill 变体；viewBox 0 0 24 24、fill currentColor。
- * API 与旧版一致（size + 标准 SVG props），全站组件零改动换装。
+ * 全站图标统一走 lucide（https://lucide.dev）——线性 stroke 风格，ISC 许可。
+ * 这一层保持旧有的 46 个导出名不变，使 7 个消费文件 79 处使用点零改动。
+ * 所有组件都接受 size + 标准 SVG props，与旧 API 一致；size 默认 16（lucide 默认 24）。
+ * 对齐/分布图标在 lucide 中无完全同名物，采用语义最近的 Align* 系列映射。
  */
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   size?: number;
 }
 
-const Svg = ({ size = 16, children, ...rest }: IconProps & { children: ReactNode }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-    focusable="false"
-    {...rest}
-  >
-    {children}
-  </svg>
-);
+const wrap = (Comp: LucideIcon) =>
+  function Icon(props: IconProps) {
+    return <Comp size={16} {...props} />;
+  };
 
-/** 连线（Remix ri-link）：画布上画板之间的有向连线开关 */
-export const LinkIcon = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M18.3642 15.5355L16.95 14.1213L18.3642 12.7071C20.3171 10.7542 20.3171 7.58785 18.3642 5.63493L17.1926 4.46333C15.2397 2.51042 12.0734 2.51042 10.1205 4.46333L8.70728 5.87654L7.29307 4.46233L8.70628 3.04912C11.4167 0.338707 15.8964 0.338707 18.6068 3.04912L19.7784 4.22072C22.4888 6.93113 22.4888 11.4108 19.7784 14.1212L18.3642 15.5355ZM15.5358 18.364L14.1216 16.9497L12.7074 18.364C10.7545 20.3169 7.58812 20.3169 5.63521 18.364L4.46361 17.1924C2.5107 15.2395 2.5107 12.0731 4.46361 10.1202L5.87682 8.70698L4.46261 7.29277L3.0494 8.70698C0.338984 11.4174 0.338984 15.8971 3.0494 18.6075L4.221 19.7791C6.93141 22.4895 11.4111 22.4895 14.1216 19.7791L15.5358 18.364ZM10.1215 13.8787L13.8789 10.1213L15.2931 11.5355L11.5357 15.2929L10.1215 13.8787Z"/>
-  </Svg>
-);
+/* ---------- 常规 UI 图标 ---------- */
+export const LinkIcon = wrap(LinkLucide);
+export const ImageIcon = wrap(ImageLucide);
+export const Sip = wrap(PipetteLucide);
+export const ChevronRight = wrap(ChevronRightLucide);
+export const ChevronDown = wrap(ChevronDownLucide);
+export const CollapseAll = wrap(ChevronsUpDownLucide);
+export const Search = wrap(SearchLucide);
+export const Pencil = wrap(PencilLucide);
+export const MoreHorizontal = wrap(MoreHorizontalLucide);
+export const Trash2 = wrap(Trash2Lucide);
+export const Plus = wrap(PlusLucide);
+export const Minus = wrap(MinusLucide);
+export const Maximize = wrap(MaximizeLucide);
+export const Menu = wrap(MenuLucide);
+export const ArrowLeft = wrap(ArrowLeftLucide);
+export const PanelRight = wrap(PanelRightLucide);
+export const Folder = wrap(FolderLucide);
+export const FolderFilled = wrap(FolderClosedLucide);
+export const FolderMinus = wrap(FolderMinusLucide);
+export const FolderAdd = wrap(FolderPlusLucide);
+export const FileText = wrap(FileTextLucide);
+export const Scissors = wrap(ScissorsLucide);
+export const KeyRound = wrap(KeyRoundLucide);
+export const Users = wrap(UsersLucide);
+export const Upload = wrap(UploadLucide);
+export const Download = wrap(DownloadLucide);
+export const MessageSquare = wrap(MessageSquareLucide);
+export const Palette = wrap(PaletteLucide);
+export const Check = wrap(CheckLucide);
+export const X = wrap(XLucide);
+export const AlignLeft = wrap(AlignStartHorizontalLucide);
+export const Mail = wrap(MailLucide);
+export const Layers = wrap(LayersLucide);
+export const LogOut = wrap(LogOutLucide);
+export const ArrowLeftRight = wrap(ArrowLeftRightLucide);
+export const Share2 = wrap(Share2Lucide);
+export const Copy = wrap(CopyLucide);
+export const ExternalLink = wrap(ExternalLinkLucide);
 
-/** 侧栏画板标题前的图片图标（Remix ri-image-2-line，官方路径） */
-export const ImageIcon = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 11.1005L7 9.1005L12.5 14.6005L16 11.1005L19 14.1005V5H5V11.1005ZM5 13.9289V19H8.1005L11.0858 16.0147L7 11.9289L5 13.9289ZM10.9289 19H19V16.9289L16 13.9289L10.9289 19ZM4 3H20C20.5523 3 21 3.44772 21 4V20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V4C3 3.44772 3.44772 3 4 3ZM15.5 10C14.6716 10 14 9.32843 14 8.5C14 7.67157 14.6716 7 15.5 7C16.3284 7 17 7.67157 17 8.5C17 9.32843 16.3284 10 15.5 10Z"/>
-  </Svg>
-);
-
-/** 吸管取色（Remix ri-sip-line，官方路径） */
-export const Sip = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M6.45711 18.9539L15.0208 10.3902L13.6066 8.97596L5.04289 17.5397L6.45711 18.9539ZM12.1924 7.56174L10.7782 6.14753L12.1924 4.73331L13.9602 6.50108L16.7886 3.67265C17.1791 3.28213 17.8123 3.28213 18.2028 3.67265L20.3241 5.79397C20.7146 6.1845 20.7146 6.81766 20.3241 7.20819L17.4957 10.0366L19.2635 11.8044L17.8492 13.2186L16.435 11.8044L7.24264 20.9968H3V16.7541L12.1924 7.56174Z"/>
-  </Svg>
-);
-
-export const ChevronRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M13.1717 12.0007L8.22192 7.05093L9.63614 5.63672L16.0001 12.0007L9.63614 18.3646L8.22192 16.9504L13.1717 12.0007Z"/>
-  </Svg>
-);
-
-export const ChevronDown = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M11.9999 13.1714L16.9497 8.22168L18.3639 9.63589L11.9999 15.9999L5.63599 9.63589L7.0502 8.22168L11.9999 13.1714Z"/>
-  </Svg>
-);
-
-/** 一键收起所有展开（Remix ri-contract-up-down-line，官方路径） */
-export const CollapseAll = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5.79285 5.20718 12 11.4143 18.2071 5.20718 16.7928 3.79297 12 8.58586 7.20706 3.79297 5.79285 5.20718ZM18.2072 18.7928 12.0001 12.5857 5.793 18.7928 7.20721 20.207 12.0001 15.4141 16.793 20.207 18.2072 18.7928Z"/>
-  </Svg>
-);
-
-export const Search = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M18.031 16.6168L22.3137 20.8995L20.8995 22.3137L16.6168 18.031C15.0769 19.263 13.124 20 11 20C6.032 20 2 15.968 2 11C2 6.032 6.032 2 11 2C15.968 2 20 6.032 20 11C20 13.124 19.263 15.0769 18.031 16.6168ZM16.0247 15.8748C17.2475 14.6146 18 12.8956 18 11C18 7.1325 14.8675 4 11 4C7.1325 4 4 7.1325 4 11C4 14.8675 7.1325 18 11 18C12.8956 18 14.6146 17.2475 15.8748 16.0247L16.0247 15.8748Z"/>
-  </Svg>
-);
-
-export const Pencil = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M15.7279 9.57627L14.3137 8.16206L5 17.4758V18.89H6.41421L15.7279 9.57627ZM17.1421 8.16206L18.5563 6.74785L17.1421 5.33363L15.7279 6.74785L17.1421 8.16206ZM7.24264 20.89H3V16.6473L16.435 3.21231C16.8256 2.82179 17.4587 2.82179 17.8492 3.21231L20.6777 6.04074C21.0682 6.43126 21.0682 7.06443 20.6777 7.45495L7.24264 20.89Z"/>
-  </Svg>
-);
-
-export const MoreHorizontal = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4.5 10.5C3.675 10.5 3 11.175 3 12C3 12.825 3.675 13.5 4.5 13.5C5.325 13.5 6 12.825 6 12C6 11.175 5.325 10.5 4.5 10.5ZM19.5 10.5C18.675 10.5 18 11.175 18 12C18 12.825 18.675 13.5 19.5 13.5C20.325 13.5 21 12.825 21 12C21 11.175 20.325 10.5 19.5 10.5ZM12 10.5C11.175 10.5 10.5 11.175 10.5 12C10.5 12.825 11.175 13.5 12 13.5C12.825 13.5 13.5 12.825 13.5 12C13.5 11.175 12.825 10.5 12 10.5Z"/>
-  </Svg>
-);
-
-export const Trash2 = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M17 6H22V8H20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V8H2V6H7V3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3V6ZM18 8H6V20H18V8ZM9 11H11V17H9V11ZM13 11H15V17H13V11ZM9 4V6H15V4H9Z"/>
-  </Svg>
-);
-
-export const Plus = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z"/>
-  </Svg>
-);
-
-export const Minus = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 11V13H19V11H5Z"/>
-  </Svg>
-);
-
-export const Maximize = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M8 3V5H4V9H2V3H8ZM2 21V15H4V19H8V21H2ZM22 21H16V19H20V15H22V21ZM22 9H20V5H16V3H22V9Z"/>
-  </Svg>
-);
-
-export const Menu = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 4H21V6H3V4ZM3 11H21V13H3V11ZM3 18H21V20H3V18Z"/>
-  </Svg>
-);
-
-export const ArrowLeft = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M7.82843 10.9999H20V12.9999H7.82843L13.1924 18.3638L11.7782 19.778L4 11.9999L11.7782 4.22168L13.1924 5.63589L7.82843 10.9999Z"/>
-  </Svg>
-);
-
-export const PanelRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M21 3C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H21ZM15 5H4V19H15V5ZM20 5H17V19H20V5Z"/>
-  </Svg>
-);
-
-export const Folder = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4 5V19H20V7H11.5858L9.58579 5H4ZM12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5Z"/>
-  </Svg>
-);
-
-export const FolderFilled = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5Z"/>
-  </Svg>
-);
-
-export const FolderMinus = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5ZM4 5V19H20V7H11.5858L9.58579 5H4ZM8 12H16V14H8V12Z"/>
-  </Svg>
-);
-
-export const FolderAdd = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12.4142 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5ZM4 5V19H20V7H11.5858L9.58579 5H4ZM11 12V9H13V12H16V14H13V17H11V14H8V12H11Z"/>
-  </Svg>
-);
-
-export const FileText = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z"/>
-  </Svg>
-);
-
-export const Scissors = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M9.44618 8.02867L12 10.5825L18.7279 3.85457C19.509 3.07352 20.7753 3.07352 21.5563 3.85457L9.44618 15.9647C9.79807 16.5603 10 17.2549 10 17.9967C10 20.2058 8.20914 21.9967 6 21.9967C3.79086 21.9967 2 20.2058 2 17.9967C2 15.7876 3.79086 13.9967 6 13.9967C6.74181 13.9967 7.43645 14.1986 8.03197 14.5505L10.5858 11.9967L8.03197 9.44289C7.43645 9.79478 6.74181 9.9967 6 9.9967C3.79086 9.9967 2 8.20584 2 5.9967C2 3.78756 3.79086 1.9967 6 1.9967C8.20914 1.9967 10 3.78756 10 5.9967C10 6.73851 9.79807 7.43316 9.44618 8.02867ZM14.8255 13.408L21.5563 20.1388C20.7753 20.9199 19.509 20.9199 18.7279 20.1388L13.4113 14.8222L14.8255 13.408ZM7.41421 16.5825C7.05228 16.2206 6.55228 15.9967 6 15.9967C4.89543 15.9967 4 16.8921 4 17.9967C4 19.1013 4.89543 19.9967 6 19.9967C7.10457 19.9967 8 19.1013 8 17.9967C8 17.4444 7.77614 16.9444 7.41421 16.5825ZM7.41421 7.41092C7.77614 7.04899 8 6.54899 8 5.9967C8 4.89213 7.10457 3.9967 6 3.9967C4.89543 3.9967 4 4.89213 4 5.9967C4 7.10127 4.89543 7.9967 6 7.9967C6.55228 7.9967 7.05228 7.77285 7.41421 7.41092Z"/>
-  </Svg>
-);
-
-export const KeyRound = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M10.7577 11.8281L18.6066 3.97919L20.0208 5.3934L18.6066 6.80761L21.0815 9.28249L19.6673 10.6967L17.1924 8.22183L15.7782 9.63604L17.8995 11.7574L16.4853 13.1716L14.364 11.0503L12.1719 13.2423C13.4581 15.1837 13.246 17.8251 11.5355 19.5355C9.58291 21.4882 6.41709 21.4882 4.46447 19.5355C2.51184 17.5829 2.51184 14.4171 4.46447 12.4645C6.17493 10.754 8.81633 10.5419 10.7577 11.8281ZM10.1213 18.1213C11.2929 16.9497 11.2929 15.0503 10.1213 13.8787C8.94975 12.7071 7.05025 12.7071 5.87868 13.8787C4.70711 15.0503 4.70711 16.9497 5.87868 18.1213C7.05025 19.2929 8.94975 19.2929 10.1213 18.1213Z"/>
-  </Svg>
-);
-
-export const Users = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2 22C2 17.5817 5.58172 14 10 14C14.4183 14 18 17.5817 18 22H16C16 18.6863 13.3137 16 10 16C6.68629 16 4 18.6863 4 22H2ZM10 13C6.685 13 4 10.315 4 7C4 3.685 6.685 1 10 1C13.315 1 16 3.685 16 7C16 10.315 13.315 13 10 13ZM10 11C12.21 11 14 9.21 14 7C14 4.79 12.21 3 10 3C7.79 3 6 4.79 6 7C6 9.21 7.79 11 10 11ZM18.2837 14.7028C21.0644 15.9561 23 18.752 23 22H21C21 19.564 19.5483 17.4671 17.4628 16.5271L18.2837 14.7028ZM17.5962 3.41321C19.5944 4.23703 21 6.20361 21 8.5C21 11.3702 18.8042 13.7252 16 13.9776V11.9646C17.6967 11.7222 19 10.264 19 8.5C19 7.11935 18.2016 5.92603 17.041 5.35635L17.5962 3.41321Z"/>
-  </Svg>
-);
-
-export const Upload = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19ZM13 9V16H11V9H6L12 3L18 9H13Z"/>
-  </Svg>
-);
-
-export const Download = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M13 10H18L12 16L6 10H11V3H13V10ZM4 19H20V12H22V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V12H4V19Z"/>
-  </Svg>
-);
-
-export const MessageSquare = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M6.45455 19L2 22.5V4C2 3.44772 2.44772 3 3 3H21C21.5523 3 22 3.44772 22 4V18C22 18.5523 21.5523 19 21 19H6.45455ZM5.76282 17H20V5H4V18.3851L5.76282 17ZM8 10H16V12H8V10Z"/>
-  </Svg>
-);
-
-export const Palette = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12 2C17.5222 2 22 5.97778 22 10.8889C22 13.9556 19.5111 16.4444 16.4444 16.4444H14.4778C13.5556 16.4444 12.8111 17.1889 12.8111 18.1111C12.8111 18.5333 12.9778 18.9222 13.2333 19.2111C13.5 19.5111 13.6667 19.9 13.6667 20.3333C13.6667 21.2556 12.9 22 12 22C6.47778 22 2 17.5222 2 12C2 6.47778 6.47778 2 12 2ZM10.8111 18.1111C10.8111 16.0843 12.451 14.4444 14.4778 14.4444H16.4444C18.4065 14.4444 20 12.851 20 10.8889C20 7.1392 16.4677 4 12 4C7.58235 4 4 7.58235 4 12C4 16.19 7.2226 19.6285 11.324 19.9718C10.9948 19.4168 10.8111 18.7761 10.8111 18.1111ZM7.5 12C6.67157 12 6 11.3284 6 10.5C6 9.67157 6.67157 9 7.5 9C8.32843 9 9 9.67157 9 10.5C9 11.3284 8.32843 12 7.5 12ZM16.5 12C15.6716 12 15 11.3284 15 10.5C15 9.67157 15.6716 9 16.5 9C17.3284 9 18 9.67157 18 10.5C18 11.3284 17.3284 12 16.5 12ZM12 9C11.1716 9 10.5 8.32843 10.5 7.5C10.5 6.67157 11.1716 6 12 6C12.8284 6 13.5 6.67157 13.5 7.5C13.5 8.32843 12.8284 9 12 9Z"/>
-  </Svg>
-);
-
-export const Check = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M9.9997 15.1709L19.1921 5.97852L20.6063 7.39273L9.9997 17.9993L3.63574 11.6354L5.04996 10.2212L9.9997 15.1709Z"/>
-  </Svg>
-);
-
-export const X = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M11.9997 10.5865L16.9495 5.63672L18.3637 7.05093L13.4139 12.0007L18.3637 16.9504L16.9495 18.3646L11.9997 13.4149L7.04996 18.3646L5.63574 16.9504L10.5855 12.0007L5.63574 7.05093L7.04996 5.63672L11.9997 10.5865Z"/>
-  </Svg>
-);
-
-export const AlignLeft = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 4H21V6H3V4ZM3 19H17V21H3V19ZM3 14H21V16H3V14ZM3 9H17V11H3V9Z"/>
-  </Svg>
-);
-
-export const Mail = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 3H21C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3ZM20 7.23792L12.0718 14.338L4 7.21594V19H20V7.23792ZM4.51146 5L12.0619 11.662L19.501 5H4.51146Z"/>
-  </Svg>
-);
-
-export const Layers = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M20.0833 15.1999L21.2854 15.9212C21.5221 16.0633 21.5989 16.3704 21.4569 16.6072C21.4146 16.6776 21.3557 16.7365 21.2854 16.7787L12.5144 22.0412C12.1977 22.2313 11.8021 22.2313 11.4854 22.0412L2.71451 16.7787C2.47772 16.6366 2.40093 16.3295 2.54301 16.0927C2.58523 16.0223 2.64413 15.9634 2.71451 15.9212L3.9166 15.1999L11.9999 20.0499L20.0833 15.1999ZM20.0833 10.4999L21.2854 11.2212C21.5221 11.3633 21.5989 11.6704 21.4569 11.9072C21.4146 11.9776 21.3557 12.0365 21.2854 12.0787L11.9999 17.6499L2.71451 12.0787C2.47772 11.9366 2.40093 11.6295 2.54301 11.3927C2.58523 11.3223 2.64413 11.2634 2.71451 11.2212L3.9166 10.4999L11.9999 15.3499L20.0833 10.4999ZM12.5144 1.30864L21.2854 6.5712C21.5221 6.71327 21.5989 7.0204 21.4569 7.25719C21.4146 7.32757 21.3557 7.38647 21.2854 7.42869L11.9999 12.9999L2.71451 7.42869C2.47772 7.28662 2.40093 6.97949 2.54301 6.7427C2.58523 6.67232 2.64413 6.61343 2.71451 6.5712L11.4854 1.30864C11.8021 1.11864 12.1977 1.11864 12.5144 1.30864ZM11.9999 3.33233L5.88723 6.99995L11.9999 10.6676L18.1126 6.99995L11.9999 3.33233Z"/>
-  </Svg>
-);
-
-export const LogOut = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 22C4.44772 22 4 21.5523 4 21V3C4 2.44772 4.44772 2 5 2H19C19.5523 2 20 2.44772 20 3V6H18V4H6V20H18V18H20V21C20 21.5523 19.5523 22 19 22H5ZM18 16V13H11V11H18V8L23 12L18 16Z"/>
-  </Svg>
-);
-
-export const ArrowLeftRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z"/>
-  </Svg>
-);
-
-export const Share2 = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M12 2.58582L18.2071 8.79292L16.7929 10.2071L13 6.41424V16H11V6.41424L7.20711 10.2071L5.79289 8.79292L12 2.58582ZM3 18V14H5V18C5 18.5523 5.44772 19 6 19H18C18.5523 19 19 18.5523 19 18V14H21V18C21 19.6569 19.6569 21 18 21H6C4.34315 21 3 19.6569 3 18Z"/>
-  </Svg>
-);
-
-export const Copy = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z"/>
-  </Svg>
-);
-
-export const ExternalLink = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19L18.9999 6.413L11.2071 14.2071L9.79289 12.7929L17.5849 5H13V3H21Z"/>
-  </Svg>
-);
-
-/**
- * 多选画板对齐 / 等间距工具条图标：全部取自 Remix Icon 官方路径（Design 分类），
- * 与全站一致（viewBox 0 0 24 24、单 path、fill=currentColor、2px 视觉线宽）。
- * 前 6 个为 align-item-*-line；等间距借用 layout-vertical-line / layout-horizontal-line
- * （官方无 distribute 图标，这两枚恰好是「等分列 / 等分行」的几何表达）。
- */
-export const AlignFrameLeft = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M3 21V3H5V21H3ZM9 15H15V18H9V15ZM8 13C7.44772 13 7 13.4477 7 14V19C7 19.5523 7.44772 20 8 20H16C16.5523 20 17 19.5523 17 19V14C17 13.4477 16.5523 13 16 13H8ZM9 9H19V6H9V9ZM7 5C7 4.44772 7.44772 4 8 4H20C20.5523 4 21 4.44772 21 5V10C21 10.5523 20.5523 11 20 11H8C7.44772 11 7 10.5523 7 10V5Z"/>
-  </Svg>
-);
-
-export const AlignFrameHCenter = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M11 4V2H13V4H19C19.5523 4 20 4.44772 20 5V10C20 10.5523 19.5523 11 19 11H13V13H17C17.5523 13 18 13.4477 18 14V19C18 19.5523 17.5523 20 17 20H13V22H11V20H7C6.44772 20 6 19.5523 6 19V14C6 13.4477 6.44772 13 7 13H11V11H5C4.44772 11 4 10.5523 4 10V5C4 4.44772 4.44772 4 5 4H11ZM8 15V18H16V15H8ZM6 9H18V6H6V9Z"/>
-  </Svg>
-);
-
-export const AlignFrameRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M19 21V3H21V21H19ZM9 15H15V18H9V15ZM8 13C7.44772 13 7 13.4477 7 14V19C7 19.5523 7.44772 20 8 20H16C16.5523 20 17 19.5523 17 19V14C17 13.4477 16.5523 13 16 13H8ZM5 9H15V6H5V9ZM3 5C3 4.44772 3.44772 4 4 4H16C16.5523 4 17 4.44772 17 5V10C17 10.5523 16.5523 11 16 11H4C3.44772 11 3 10.5523 3 10V5Z"/>
-  </Svg>
-);
-
-export const AlignFrameTop = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M21 3H3V5L21 5V3ZM15 9V15H18V9H15ZM13 8C13 7.44772 13.4477 7 14 7L19 7C19.5523 7 20 7.44772 20 8V16C20 16.5523 19.5523 17 19 17H14C13.4477 17 13 16.5523 13 16V8ZM9 9L9 19H6L6 9H9ZM5 7C4.44772 7 4 7.44772 4 8L4 20C4 20.5523 4.44772 21 5 21H10C10.5523 21 11 20.5523 11 20L11 8C11 7.44772 10.5523 7 10 7L5 7Z"/>
-  </Svg>
-);
-
-export const AlignFrameVCenter = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M9 18L9 6L6 6L6 18H9ZM5 20C4.44772 20 4 19.5523 4 19L4 13H2V11H4L4 5C4 4.44771 4.44771 4 5 4H10C10.5523 4 11 4.44771 11 5V11H13V7C13 6.44771 13.4477 6 14 6L19 6C19.5523 6 20 6.44772 20 7V11H22V13H20V17C20 17.5523 19.5523 18 19 18H14C13.4477 18 13 17.5523 13 17V13H11V19C11 19.5523 10.5523 20 10 20H5ZM15 16H18V8L15 8V16Z"/>
-  </Svg>
-);
-
-export const AlignFrameBottom = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M9 5L9 15H6L6 5L9 5ZM5 3C4.44772 3 4 3.44772 4 4L4 16C4 16.5523 4.44772 17 5 17H10C10.5523 17 11 16.5523 11 16L11 4C11 3.44772 10.5523 3 10 3H5ZM15 9V15H18V9H15ZM13 8C13 7.44772 13.4477 7 14 7L19 7C19.5523 7 20 7.44772 20 8V16C20 16.5523 19.5523 17 19 17H14C13.4477 17 13 16.5523 13 16V8ZM21 19L3 19V21H21V19Z"/>
-  </Svg>
-);
-
-export const DistributeH = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 19H19V5H5V19ZM3 4C3 3.44772 3.44772 3 4 3H20C20.5523 3 21 3.44772 21 4V20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V4ZM15 7V17H17V7H15ZM11 7L11 17H13V7H11ZM7 17L7 7L9 7L9 17H7Z"/>
-  </Svg>
-);
-
-export const DistributeV = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 19H19V5H5V19ZM3 4C3 3.44772 3.44772 3 4 3H20C20.5523 3 21 3.44772 21 4V20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V4ZM7 9H17V7H7V9ZM17 13H7V11H17V13ZM7 17H17V15H7V17Z"/>
-  </Svg>
-);
+/* ---------- 多选画板对齐 / 等间距 ----------
+   lucide 无与 Remix align-item-* 完全同名者，语义映射：
+   左/水平居中/右 → AlignStart/Center/EndHorizontal
+   上/垂直居中/下 → AlignStart/Center/EndVertical
+   等距（水平/垂直）→ AlignHorizontalDistributeCenter / AlignVerticalDistributeCenter */
+export const AlignFrameLeft = wrap(AlignStartHorizontalLucide);
+export const AlignFrameHCenter = wrap(AlignCenterHorizontalLucide);
+export const AlignFrameRight = wrap(AlignEndHorizontalLucide);
+export const AlignFrameTop = wrap(AlignStartVerticalLucide);
+export const AlignFrameVCenter = wrap(AlignCenterVerticalLucide);
+export const AlignFrameBottom = wrap(AlignEndVerticalLucide);
+export const DistributeH = wrap(AlignHorizontalDistributeCenterLucide);
+export const DistributeV = wrap(AlignVerticalDistributeCenterLucide);
