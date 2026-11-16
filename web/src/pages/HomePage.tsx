@@ -1212,7 +1212,7 @@ export default function HomePage() {
                       </span>
                     </div>
                     <span className={`role-badge ${m.role}`}>{ROLE_LABEL[m.role] ?? m.role}</span>
-                    {canManage && m.email && m.role !== 'owner' && (
+                    {canManage && m.email && m.role !== 'owner' && m.email.trim().toLowerCase() !== myEmail && (
                       <button
                         className="member-action"
                         onClick={() => {
