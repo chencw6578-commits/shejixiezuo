@@ -27,7 +27,7 @@ interface Project {
 
 type View = 'projects' | 'members';
 
-/** 品牌图形 Logo（半格 mark，纯图形无文字）：取自 public/logo-mark.png */
+/** 品牌图形 Logo（稿厘 mark，纯图形无文字）：取自 public/logo-mark.png */
 function BrandMark() {
   return <img src="/logo-mark.png" className="brand-mark" width={22} height={22} alt="" aria-hidden="true" />;
 }
