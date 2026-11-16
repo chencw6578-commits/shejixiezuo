@@ -796,6 +796,9 @@ export default function HomePage() {
 
   const activeTeamName = teams.find((t) => t.id === activeTeam)?.name;
   const avatarSeed = authUser?.email ?? identity?.email ?? '主';
+  // 头像文字取昵称（users.name）首字母；未登录/未设昵称时才回退账号邮箱首字母。
+  // 颜色仍按邮箱 hash（avatarSeed），避免改昵称时头像颜色跳变。
+  const avatarInitial = (authUser?.name?.trim() || avatarSeed).slice(0, 1).toUpperCase();
   // 昵称以登录账号 users.name 为准；未登录 / 未设昵称时回退邮箱（与改动前显示一致）
   const accountEmail = authUser?.email ?? identity?.email ?? '';
   const accountName = authUser?.name || accountEmail || '所有者';
@@ -843,11 +846,11 @@ export default function HomePage() {
         </button>
         <details className="avatar-menu" ref={avatarMenuRef}>
           <summary title="当前身份">
-            <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
+            <span className="avatar-dot" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarInitial}</span>
           </summary>
           <div className="avatar-pop">
             <div className="avatar-pop-head">
-              <span className="avatar-dot big" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarSeed.slice(0, 1).toUpperCase()}</span>
+              <span className="avatar-dot big" style={{ backgroundColor: avatarColor(avatarSeed) }}>{avatarInitial}</span>
               <div className="avatar-pop-info">
                 <b title={accountName}>{accountName}</b>
                 {accountEmail && accountEmail !== accountName && (
