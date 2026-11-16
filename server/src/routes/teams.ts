@@ -196,16 +196,22 @@ teamsRouter.patch('/:id/members/:memberId', async (req, res) => {
   res.json(rows[0]);
 });
 
-/** 移除团队成员（owner/admin 可操作；所有者不可被移除，可解散团队） */
+/** 移除团队成员（owner/admin 可操作；所有者不可被移除，任何人都不能移除自己） */
 teamsRouter.delete('/:id/members/:memberId', async (req, res) => {
   const denied = await manageGuard(req.params.id, req);
   if (denied) return res.status(403).json({ error: denied });
-  const target = await pool.query("SELECT role FROM team_members WHERE id = $1 AND team_id = $2", [
-    req.params.memberId,
-    req.params.id,
-  ]);
+  const target = await pool.query<{ role: string; email: string }>(
+    "SELECT role, email FROM team_members WHERE id = $1 AND team_id = $2",
+    [req.params.memberId, req.params.id]
+  );
   if (!target.rows[0]) return res.status(404).json({ error: '成员不存在' });
   if (target.rows[0].role === 'owner') return res.status(403).json({ error: '不能移除团队所有者（可解散团队）' });
+  // 以真实登录会话判定「自己」，不受 X-Member-Email 体验头影响；想离开团队请走 /leave
+  const session = getSessionUser(req);
+  const selfEmail = session?.email?.trim().toLowerCase() ?? '';
+  if (selfEmail && (target.rows[0].email ?? '').trim().toLowerCase() === selfEmail) {
+    return res.status(403).json({ error: '不能移除自己（如需离开团队请使用「退出团队」）' });
+  }
   const { rowCount } = await pool.query(
     'DELETE FROM team_members WHERE id = $1 AND team_id = $2',
     [req.params.memberId, req.params.id]
