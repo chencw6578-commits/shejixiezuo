@@ -352,7 +352,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.5.9';
+  var UI_VERSION = '1.6.0';
   // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
   var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
   var UNASSIGNED_TEAM = 'unassigned';
@@ -1589,16 +1589,11 @@
       return;
     }
     if (msg.type === 'prefs-saved') {
-      // v1.5.9：保存结果可视化——写进哪路存储、令牌有没有真的记住，一目了然
+      // v1.6.0：保存成功的例行提示已删除（用户要求）；仅在存储异常/失败时才弹提示
       var r = msg.result || {};
       var savedWhere = [r.client ? '本地' : null, r.doc ? '文档内' : null, r.page ? '当前页' : null]
         .filter(Boolean).join(' + ');
-      if (r.tokenSaved && r.tokenIn === 'client') {
-        postToPlugin({
-          type: 'notify',
-          message: '令牌已记住（本机本地存储，跨文件通用），下次打开不用再粘贴。',
-        });
-      } else if (r.tokenSaved) {
+      if (r.tokenSaved) {
         postToPlugin({
           type: 'notify',
           message: '令牌已记住（' + (savedWhere || '当前文件') + '），但只存进当前文件（本地存储不可用），换文件需要重填。',
