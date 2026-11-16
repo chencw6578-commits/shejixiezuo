@@ -214,8 +214,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .auth-brand p { font-size: 12px; color: #6b7280; margin-top: 3px; }
 /* 登录页品牌区：半格 logo 上下排版（图形在上、中文「半格」在下，无英文）。
    图片取自 public/logo-*.png（原图提取、去白底透明），保持宽高比。 */
-.auth-brand .auth-brand-mark { display: block; width: 64px; height: auto; margin: 0 auto 12px; }
-.auth-brand .auth-brand-word { display: block; width: 132px; height: auto; margin: 0 auto; }
+.auth-brand .auth-brand-mark { display: block; width: 72px; height: auto; margin: 0 auto 12px; }
+.auth-brand .auth-brand-word { display: block; width: 100px; height: auto; margin: 0 auto; }
 .auth-tabs {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
   background: #f2f4f7; border-radius: 9px; padding: 4px; margin-bottom: 18px;
