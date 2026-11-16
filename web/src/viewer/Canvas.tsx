@@ -22,6 +22,8 @@ interface Props {
   commentMode?: boolean;
   /** 吸管取色模式：光标十字、悬浮色值预览、点击吸取颜色 */
   eyedropper?: boolean;
+  /** 点画布外任意空白时退出吸管模式（由父组件关闭开关） */
+  onExitEyedropper?: () => void;
   onAddComment?: (draft: { x: number; y: number; nodeId?: string }, body: string) => Promise<void>;
   onOpenComment?: (id: string) => void;
 }
@@ -178,9 +180,13 @@ function insetMeasures(inner: Rect, outer: Rect): Measure[] {
 export default function Canvas({
   frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange, unit = 'px',
   comments = [], commentMode = false, onAddComment, onOpenComment, eyedropper = false,
+  onExitEyedropper,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
+  // 用 ref 存关闭回调：吸管模式下 mousemove 会频繁重渲染，避免 effect 反复解绑/重绑监听
+  const onExitEyedropperRef = useRef(onExitEyedropper);
+  onExitEyedropperRef.current = onExitEyedropper;
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
   const panRef = useRef<{ x: number; y: number } | null>(null);
@@ -361,11 +367,17 @@ export default function Canvas({
         setPickPreview(null);
       }
     };
-    // 点击卡片以外任意位置自动关闭（画布上点击会先关再由 onClick 取新色）
+    // 点结果卡内部（复制色号/CSS）保持；点画布外任意空白 → 退出吸管模式
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && t.closest('.eyedropper-result')) return;
+      if (!t) return;
+      if (t.closest('.eyedropper-result')) return;
+      if (t.closest('.eyedropper-toggle')) return; // 开关自身由 onClick toggle，避免捕获阶段先关导致打架
       setPicked(null);
+      // 画布内点击 = 取色（保持吸管开启）；画布外（侧栏/属性面板/顶栏空白）点击 = 退出
+      if (containerRef.current?.contains(t)) return;
+      setPickPreview(null);
+      onExitEyedropperRef.current?.();
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointerdown', onPointerDown, true);
