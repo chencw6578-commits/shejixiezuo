@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
+import { api, getMeCached, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
 import { ChevronDown, Download, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
@@ -202,8 +202,9 @@ export default function HomePage() {
     return members.find((m) => (m.email ?? '').trim().toLowerCase() === q) ?? null;
   }, [memberEmail, members]);
   const [identity, setIdentityState] = useState<Identity | null>(null);
-  // 登录账号（邮箱注册登录），顶栏头像展示与退出
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  // 登录账号（邮箱注册登录），顶栏头像展示与退出。
+  // 用同步缓存做初值：从详情页返回时组件重新挂载，若从 null 开始会先闪一秒兜底「主」字头像。
+  const [authUser, setAuthUser] = useState<AuthUser | null>(getMeCached);
   const [switchOpen, setSwitchOpen] = useState(false);
   // 导入令牌从侧栏页改为头像下拉入口 + 弹窗展示
   const [tokenModal, setTokenModal] = useState(false);

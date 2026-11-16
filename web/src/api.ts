@@ -204,6 +204,15 @@ export const VERIFY_BANNER_DISMISS_KEY = 'shejixiezuo:verify-banner-dismissed';
 let meCache: { at: number; user: AuthUser } | null = null;
 const invalidateMe = () => { meCache = null; };
 
+/**
+ * 同步读取已缓存的当前用户，供页面挂载首帧初始化身份 UI（顶栏头像等）。
+ * 解决「进项目详情再返回首页，头像先闪一秒兜底字再变真实头像」的问题：
+ * 返回时 api.me() 的异步结果要几百毫秒才到，此前用缓存同步渲染即可。
+ * 不受 2s TTL 限制——TTL 只决定是否向服务端重新校验，缓存数据在会话内是权威的；
+ * 会话切换（login/logout/register/updateMe）会走 invalidateMe 清空，不会残留旧身份。
+ */
+export const getMeCached = (): AuthUser | null => meCache?.user ?? null;
+
 export const api = {
   // ---------- 登录注册 ----------
   register: async (email: string, password: string, name?: string) => {
