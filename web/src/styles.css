@@ -20,6 +20,7 @@
   --accent-soft: var(--brand-100);
   --accent-soft-2: #e9eaec;
   --measure: var(--brand-600);
+  --selection-stroke: #8a8f98; /* 画布选中图层描边：比主色黑浅一档，与画板选中框同灰阶 */
   --hover: #1f1f1f;
   --state-hover: rgba(26, 27, 30, 0.06); /* 按钮状态层：中性灰 */
   --ok: #14ae5c;
@@ -1761,7 +1762,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* 深色底：点阵变浅，画板加描边，画布上的文字标签转浅色；品牌色（Google 蓝）在暗底上换 M3 primary-80 浅蓝保证可见 */
 .canvas-container.is-dark-canvas {
   --canvas-dot: rgba(255, 255, 255, 0.14);
-  --measure: #a8c7fa; /* 测距引线/选中描边（Canvas.tsx 走 var(--measure)） */
+  --measure: #a8c7fa; /* 测距引线（Canvas.tsx 走 var(--measure)） */
+  --selection-stroke: #a8c7fa; /* 暗底选中描边保持浅蓝，保证可见性 */
 }
 .canvas-container.is-dark-canvas .pcanvas-frame {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.42), 0 12px 34px rgba(0, 0, 0, 0.55);

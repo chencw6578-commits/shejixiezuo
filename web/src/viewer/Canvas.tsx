@@ -847,7 +847,7 @@ export default function Canvas({
               data-outline-w={selectedOutline.w} data-outline-h={selectedOutline.h}
               x={selectedOutline.rect.x * zoom} y={selectedOutline.rect.y * zoom}
               width={selectedOutline.rect.w * zoom} height={selectedOutline.rect.h * zoom}
-              fill="none" style={{ stroke: 'var(--measure)' }} strokeWidth={lw}
+              fill="none" style={{ stroke: 'var(--selection-stroke)' }} strokeWidth={lw}
             />
           )}
           {/* 距离引线统一品牌色，不再出现粉红/白底两套颜色 */}
