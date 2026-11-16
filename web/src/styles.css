@@ -577,7 +577,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .page-row:hover .page-actions, .page-row:focus-within .page-actions { pointer-events: auto; }
 /* 侧栏头部下加浅分割线（用户 11-12 要求）：左右缩进 12px 与标题文字对齐 */
 .sidebar-head { display: flex; align-items: center; gap: 6px; margin: 0 12px 4px; padding-bottom: 2px; border-bottom: 1px solid var(--border); }
-.sidebar-head h3 { flex: 1; min-width: 0; padding: 4px 0 8px; }
+.sidebar-head h3 { flex: 1; min-width: 0; padding: 8px 0 12px; } /* 标题行加高：上 4→8 / 下 8→12，缓解拥挤 */
 .sidebar-add-group {
   width: 32px; height: 32px; font-size: 20px; border-radius: 50%; opacity: 0.8;
   display: inline-flex; align-items: center; justify-content: center;
@@ -781,8 +781,9 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
    左右各留 14px 的短分割线（伪元素实现，分节自身不再带边框） */
 .prop-section::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 0; height: 1px; background: var(--border); }
 .prop-section h3 { font-size: 12px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
-/* 右侧面板头部标题下浅分割线（用户 11-12 要求，与左栏头部一致） */
-.prop-panel .prop-section:first-child h3 { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+/* 右侧面板头部标题下浅分割线（用户 11-12 要求，与左栏头部一致）；标题行加高与左栏同步 */
+.prop-panel .prop-section:first-child { padding-top: 14px; }
+.prop-panel .prop-section:first-child h3 { border-bottom: 1px solid var(--border); padding-bottom: 10px; }
 
 .kv { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; min-width: 0; }
 .kv span { color: var(--text-dim); flex: none; }
