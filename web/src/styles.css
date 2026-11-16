@@ -1,15 +1,15 @@
 :root {
-  /* 浅色主题：AI Studio（Material 3）——蓝灰底 + 白卡片 + Google 蓝主色 */
-  --brand-600: #0b57d0; /* Google 蓝（M3 primary） */
-  --brand-700: #0842a0; /* primary hover */
-  --brand-800: #062e6f;
-  --brand-100: #d3e3fd; /* primary container：选中胶囊底色 */
-  --brand-200: #a8c7fa; /* primary-80：暗底上的品牌色 */
+  /* 浅色主题：高级黑（premium black）——中性灰底 + 白卡片 + 黑色主按钮（Vercel/Linear 风格） */
+  --brand-600: #1a1b1e; /* 高级黑主色（primary） */
+  --brand-700: #0d0e10; /* primary hover：黑上加深 */
+  --brand-800: #050607;
+  --brand-100: #ececee; /* primary container：选中胶囊底色 */
+  --brand-200: #a9adb3; /* primary-80：暗底上的品牌色 / 焦点描边 */
   --bg: #f0f4f9;
   --bg-panel: #ffffff;
   --bg-elevated: #f8fafd;
   --bg-hover: #e9eef6;
-  --selected-bg: #d3e3fd; /* 列表选中/激活态底色：AI Studio 式浅蓝 */
+  --selected-bg: #e8e9eb; /* 列表选中/激活态底色：中性浅灰 */
   --bg-soft: #f4f5f7;
   --border: #e1e5ec;
   --border-strong: #c4c7c5; /* M3 outline */
@@ -18,10 +18,10 @@
   --accent: var(--brand-600);
   --accent-hover: var(--brand-700);
   --accent-soft: var(--brand-100);
-  --accent-soft-2: #e1eafa;
+  --accent-soft-2: #e9eaec;
   --measure: var(--brand-600);
   --hover: #1f1f1f;
-  --state-hover: rgba(11, 87, 208, 0.08); /* M3 按钮状态层 */
+  --state-hover: rgba(26, 27, 30, 0.06); /* 按钮状态层：中性灰 */
   --ok: #14ae5c;
   --err: #ef4444;
   --radius: 12px;
@@ -77,7 +77,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   padding: 2px 10px; border-radius: 999px; font-size: 12px; white-space: nowrap;
 }
 .status-ok { background: rgba(20, 174, 92, 0.15); color: var(--ok); }
-.status-wait { background: rgba(11, 87, 208, 0.12); color: var(--accent); }
+.status-wait { background: rgba(26, 27, 30, 0.12); color: var(--accent); }
 .status-err { background: rgba(242, 72, 34, 0.15); color: var(--err); }
 .status-pulse { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.5; } }
@@ -196,7 +196,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 24px;
   background:
-    radial-gradient(1200px 500px at 15% -10%, rgba(11, 87, 208, 0.12), transparent 60%),
+    radial-gradient(1200px 500px at 15% -10%, rgba(26, 27, 30, 0.12), transparent 60%),
     radial-gradient(900px 420px at 110% 20%, rgba(13, 153, 255, 0.12), transparent 55%),
     #f5f6f8;
   color: #1d2129;
@@ -262,7 +262,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   font-size: 14px;
 }
 .side-nav-item:hover { background: var(--bg-hover); color: var(--text); }
-.side-nav-item.active { background: var(--selected-bg); color: #041e49; }
+.side-nav-item.active { background: var(--selected-bg); color: var(--text); }
 .home-main { flex: 1; overflow-y: auto; }
 .home-main-inner { max-width: 1760px; margin: 0 auto; padding: 28px 28px 56px; }
 .view-header { margin-bottom: 20px; }
@@ -431,7 +431,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .import-mode-tabs button.is-active {
   border-color: var(--accent); color: var(--accent);
-  background: rgba(11, 87, 208, 0.08); font-weight: 600;
+  background: rgba(26, 27, 30, 0.08); font-weight: 600;
 }
 .import-panel .import-json-box { flex-direction: column; align-items: stretch; }
 .import-json-text {
@@ -547,7 +547,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   cursor: pointer; font-size: 14px; user-select: none; position: relative;
 }
 .page-row:hover { background: var(--bg-elevated); }
-.page-row.is-droptarget { outline: 1.5px dashed var(--accent); background: rgba(11, 87, 208, 0.10); }
+.page-row.is-droptarget { outline: 1.5px dashed var(--accent); background: rgba(26, 27, 30, 0.10); }
 .page-caret {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px;
@@ -721,7 +721,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
    交互态（hover/选中）由 outline 系统提供完整品牌色实线与尺寸徽标 */
 .slice-outline {
   position: absolute;
-  border: 1px dashed rgba(11, 87, 208, 0.35);
+  border: 1px dashed rgba(26, 27, 30, 0.35);
   border-radius: 2px;
   pointer-events: none; user-select: none; z-index: 5;
 }
@@ -1031,7 +1031,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .upload-btn:hover { border-color: var(--accent); color: var(--text); }
 .source-tag {
   font-style: normal; font-size: 11px; padding: 1px 6px; margin-right: 6px;
-  border-radius: 999px; background: rgba(11, 87, 208, 0.12); color: var(--accent);
+  border-radius: 999px; background: rgba(26, 27, 30, 0.12); color: var(--accent);
 }
 
 /* ---------- P3: 代码片段 ---------- */
@@ -1057,7 +1057,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .comment-toggle.is-active {
   border-color: var(--accent); color: var(--accent);
-  background: rgba(11, 87, 208, 0.10);
+  background: rgba(26, 27, 30, 0.10);
 }
 .comment-badge {
   background: var(--err); color: #fff; border-radius: 999px;
@@ -1334,7 +1334,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .mcp-step { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; }
 .mcp-step-no {
   flex: 0 0 auto; width: 22px; height: 22px; border-radius: 999px;
-  background: var(--accent, #2c6ecb); color: #fff; font-size: 12px; font-weight: 700;
+  background: var(--accent, #1a1b1e); color: #fff; font-size: 12px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; margin-top: 1px;
 }
 .mcp-step p { margin: 0; font-size: 13px; line-height: 1.6; }
@@ -1457,7 +1457,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 
 /* ---------- 成员邀请 / 角色 / 只读标识 ---------- */
 .role-badge { border-radius: 999px; padding: 2px 10px; font-size: 12px; }
-.role-badge.admin { background: rgba(11, 87, 208, 0.12); color: var(--accent); }
+.role-badge.admin { background: rgba(26, 27, 30, 0.12); color: var(--accent); }
 .role-badge.collaborator { background: rgba(122, 125, 138, 0.14); color: var(--text-dim); }
 .role-badge.owner { background: #fef3c7; color: #92400e; }
 /* 信息区吃掉剩余空间，把身份徽章/体验/移除推到右侧形成整齐的操作列 */
@@ -1561,11 +1561,11 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
 .frame-item { display: flex; align-items: center; gap: 6px; padding: 7px 10px; }
 .frame-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frame-item.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(11, 87, 208, 0.10); }
+.frame-item.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(26, 27, 30, 0.10); }
 
 /* ---------- 项目画板页：编组 + 多选 ---------- */
 .pcanvas-frame.is-selected {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(11, 87, 208, 0.3), 0 8px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(26, 27, 30, 0.3), 0 8px 40px rgba(0, 0, 0, 0.5);
   z-index: 4;
 }
 .pcanvas-frame.is-drop-target { outline: 1.5px dashed var(--accent); outline-offset: -2px; }
@@ -1578,7 +1578,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .pcanvas-group-band.is-ungrouped { cursor: default; }
 .pcanvas-group-band.is-droptarget {
   outline: 1.5px dashed var(--accent); outline-offset: -1px; border-radius: 4px;
-  background: rgba(11, 87, 208, 0.12);
+  background: rgba(26, 27, 30, 0.12);
 }
 .pcanvas-band-name { color: var(--text); font-weight: 600; }
 .pcanvas-band-count {
@@ -1594,8 +1594,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .pcanvas-group-box:hover { background: rgba(26, 28, 32, 0.08); }
 .pcanvas-group-box.is-droptarget {
   border-color: var(--accent); border-style: solid;
-  background: rgba(11, 87, 208, 0.14);
-  box-shadow: 0 0 0 2px rgba(11, 87, 208, 0.25);
+  background: rgba(26, 27, 30, 0.14);
+  box-shadow: 0 0 0 2px rgba(26, 27, 30, 0.25);
 }
 .pcanvas-group-empty {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -1611,7 +1611,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 /* 拖拽插入位置指示线 */
 .pcanvas-drop-line {
   position: absolute; top: -10px; bottom: -10px; width: 2px; border-radius: 1px;
-  background: var(--accent); box-shadow: 0 0 0 2px rgba(11, 87, 208, 0.25); pointer-events: none; z-index: 4;
+  background: var(--accent); box-shadow: 0 0 0 2px rgba(26, 27, 30, 0.25); pointer-events: none; z-index: 4;
 }
 .pcanvas-drop-line.is-before { left: -7px; }
 .pcanvas-drop-line.is-after { right: -7px; }
@@ -1624,13 +1624,13 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .pcanvas-frame-item { padding: 6px 10px; }
 .pcanvas-frame-item.is-selected { background: var(--selected-bg); }
 .pcanvas-frame-item.is-drop-target {
-  outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(11, 87, 208, 0.10);
+  outline: 1.5px dashed var(--accent); outline-offset: -1px; background: rgba(26, 27, 30, 0.10);
 }
 .page-row.is-selected { background: var(--selected-bg); }
 /* 框选矩形与对齐参考线（画布交互） */
 .pcanvas-marquee {
   position: absolute; border: 1px solid var(--accent); border-radius: 2px;
-  background: rgba(11, 87, 208, 0.12); pointer-events: none; z-index: 6;
+  background: rgba(26, 27, 30, 0.12); pointer-events: none; z-index: 6;
 }
 .pcanvas-guide { position: absolute; background: #f43f5e; opacity: 0.85; pointer-events: none; z-index: 7; }
 .pcanvas-guide.is-v { top: 0; bottom: 0; width: 1px; }
@@ -1674,7 +1674,7 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   box-shadow: var(--shadow-pop);
 }
 .pcanvas-frame.is-selected {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(11, 87, 208, 0.28);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(26, 27, 30, 0.28);
 }
 .pcanvas-group-box {
   background: rgba(26, 28, 32, 0.055);
@@ -2130,11 +2130,11 @@ input:focus, select:focus { outline-color: var(--brand-200); border-color: var(-
 /* 顶栏开关关闭时：线条只展示，不响应 hover / 删除（纯视觉元素） */
 .pcanvas-link-layer.is-readonly .pcanvas-link-hit { pointer-events: none; cursor: default; }
 .pcanvas-frame.is-link-source {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(11, 87, 208, 0.16);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(26, 27, 30, 0.16);
   z-index: 4;
 }
 .pcanvas-frame.is-link-target {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(11, 87, 208, 0.2);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px rgba(26, 27, 30, 0.2);
 }
 
 /* 顶栏连线开关：开启态（可编辑连线）与全站选中态统一为浅灰底；关闭态仍完整显示线条 */
