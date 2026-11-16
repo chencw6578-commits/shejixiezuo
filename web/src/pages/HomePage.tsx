@@ -27,20 +27,9 @@ interface Project {
 
 type View = 'projects' | 'members';
 
-/** 品牌图形 Logo（纯图形无文字）：圆角方块内「画板 + 向右上出图箭头」——设计稿从画板向外交付，对应网站「设计交付」核心 */
+/** 品牌图形 Logo（半格 mark，纯图形无文字）：取自 public/logo-mark.png */
 function BrandMark() {
-  return (
-    <svg className="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
-      <rect width="24" height="24" rx="6" fill="var(--brand-600)" />
-      {/* 画板：设计载体 */}
-      <rect x="4" y="4.5" width="11.5" height="11.5" rx="2" fill="none" stroke="#fff" strokeWidth="1.7" />
-      {/* 画板内容示意线 */}
-      <path d="M7 8.2h5.5M7 11h3.5" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" opacity="0.55" fill="none" />
-      {/* 交付箭头：从画板右下角穿出、指向右上（导出/交付） */}
-      <path d="M13 16 19.5 9.5" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" fill="none" />
-      <path d="M16.2 9.5h3.3v3.3" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </svg>
-  );
+  return <img src="/logo-mark.png" className="brand-mark" width={22} height={22} alt="" aria-hidden="true" />;
 }
 
 /* 项目卡片图形标识：品牌渐变小方块 + 前实后虚两层画板（一个项目 = 一叠设计稿），
