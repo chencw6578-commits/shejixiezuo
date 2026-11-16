@@ -6,6 +6,7 @@
   "env": {
     "NODEJS_HELPERS": "0"
   },
+  "regions": ["hnd1"],
   "functions": {
     "api/catch.mjs": {
       "maxDuration": 300
