@@ -3,8 +3,8 @@
  * 沙箱里没有 DOM / fetch：网络请求全部由 ui.html 的 iframe 发出；
  * 这里只负责读画板、导出 JSON、按倍率导出 PNG（base64）与读写 clientStorage 偏好。
  */
-const PLUGIN_VERSION = '1.5.9';
-const BUILD_DATE = '2026-11-15';
+const PLUGIN_VERSION = '1.6.0';
+const BUILD_DATE = '2026-11-16';
 const SCHEMA_VERSION = 1;
 const PREFS_KEY = 'designhub-plugin-prefs';
 // 令牌单独存一份：偏好整包写入失败时（老版本字段不兼容等），令牌仍能被记住，
