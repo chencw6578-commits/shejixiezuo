@@ -105,10 +105,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .home-shell button:hover { background: var(--state-hover); }
 
 /* 顶部状态栏（首页）：右侧身份头像；团队切换器已移入侧栏顶部。
-   Grid 定位在第 2 列（不横跨侧栏），高度 48px */
+   Grid 定位在第 2 列（不横跨侧栏），高度 64px（用户反馈按钮太贴顶部，48→64） */
 .home-topbar {
   display: flex; align-items: center; gap: 12px; flex: none;
-  height: 48px; padding: 0 16px;
+  height: 64px; padding: 0 16px;
   grid-column: 2; grid-row: 2;
   /* 顶部状态栏不画下分隔线（用户指定）：状态栏与主内容同底色，靠留白分区 */
   background: var(--bg-panel);
