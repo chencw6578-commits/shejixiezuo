@@ -776,8 +776,11 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .prop-import-link { color: var(--accent); text-decoration: none; font-weight: 600; }
 .prop-import-link:hover { text-decoration: underline; }
 
-.prop-section { padding: 8px 14px 10px; border-bottom: 1px solid var(--border); }
-.prop-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
+.prop-section { padding: 8px 14px 10px; position: relative; }
+/* 分节分割线：原 border-bottom 贯穿面板整宽（顶到卡片左右边缘），改为与内容对齐的
+   左右各留 14px 的短分割线（伪元素实现，分节自身不再带边框） */
+.prop-section::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 0; height: 1px; background: var(--border); }
+.prop-section h3 { font-size: 12px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
 /* 右侧面板头部标题下浅分割线（用户 11-12 要求，与左栏头部一致） */
 .prop-panel .prop-section:first-child h3 { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 
