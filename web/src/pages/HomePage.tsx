@@ -293,6 +293,7 @@ export default function HomePage() {
 
   // 当前登录账号在当前团队的真实角色：体验身份（identity）优先，否则按成员表匹配，
   // 都没有 = 协作者（与服务端 teamRole 的最小权限默认一致）
+  const myEmail = authUser?.email?.trim().toLowerCase() ?? '';
   const myMember = authUser ? members.find((m) => m.email === authUser.email) : undefined;
   const myRole: 'owner' | 'admin' | 'collaborator' = identity?.role ?? myMember?.role ?? 'collaborator';
   const canManage = myRole === 'owner' || myRole === 'admin';
@@ -1212,7 +1213,7 @@ export default function HomePage() {
                       </span>
                     </div>
                     <span className={`role-badge ${m.role}`}>{ROLE_LABEL[m.role] ?? m.role}</span>
-                    {canManage && m.email && m.role !== 'owner' && (
+                    {canManage && m.email && m.role !== 'owner' && m.email.trim().toLowerCase() !== myEmail && (
                       <button
                         className="member-action"
                         onClick={() => {
@@ -1226,7 +1227,7 @@ export default function HomePage() {
                         <Pencil size={14} /> 编辑身份
                       </button>
                     )}
-                    {canManage && m.role !== 'owner' && (
+                    {canManage && m.role !== 'owner' && (m.email ?? '').trim().toLowerCase() !== myEmail && (
                       <button className="member-action" onClick={() => setRemoveModal({ id: m.id, email: m.email ?? '该成员' })} title="移除该成员">
                         <Trash2 size={14} /> 移除
                       </button>
