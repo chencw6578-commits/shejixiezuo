@@ -200,6 +200,12 @@ export default function Canvas({
   // 画布底色（localStorage，按用户，与项目画布页共用偏好）
   const [canvasBg, pickCanvasBg] = useCanvasBg();
   const bg = canvasBgStyle(canvasBg);
+  // 整板图是否因 CORS 被拒而降级为无 crossOrigin 加载（见 onError 回退）。
+  // 生产环境缩略图在 Vercel Blob（跨域），吸管要把图读进 canvas 取像素，
+  // 必须带 crossOrigin="anonymous"（实测 Blob CDN 所有响应都带 ACAO:*）；
+  // 自建 S3 等不带 CORS 头的后端会让首次加载直接报错，此时降级重试保显示，
+  // 代价是 canvas 被污染、像素级吸管不可用（pickColor 会回退浏览器原生吸管）。
+  const [imgCorsFailed, setImgCorsFailed] = useState(false);
   // 画板底图：插件导入时已经保存了 Figma 原生 exportAsync 的整板 PNG（含图片填充、图标、渐变）。
   // 节点矢量层只是 CSS 近似，还原不了这些，因此固定展示原图（无原图时回退到节点渲染）。
 
@@ -225,35 +231,40 @@ export default function Canvas({
     const y = clientY - rect.top;
     if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
     const nw = img.naturalWidth, nh = img.naturalHeight;
-    // .artboard-img 是 object-fit: cover：按 cover 裁切公式映射回原图坐标
-    const scale = Math.max(rect.width / nw, rect.height / nh);
-    const ox = (rect.width - nw * scale) / 2;
-    const oy = (rect.height - nh * scale) / 2;
-    const sx = Math.floor((x - ox) / scale);
-    const sy = Math.floor((y - oy) / scale);
+    // .artboard-img 内联 object-fit: fill：整板图被拉伸铺满画板盒，屏幕坐标按比例
+    // 独立映射回原图像素（旧代码按 cover 算，与实际显示语义不一致）
+    const sx = Math.floor((x / rect.width) * nw);
+    const sy = Math.floor((y / rect.height) * nh);
     if (sx < 0 || sy < 0 || sx >= nw || sy >= nh) return null;
     let entry = sampleCanvasRef.current;
-    if (!entry || entry.src !== img.currentSrc) {
+    // 缓存键含 CORS 降级标记：降级重载后同一 src 也要重建画布
+    const cacheKey = imgCorsFailed ? 'nocors:' + img.currentSrc : img.currentSrc;
+    if (!entry || entry.src !== cacheKey) {
       const c = document.createElement('canvas');
       c.width = nw;
       c.height = nh;
       const ctx = c.getContext('2d', { willReadFrequently: true });
       if (!ctx) return null;
       ctx.drawImage(img, 0, 0);
-      entry = { src: img.currentSrc, canvas: c };
+      entry = { src: cacheKey, canvas: c };
       sampleCanvasRef.current = entry;
     }
     const ctx = entry.canvas.getContext('2d') as CanvasRenderingContext2D | null;
     if (!ctx) return null;
     return { ctx, sx, sy, nw, nh };
-  }, []);
+  }, [imgCorsFailed]);
 
-  /** 屏幕坐标 → 设计稿像素颜色。 */
+  /** 屏幕坐标 → 设计稿像素颜色。图片跨域被污染（canvas 像素不可读）时返回 null。 */
   const sampleColorAt = useCallback((clientX: number, clientY: number): string | null => {
     const p = getSamplePoint(clientX, clientY);
     if (!p) return null;
-    const data = p.ctx.getImageData(p.sx, p.sy, 1, 1).data;
-    return '#' + [data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+    try {
+      const data = p.ctx.getImageData(p.sx, p.sy, 1, 1).data;
+      return '#' + [data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+    } catch {
+      // SecurityError：canvas 被跨域内容污染。由调用方回退浏览器原生吸管。
+      return null;
+    }
   }, [getSamplePoint]);
 
   /** 优先取图层里导入的渐变定义（Figma / Sketch 原始数据，非推测）。 */
@@ -290,26 +301,33 @@ export default function Canvas({
     [eyedropper, sampleColorAt, toLocal, findLayerGradientAt]
   );
 
+  /** 浏览器原生吸管（Chrome 95+）：全屏幕取色，含 DOM 渲染层与已显示的整板图。 */
+  const openNativePick = useCallback(
+    (clientX: number, clientY: number) => {
+      const Ctor = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
+      if (!Ctor) return;
+      new Ctor()
+        .open()
+        .then((r: { sRGBHex: string }) => {
+          const hex = r.sRGBHex.toLowerCase();
+          const n = parseInt(hex.slice(1), 16);
+          const p = toLocal(clientX, clientY);
+          setPicked({ ...p, hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`, gradient: null });
+          void navigator.clipboard?.writeText(hex.toUpperCase()).catch(() => {});
+        })
+        .catch(() => { /* 用户取消 */ });
+    },
+    [toLocal]
+  );
+
   const pickColor = useCallback(
     (clientX: number, clientY: number) => {
-      if (!showImageRef.current) {
-        // 无整板图：浏览器原生吸管（全屏幕取色，含 DOM 渲染层）
-        const Ctor = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
-        if (!Ctor) return;
-        new Ctor()
-          .open()
-          .then((r: { sRGBHex: string }) => {
-            const hex = r.sRGBHex.toLowerCase();
-            const n = parseInt(hex.slice(1), 16);
-            const p = toLocal(clientX, clientY);
-            setPicked({ ...p, hex, rgb: `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`, gradient: null });
-            void navigator.clipboard?.writeText(hex.toUpperCase()).catch(() => {});
-          })
-          .catch(() => { /* 用户取消 */ });
+      const hex = showImageRef.current ? sampleColorAt(clientX, clientY) : null;
+      if (!hex) {
+        // 无整板图（纯 DOM 渲染），或整板图跨域被污染取不到像素：回退原生吸管
+        openNativePick(clientX, clientY);
         return;
       }
-      const hex = sampleColorAt(clientX, clientY);
-      if (!hex) return;
       // ① 图层渐变定义（权威） ② 兜底：整板图局部像素拟合，识别无图层数据时的渐变
       let gradient = findLayerGradientAt(clientX, clientY);
       if (!gradient) {
@@ -327,7 +345,7 @@ export default function Canvas({
       // 用独立的 'auto' 标记，避免一弹出结果卡就把「复制 CSS」按钮文案顶掉
       copyText(gradient ? gradient.css : hex.toUpperCase(), 'auto');
     },
-    [sampleColorAt, toLocal, getSamplePoint, findLayerGradientAt, copyText]
+    [sampleColorAt, toLocal, getSamplePoint, findLayerGradientAt, copyText, openNativePick]
   );
 
   // 退出吸管 / Esc：清掉预览与结果
@@ -729,6 +747,15 @@ export default function Canvas({
             src={frame.thumb_url!}
             alt={frame.name}
             draggable={false}
+            crossOrigin={imgCorsFailed ? undefined : 'anonymous'}
+            onError={() => {
+              // 带 crossOrigin 加载失败（后端不带 CORS 头）：降级为普通加载保显示，
+              // 像素级吸管随之失效（pickColor 回退浏览器原生吸管）。只降级一次。
+              if (!imgCorsFailed) {
+                setImgCorsFailed(true);
+                sampleCanvasRef.current = null;
+              }
+            }}
             style={{ objectFit: 'fill' }}
           />
         )}
