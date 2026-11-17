@@ -9,7 +9,8 @@
   "regions": ["hnd1"],
   "functions": {
     "api/catch.mjs": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "includeFiles": "../server/node_modules/@img/**"
     }
   },
   "headers": [
