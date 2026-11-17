@@ -1,7 +1,7 @@
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { S3Client } from '@aws-sdk/client-s3';
-import { put as blobPut, head as blobHead } from '@vercel/blob';
+import { put as blobPut, head as blobHead, list as blobList, del as blobDel } from '@vercel/blob';
 import { config } from '../config.js';
 
 export interface Storage {
@@ -9,6 +9,8 @@ export interface Storage {
   put(key: string, data: Buffer, contentType: string): Promise<string>;
   /** 读取对象。 */
   get(key: string): Promise<Buffer>;
+  /** 删除指定前缀下的全部对象（用于删除设计稿时清理孤儿图片）。 */
+  delPrefix(prefix: string): Promise<number>;
 }
 
 /**
@@ -39,6 +41,17 @@ class LocalStorage implements Storage {
 
   async get(key: string): Promise<Buffer> {
     return readFile(this.abs(key));
+  }
+
+  async delPrefix(prefix: string): Promise<number> {
+    const dir = path.resolve(this.dir, safeKey(prefix));
+    if (!dir.startsWith(path.resolve(this.dir))) throw new Error('invalid storage key');
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return 1;
+    } catch {
+      return 0;
+    }
   }
 }
 
@@ -109,6 +122,33 @@ class S3Storage implements Storage {
     for await (const chunk of res.Body as AsyncIterable<Buffer>) chunks.push(chunk);
     return Buffer.concat(chunks);
   }
+
+  async delPrefix(prefix: string): Promise<number> {
+    const { ListObjectsV2Command, DeleteObjectsCommand } = this.s3;
+    let continuation: string | undefined;
+    let deleted = 0;
+    do {
+      const listed = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: config.storage.s3.bucket,
+          Prefix: prefix,
+          ContinuationToken: continuation,
+        })
+      );
+      const keys = (listed.Contents ?? []).flatMap((o) => (o.Key ? [{ Key: o.Key }] : []));
+      if (keys.length) {
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: config.storage.s3.bucket,
+            Delete: { Objects: keys, Quiet: true },
+          })
+        );
+        deleted += keys.length;
+      }
+      continuation = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+    } while (continuation);
+    return deleted;
+  }
 }
 
 /**
@@ -140,6 +180,21 @@ class BlobStorage implements Storage {
     if (!res.ok) throw new Error(`读取 Blob 失败 (${res.status})`);
     return Buffer.from(await res.arrayBuffer());
   }
+
+  async delPrefix(prefix: string): Promise<number> {
+    let cursor: string | undefined;
+    let deleted = 0;
+    do {
+      const page = await blobList({ prefix: safeKey(prefix), cursor, limit: 1000 });
+      const urls = page.blobs.map((b) => b.url);
+      if (urls.length) {
+        await blobDel(urls);
+        deleted += urls.length;
+      }
+      cursor = page.hasMore ? page.cursor : undefined;
+    } while (cursor);
+    return deleted;
+  }
 }
 
 let storage: Promise<Storage> | null = null;
@@ -154,4 +209,25 @@ export function getStorage(): Promise<Storage> {
           : Promise.resolve(new LocalStorage(config.storage.localDir));
   }
   return storage;
+}
+
+/**
+ * 删除一个设计稿关联的全部 Blob 对象。
+ *
+ * 所有图片 key 都带 fileId 前缀，分两类：
+ *   - files/<fileId>/…  画板缩略图、节点渲染、SVG、插件切图、上传图
+ *   - assets/<fileId>/… 用户导出的切图
+ * 两个前缀都要清；单个前缀失败不影响另一个，也不阻断调用方的 DB 删除。
+ */
+export async function deleteFileBlobs(fileId: string): Promise<number> {
+  const store = await getStorage();
+  let deleted = 0;
+  for (const prefix of [`files/${fileId}/`, `assets/${fileId}/`]) {
+    try {
+      deleted += await store.delPrefix(prefix);
+    } catch (err) {
+      console.warn(`[storage] 清理 ${prefix} 失败:`, err instanceof Error ? err.message : String(err));
+    }
+  }
+  return deleted;
 }

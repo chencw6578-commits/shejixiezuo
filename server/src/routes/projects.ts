@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { editGuard } from './authz.js';
 import { ensurePages } from './files.js';
+import { deleteFileBlobs } from '../storage/index.js';
 
 export const projectsRouter = Router();
 
@@ -170,12 +171,35 @@ projectsRouter.get('/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
+/** 重命名项目（管理员及以上；校验规则与创建项目一致） */
+projectsRouter.patch('/:id/rename', async (req, res) => {
+  const t = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [req.params.id]);
+  if (!t.rows[0]) return res.status(404).json({ error: '项目不存在' });
+  const denied = await editGuard(t.rows[0].team_id, req);
+  if (denied) return res.status(403).json({ error: denied });
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: '请输入项目名称' });
+  if (name.length > 60) return res.status(400).json({ error: '项目名称过长（最多 60 字）' });
+  const { rows } = await pool.query(
+    'UPDATE projects SET name = $1 WHERE id = $2 RETURNING id, name',
+    [name, req.params.id]
+  );
+  res.json(rows[0]);
+});
+
 /** 删除项目（其中设计稿一并删除，画板/图层级联） */
 projectsRouter.delete('/:id', async (req, res) => {
   const t = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [req.params.id]);
   if (!t.rows[0]) return res.status(404).json({ error: '项目不存在' });
   const denied = await editGuard(t.rows[0].team_id, req);
   if (denied) return res.status(403).json({ error: denied });
+  // 先记住级联将删除的设计稿 id，用于随后清理对应 Blob
+  const files = await pool.query<{ id: string }>('SELECT id FROM design_files WHERE project_id = $1', [req.params.id]);
+  const fileIds = files.rows.map((r) => r.id);
   await pool.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+  // 清理孤儿图片，失败仅记录日志，不阻断已完成的 DB 删除
+  void Promise.all(fileIds.map((id) => deleteFileBlobs(id))).catch((err) =>
+    console.warn('[projects] 删除项目后清理 Blob 失败:', err)
+  );
   res.json({ deleted: true });
 });

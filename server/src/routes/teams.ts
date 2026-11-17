@@ -5,6 +5,7 @@ import { editGuard, manageGuard, ownerGuard, teamRole } from './authz.js';
 import { getSessionUser } from '../auth.js';
 import { createTeamInvite } from './invites.js';
 import { emailConfig } from '../config.js';
+import { deleteFileBlobs } from '../storage/index.js';
 
 export const teamsRouter = Router();
 
@@ -72,7 +73,19 @@ teamsRouter.patch('/:id/rename', async (req, res) => {
 teamsRouter.delete('/:id', async (req, res) => {
   const denied = await ownerGuard(req.params.id, req);
   if (denied) return res.status(denied === '团队不存在' ? 404 : 403).json({ error: denied });
+  // 先记住级联将删除的设计稿 id（团队 → 项目 → 设计稿）
+  const files = await pool.query<{ id: string }>(
+    `SELECT df.id FROM design_files df
+     JOIN projects p ON df.project_id = p.id
+     WHERE p.team_id = $1`,
+    [req.params.id]
+  );
+  const fileIds = files.rows.map((r) => r.id);
   const { rowCount } = await pool.query('DELETE FROM teams WHERE id = $1', [req.params.id]);
+  // 清理孤儿图片，失败仅记录日志，不阻断已完成的 DB 删除
+  void Promise.all(fileIds.map((id) => deleteFileBlobs(id))).catch((err) =>
+    console.warn('[teams] 删除团队后清理 Blob 失败:', err)
+  );
   res.json({ deleted: rowCount === 1 });
 });
 

@@ -559,6 +559,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, teamId }),
     }),
+  renameProject: (id: string, name: string) =>
+    request<{ id: string; name: string }>(`/api/projects/${id}/rename`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
   getProject: (id: string) =>
     request<{ id: string; name: string; team_id: string | null; team_name: string | null }>(`/api/projects/${id}`),
   /** 项目画板总览：所有设计稿的全部画板 + 编组（项目画板页用） */

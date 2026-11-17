@@ -4,7 +4,6 @@ import { api, getMeCached, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, 
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
 import { ChevronDown, Copy, Download, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
-import { canvasBgColor, isDarkCanvas, readCanvasBg } from '../canvasBg';
 import RowMenu from '../components/RowMenu';
 
 interface Team {
@@ -534,6 +533,30 @@ export default function HomePage() {
     }
   };
 
+  /** 修改项目名称（管理员及以上）：弹窗输入新名称，成功后刷新项目列表 */
+  const openRenameProject = (p: Project) => {
+    void dialogs.prompt({
+      title: '修改项目名称',
+      label: '项目名称',
+      initialValue: p.name,
+      placeholder: '输入新的项目名称',
+      maxLength: 60,
+      confirmText: '保存',
+      validate: (v) => (v.trim() ? null : '请输入项目名称'),
+      onSubmit: async (name) => {
+        const trimmed = name.trim();
+        if (trimmed === p.name) return null;
+        try {
+          await api.renameProject(p.id, trimmed);
+          await loadProjects();
+          return null;
+        } catch (err) {
+          return err instanceof Error ? err.message : String(err);
+        }
+      },
+    });
+  };
+
   /** 删除项目：服务端级联删除其中设计稿 / 画板 / 图层，不可逆，先站内确认 */
   const removeProject = async (p: Project) => {
     const ok = await dialogs.confirm({
@@ -841,9 +864,6 @@ export default function HomePage() {
   // 昵称以登录账号 users.name 为准；未登录 / 未设昵称时回退邮箱（与改动前显示一致）
   const accountEmail = authUser?.email ?? identity?.email ?? '';
   const accountName = authUser?.name || accountEmail || '所有者';
-  // 项目封面底色跟随画布底色（与编辑器同一个 localStorage 偏好），不再用透明棋盘格
-  const coverBg = canvasBgColor(readCanvasBg());
-  const coverDark = isDarkCanvas(coverBg);
 
   return (
     <div className="home-shell">
@@ -1112,10 +1132,7 @@ export default function HomePage() {
                         navigate(`/projects/${p.id}`);
                       }}
                     >
-                      <span
-                        className={`project-cover ${coverDark ? 'is-dark-canvas' : ''}`}
-                        style={{ background: coverBg }}
-                      >
+                      <span className="project-cover">
                         {p.cover_frames && p.cover_frames.length > 0 ? (
                           <ProjectCover frames={p.cover_frames} />
                         ) : p.cover ? (
@@ -1135,7 +1152,10 @@ export default function HomePage() {
                       <RowMenu
                         className="project-card-menu"
                         label={p.name}
-                        items={[{ label: '删除项目', onClick: () => void removeProject(p) }]}
+                        items={[
+                          { label: '修改名称', onClick: () => openRenameProject(p) },
+                          { label: '删除项目', danger: true, onClick: () => void removeProject(p) },
+                        ]}
                       />
                     )}
                   </li>
@@ -1584,7 +1604,7 @@ export default function HomePage() {
 
                 <div className="mcp-config">
                   <button type="button" className="mcp-copy-btn" aria-label="复制配置" onClick={() => void copyMcpOAuthConfig()}>
-                    <Copy size={14} />
+                    <Copy size={14} /> 复制
                   </button>
                   <pre><code>{mcpOAuthConfigText}</code></pre>
                 </div>

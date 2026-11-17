@@ -5,6 +5,7 @@ import { FigmaApiError, getFileMeta, parseFigmaUrl } from '../figma/client.js';
 import { enqueueImport, fetchImportData, newErrorId, userFacingFailure } from '../jobs/importFile.js';
 import { editGuard, fileTeamId } from './authz.js';
 import { attachPresetAncestors } from '../export/preset.js';
+import { deleteFileBlobs } from '../storage/index.js';
 
 export const filesRouter = Router();
 
@@ -607,6 +608,10 @@ filesRouter.delete('/:id', async (req, res) => {
   const denied = await editGuard(await fileTeamId(req.params.id), req);
   if (denied) return res.status(403).json({ error: denied });
   await pool.query('DELETE FROM design_files WHERE id = $1', [req.params.id]);
+  // 清理 Blob 孤儿图片（缩略图/渲染/切图）。失败只记录日志，不阻断已完成的 DB 删除。
+  void deleteFileBlobs(req.params.id).catch((err) =>
+    console.warn('[files] 删除设计稿后清理 Blob 失败:', err)
+  );
   res.json({ ok: true });
 });
 
