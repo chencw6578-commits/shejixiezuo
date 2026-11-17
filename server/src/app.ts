@@ -44,6 +44,27 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, queue: queueDepth() });
 });
 
+// sharp 可用性自检：探测原生二进制是否加载成功 + 真实编码一次。
+// 用于确认缩略图无损 WebP 转码在线上生效（失败时 imageEncode 会静默回退 PNG，这里给出显式信号）。
+app.get('/api/health/sharp', async (_req, res) => {
+  try {
+    const { encodeThumbnail } = await import('./util/imageEncode.js');
+    // 1x1 红色 PNG，编码成功且体积可比对即认为可用
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const encoded = await encodeThumbnail(png);
+    res.json({ ok: true, ext: encoded.ext, bytes: encoded.data.length, webpEnabled: config.thumbWebp });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      webpEnabled: config.thumbWebp,
+    });
+  }
+});
+
 // Figma 导入能力探测：只告诉前端服务端有没有统一令牌，绝不返回令牌内容
 app.get('/api/import/figma/status', (_req, res) => {
   res.json({ configured: isFigmaConfigured() });
