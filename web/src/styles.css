@@ -208,7 +208,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .auth-wrap {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 24px; position: relative; isolation: isolate;
-  background: #f5f6f8;
+  background: #fafbfc;
   color: #1d2129;
 }
 /* 登录页设计图形：淡网格 / 左上画板框(240 px) / 右上贝塞尔 / 左下像素 / 右下同心圆+色卡。

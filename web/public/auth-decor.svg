@@ -1,27 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
   <defs>
     <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
-      <path d="M30 0H0V30" fill="none" stroke="#2C3A43" stroke-opacity="0.05" stroke-width="0.8"/>
+      <path d="M30 0H0V30" fill="none" stroke="#2C3A43" stroke-opacity="0.035" stroke-width="0.8"/>
     </pattern>
   </defs>
   <rect width="1440" height="900" fill="url(#grid)"/>
   <!-- 左上画板框：几何放大3倍，描边粗细与文字大小保持原样；整组左移使左边一部分出屏 -->
   <g transform="translate(-470, -380)">
-    <rect x="264" y="228" width="630" height="468" fill="none" stroke="#C2795B" stroke-opacity="0.5" stroke-width="1.2" stroke-dasharray="6 4"/>
-    <path d="M264 288V228H324 M894 228H954V288 M264 636V696H324 M894 696H954V636" fill="none" stroke="#C2795B" stroke-width="1.6"/>
-    <rect x="312" y="276" width="240" height="156" rx="3" fill="#C2795B" opacity="0.10"/>
+    <rect x="264" y="228" width="630" height="468" fill="none" stroke="#C2795B" stroke-opacity="0.28" stroke-width="1.2" stroke-dasharray="6 4"/>
+    <path d="M264 288V228H324 M894 228H954V288 M264 636V696H324 M894 696H954V636" fill="none" stroke="#C2795B" stroke-opacity="0.4" stroke-width="1.6"/>
+    <rect x="312" y="276" width="240" height="156" rx="3" fill="#C2795B" opacity="0.06"/>
     <rect x="576" y="276" width="270" height="156" rx="3" fill="#2C3A43" opacity="0.07"/>
     <rect x="312" y="456" width="534" height="180" rx="3" fill="#2C3A43" opacity="0.05"/>
-    <path d="M264 744H954" stroke="#C2795B" stroke-opacity="0.6" stroke-width="1"/>
-    <path d="M264 729V759 M954 729V759" stroke="#C2795B" stroke-opacity="0.6" stroke-width="1"/>
-    <rect x="598" y="744" width="46" height="20" fill="#f5f6f8"/>
-    <text x="621" y="759" text-anchor="middle" font-size="13" font-family="sans-serif" fill="#C2795B">240 px</text>
+    <path d="M264 744H954" stroke="#C2795B" stroke-opacity="0.3" stroke-width="1"/>
+    <path d="M264 729V759 M954 729V759" stroke="#C2795B" stroke-opacity="0.3" stroke-width="1"/>
+    <rect x="598" y="744" width="46" height="20" fill="#fafbfc"/>
+    <text x="621" y="759" text-anchor="middle" font-size="13" font-family="sans-serif" fill="#C2795B" fill-opacity="0.45">240 px</text>
   </g>
-  <g opacity="0.8" transform="translate(0, 80)">
+  <g opacity="0.6" transform="translate(0, 80)">
     <path d="M1040 190C1110 90,1250 90,1340 180" fill="none" stroke="#2C3A43" stroke-opacity="0.32" stroke-width="1.4"/>
     <path d="M1040 190L1110 90 M1340 180L1250 90" fill="none" stroke="#2C3A43" stroke-opacity="0.28" stroke-width="1" stroke-dasharray="4 4"/>
-    <circle cx="1040" cy="190" r="5" fill="#f5f6f8" stroke="#C2795B" stroke-width="1.8"/>
-    <circle cx="1340" cy="180" r="5" fill="#f5f6f8" stroke="#C2795B" stroke-width="1.8"/>
+    <circle cx="1040" cy="190" r="5" fill="#fafbfc" stroke="#C2795B" stroke-opacity="0.45" stroke-width="1.8"/>
+    <circle cx="1340" cy="180" r="5" fill="#fafbfc" stroke="#C2795B" stroke-opacity="0.45" stroke-width="1.8"/>
     <circle cx="1110" cy="90" r="3" fill="#2C3A43" opacity="0.4"/>
     <circle cx="1250" cy="90" r="3" fill="#2C3A43" opacity="0.4"/>
   </g>
@@ -36,9 +36,9 @@
   <g transform="translate(0, -100)">
     <circle cx="1330" cy="750" r="40" fill="none" stroke="#2C3A43" stroke-opacity="0.12" stroke-width="1.2"/>
     <circle cx="1330" cy="750" r="27" fill="none" stroke="#2C3A43" stroke-opacity="0.16" stroke-width="1.2"/>
-    <circle cx="1330" cy="750" r="13" fill="none" stroke="#C2795B" stroke-opacity="0.45" stroke-width="1.6"/>
+    <circle cx="1330" cy="750" r="13" fill="none" stroke="#C2795B" stroke-opacity="0.3" stroke-width="1.6"/>
     <rect x="1272" y="804" width="22" height="15" rx="2" fill="#2C3A43" opacity="0.45"/>
-    <rect x="1300" y="804" width="22" height="15" rx="2" fill="#C2795B" opacity="0.5"/>
+    <rect x="1300" y="804" width="22" height="15" rx="2" fill="#C2795B" opacity="0.32"/>
     <rect x="1328" y="804" width="22" height="15" rx="2" fill="#FAF9F6" stroke="#C2795B" stroke-opacity="0.3"/>
   </g>
 </svg>
