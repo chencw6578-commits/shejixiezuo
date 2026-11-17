@@ -2900,7 +2900,7 @@ export default function ProjectCanvasPage() {
                     value={renameValue}
                     autoFocus
                     maxLength={100}
-                    style={{ fontSize: Math.max(11, Math.round(12 * Math.min(zoom, 2))) }}
+                    style={{ fontSize: Math.round(12 * Math.min(zoom, 1)) }}
                     onChange={(e) => {
                       setRenameValue(e.target.value);
                       renameValueRef.current = e.target.value;
@@ -2924,7 +2924,7 @@ export default function ProjectCanvasPage() {
                 ) : (
                   <span
                     className="pcanvas-frame-name"
-                    style={{ fontSize: Math.max(11, Math.round(12 * Math.min(zoom, 2))) }}
+                    style={{ fontSize: Math.round(12 * Math.min(zoom, 1)) }}
                     title={`${f.name}（双击重命名）`}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
