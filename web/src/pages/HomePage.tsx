@@ -6,6 +6,14 @@ import { ChevronDown, Copy, Download, Folder, KeyRound, LogOut, Mail, Pencil, Pl
 import { useDialogs } from '../components/Dialogs';
 import RowMenu from '../components/RowMenu';
 
+/**
+ * 邮箱验证提示条总开关。
+ * 当前后端邮件发送尚未接入（无 EMAIL_PROVIDER / Resend / SMTP），提示条上的「重新发送验证邮件」无法真正送达，
+ * 故暂时隐藏。待后续验证功能（真实发信 + 落地核验）上线后，将此处改为 true 即可恢复，
+ * 无需改动其它逻辑（提示条的 state / 关闭记忆 / 冷却逻辑均已保留）。
+ */
+const SHOW_VERIFY_BANNER = false;
+
 interface Team {
   id: string;
   name: string;
@@ -867,8 +875,9 @@ export default function HomePage() {
 
   return (
     <div className="home-shell">
-      {/* 邮箱未验证提示条（软验证：不阻断使用；可关闭，本次登录内不再提示） */}
-      {authUser && authUser.verified === false && !verifyDismissed && (
+      {/* 邮箱未验证提示条（软验证：不阻断使用；可关闭，本次登录内不再提示）
+          SHOW_VERIFY_BANNER=false 时整体隐藏，待发信功能上线后改 true 即可恢复 */}
+      {SHOW_VERIFY_BANNER && authUser && authUser.verified === false && !verifyDismissed && (
         <div className="verify-banner">
           <span>📧 邮箱尚未验证，验证后可确保账号安全与找回密码。</span>
           <button onClick={resendVerification} disabled={resendState === 'cool'}>
