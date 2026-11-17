@@ -21,9 +21,13 @@ import {
 import { config } from '../config.js';
 import { getStorage } from '../storage/index.js';
 import { batchInsert } from '../util/batchInsert.js';
+import { encodeThumbnail } from '../util/imageEncode.js';
+// 注：design_files.raw 已停用写入（全库零读取点，纯冗余存档）。
+// encodeRaw/decodeRaw 工具保留在 util/rawArchive.ts 以兼容历史数据的读取需求。
 
 const CONTENT_TYPES: Record<string, string> = {
   png: 'image/png',
+  webp: 'image/webp',
   svg: 'image/svg+xml',
   jpg: 'image/jpeg',
   pdf: 'application/pdf',
@@ -174,7 +178,13 @@ async function processImport(fileId: string, figmaKey: string, opts: ImportOptio
 
     await writeFrames(fileId, data);
     await generateThumbnails(fileId, figmaKey, data.frames, opts.token);
-    await generateNodeRenders(fileId, figmaKey, data.frames, opts.token);
+    // 节点渲染图（render_url）只在画布退到矢量模式时显示，而缩略图存在时永远走主图模式，
+    // 因此导入时全量生成这约 50 张/份的资产几乎从不显示，纯属浪费存储与 Figma API 配额。
+    // 默认跳过；前端在矢量模式下已有 CSS 近似兜底，功能不降级。
+    // 如需恢复旧行为（例如缩略图大面积失败的场景），设 GENERATE_NODE_RENDERS=1。
+    if (process.env.GENERATE_NODE_RENDERS === '1') {
+      await generateNodeRenders(fileId, figmaKey, data.frames, opts.token);
+    }
     await updateStatus(fileId, 'ready');
   } catch (err) {
     const known = isKnownError(err);
@@ -225,9 +235,8 @@ export async function writeFrames(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE design_files SET raw = $2, version = $3, name = $4 WHERE id = $1', [
+    await client.query('UPDATE design_files SET version = $2, name = $3 WHERE id = $1', [
       fileId,
-      JSON.stringify(data.raw ?? {}),
       data.version,
       data.name,
     ]);
@@ -313,8 +322,11 @@ async function generateThumbnails(
           if (!url) return;
           try {
             const buf = await downloadImage(url);
-            const key = `files/${fileId}/frames/${f.nodeId}@${scale}x.png`;
-            const storedUrl = await storage.put(key, buf, CONTENT_TYPES.png);
+            // 无损 WebP：体积较 PNG 省约 60%，像素逐字节一致（像素吸管取色不受影响）。
+            // 读侧前端直接用 URL，无需改动；历史 PNG 缩略图继续按原 URL 正常显示。
+            const encoded = await encodeThumbnail(buf);
+            const key = `files/${fileId}/frames/${f.nodeId}@${scale}x.${encoded.ext}`;
+            const storedUrl = await storage.put(key, encoded.data, encoded.contentType);
             await pool.query('UPDATE frames SET thumb_url = $2 WHERE file_id = $1 AND node_id = $3', [
               fileId, storedUrl, f.nodeId,
             ]);

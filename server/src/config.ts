@@ -13,6 +13,11 @@ export const config = {
     'DATABASE_URL',
     'postgres://postgres:postgres@localhost:5432/designhub'
   ),
+  /**
+   * 缩略图无损 WebP 转码：相比 PNG 省约 60% 体积，且像素完全一致（像素吸管安全）。
+   * 默认开启；设为 0 可回退到 PNG（兼容不支持 WebP 的极旧客户端）。
+   */
+  thumbWebp: (process.env.THUMB_WEBP ?? '1') !== '0',
   storage: {
     // local: 本地磁盘（常驻部署）；s3: S3 兼容对象存储；blob: Vercel Blob（Serverless 默认）
     driver: (process.env.STORAGE_DRIVER ?? 'local') as 'local' | 's3' | 'blob',
