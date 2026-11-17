@@ -127,10 +127,21 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .topbar-action:hover svg { color: var(--brand-700); }
 /* 顶栏「MCP 接入」是 button，需压掉 .home-shell button:hover 的蓝色状态层，
    保持与「下载 Figma 插件」完全一致的 hover 底色、描边与图标颜色 */
-.home-shell .topbar-action.mcp-entry:hover {
+.home-shell .topbar-action.mcp-entry:hover,
+.home-shell .topbar-action.figma-plugin-download:hover {
   background: var(--brand-100); border-color: var(--brand-600); color: var(--brand-700);
 }
-.home-shell .topbar-action.mcp-entry:hover svg { color: var(--brand-700); }
+.home-shell .topbar-action.mcp-entry:hover svg,
+.home-shell .topbar-action.figma-plugin-download:hover svg { color: var(--brand-700); }
+/* Figma 插件安装教程弹窗：底部下载按钮区 */
+.plugin-guide-download {
+  display: flex; justify-content: flex-end;
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.plugin-guide-download .dlg-btn.is-primary {
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  padding: 9px 18px;
+}
 .topbar-crumb { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-dim); min-width: 0; }
 .topbar-crumb b { color: var(--text); font-size: 14px; }
 .crumb-home {
@@ -212,10 +223,10 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .auth-brand .logo { font-size: 30px; color: var(--accent); display: block; }
 .auth-brand strong { font-size: 17px; display: block; margin-top: 6px; }
 .auth-brand p { font-size: 12px; color: #6b7280; margin-top: 3px; }
-/* 登录页品牌区：稿厘 logo 上下排版（图形在上、中文「稿厘」在下，无英文）。
+/* 登录页品牌区：拾哩 logo 上下排版（图形在上、中文「拾哩」在下，无英文）。
    图片取自 public/logo-*.png（原图提取、去白底透明），保持宽高比。 */
-.auth-brand .auth-brand-mark { display: block; width: 60px; height: auto; margin: 0 auto 10px; }
-.auth-brand .auth-brand-word { display: block; width: 84px; height: auto; margin: 0 auto; }
+.auth-brand .auth-brand-mark { display: block; width: 52px; height: auto; margin: 0 auto 8px; }
+.auth-brand .auth-brand-word { display: block; width: 72px; height: auto; margin: 0 auto; }
 .auth-tabs {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
   background: #f2f4f7; border-radius: 9px; padding: 4px; margin-bottom: 18px;
@@ -686,6 +697,8 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   cursor: pointer; appearance: none; -webkit-appearance: none; padding-right: 32px;
   /* 与顶栏胶囊按钮（评论等）同圆角：单位下拉是 select，需单独覆盖 6px 默认 */
   border-radius: var(--radius-pill);
+  /* 高度与「批量切图」按钮（summary 32px）严格对齐：select 内容比图标+文字矮 3px，锁定盒高 */
+  height: 32px; box-sizing: border-box;
 }
 .device-screen {
   position: absolute; left: 0; top: 0;
@@ -1348,6 +1361,76 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 .mcp-config .ghost-btn { margin: 0 0 10px 14px; }
 .mcp-clients { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .mcp-clients .role-badge { cursor: default; }
+
+/* ---------- MCP 配置弹窗（客户端列表 + 配置说明 + 底部操作栏） ---------- */
+.mcp-modal {
+  width: min(760px, 100%); height: min(560px, 88vh);
+  display: flex; flex-direction: column;
+  background: var(--bg-panel); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.mcp-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--border); flex: none;
+}
+.mcp-modal-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.mcp-modal-body { display: flex; flex: 1; min-height: 0; }
+.mcp-client-list {
+  flex: 0 0 172px; width: 172px; overflow-y: auto;
+  padding: 10px 8px; border-right: 1px solid var(--border);
+  background: var(--bg-code, #f6f7f9); display: flex; flex-direction: column; gap: 2px;
+}
+.mcp-client-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text); font-size: 13px; text-align: left; cursor: pointer;
+}
+.mcp-client-item:hover { background: var(--bg-hover); }
+.mcp-client-item.is-active { background: var(--brand-100); color: var(--brand-700); font-weight: 600; }
+.mcp-client-glyph {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 700;
+}
+.mcp-modal-content { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 22px; }
+.mcp-content-title { margin: 0 0 16px; font-size: 14px; font-weight: 600; }
+.mcp-method-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.mcp-modal-content > .mcp-method-title:nth-of-type(2) { margin-top: 22px; }
+.mcp-modal-content .mcp-config { position: relative; }
+.mcp-copy-btn {
+  position: absolute; top: 8px; right: 8px; z-index: 1;
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-panel); color: var(--text-dim); cursor: pointer;
+}
+.mcp-copy-btn:hover { background: var(--bg-hover); color: var(--text); }
+.mcp-config-hint { margin: 8px 0 0; line-height: 1.55; }
+.mcp-tutorial {
+  margin-top: 20px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg-code, #f6f7f9);
+}
+.mcp-tutorial p { margin: 0 0 8px; font-size: 12px; line-height: 1.6; }
+.mcp-tutorial pre {
+  margin: 0; padding: 10px 12px; white-space: pre-wrap;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+}
+.mcp-modal-foot {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; border-top: 1px solid var(--border);
+}
+.mcp-tutorial-link {
+  border: 0; background: transparent; padding: 4px 0;
+  color: var(--accent, #1a1b1e); font-size: 13px; cursor: pointer; text-decoration: underline;
+}
+.mcp-tutorial-link:hover { opacity: 0.75; }
+.mcp-done-btn {
+  border: 0; border-radius: 7px; padding: 8px 20px;
+  background: var(--brand-600); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.mcp-done-btn:hover { background: var(--brand-700); }
 
 .members-empty { text-align: center; margin-top: 80px; }
 .members-empty p { font-size: 15px; }

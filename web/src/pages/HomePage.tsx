@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getMeCached, getIdentity, setIdentity, VERIFY_BANNER_DISMISS_KEY, type AuthUser } from '../api';
 import type { Identity, ImportToken, Member, ProjectCoverFrame } from '../api';
-import { ChevronDown, Download, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
+import { ChevronDown, Copy, Download, Folder, KeyRound, LogOut, Mail, Pencil, Plus, Search, Trash2, Users, X } from '../components/icons';
 import { useDialogs } from '../components/Dialogs';
 import { canvasBgColor, isDarkCanvas, readCanvasBg } from '../canvasBg';
 import RowMenu from '../components/RowMenu';
@@ -27,7 +27,51 @@ interface Project {
 
 type View = 'projects' | 'members';
 
-/** 品牌图形 Logo（稿厘 mark，纯图形无文字）：取自 public/logo-mark.png */
+/** MCP 弹窗：左侧可选客户端 + 各自的 OAuth 入口步骤（真实配置路径）。 */
+interface McpClientGuide {
+  id: string;
+  name: string;
+  glyph: string;
+  color: string;
+  /** OAuth 入口步骤（方式一），数组每项为一步 */
+  oauthSteps: string[];
+  /** 配置文件名/位置提示，随客户端不同 */
+  configHint: string;
+}
+const MCP_CLIENT_GUIDES: McpClientGuide[] = [
+  {
+    id: 'workbuddy', name: 'WorkBuddy', glyph: 'W', color: '#1e9e6a',
+    oauthSteps: ['打开 WorkBuddy → 连接器 → 自定义连接器 → 配置 MCP', '添加如下配置后保存'],
+    configHint: '在「自定义连接器」里新增，粘贴下面 JSON 即可',
+  },
+  {
+    id: 'cursor', name: 'Cursor', glyph: 'C', color: '#111827',
+    oauthSteps: ['打开 Cursor Settings → MCP → Add New MCP Server', '类型选 Command/HTTP，填入下方 URL 后保存'],
+    configHint: '或写入项目根目录 .cursor/mcp.json',
+  },
+  {
+    id: 'claude', name: 'Claude Code', glyph: 'C', color: '#d97757',
+    oauthSteps: ['在项目目录运行 claude mcp add --transport http shejixiezuo <URL>', '重启 Claude Code 后生效'],
+    configHint: '也可写入项目根目录 .mcp.json',
+  },
+  {
+    id: 'vscode', name: 'VS Code', glyph: 'V', color: '#007acc',
+    oauthSteps: ['安装「GitHub Copilot / MCP」扩展后，打开命令面板 MCP: Add Server', '选择 HTTP 类型并填入下方 URL'],
+    configHint: '或写入项目根目录 .vscode/mcp.json',
+  },
+  {
+    id: 'cline', name: 'Cline', glyph: 'C', color: '#7c5cff',
+    oauthSteps: ['打开 Cline 扩展 → MCP Servers → Configure MCP Servers', '把下方配置粘贴进 cline_mcp_settings.json 后保存'],
+    configHint: '配置文件：cline_mcp_settings.json',
+  },
+  {
+    id: 'other', name: '其他客户端', glyph: '⋯', color: '#6b7280',
+    oauthSteps: ['打开所用 AI 工具的 MCP 配置入口', '新增一个 HTTP 类型的 server，填入下方 URL 后保存'],
+    configHint: '任何支持 HTTP MCP 的工具都适用',
+  },
+];
+
+/** 品牌图形 Logo（拾哩 mark，纯图形无文字）：取自 public/logo-mark.png */
 function BrandMark() {
   return <img src="/logo-mark.png" className="brand-mark" width={22} height={22} alt="" aria-hidden="true" />;
 }
@@ -199,6 +243,10 @@ export default function HomePage() {
   const [tokenModal, setTokenModal] = useState(false);
   // MCP 接入：首页顶栏一级入口（与「下载 Figma 插件」并排），弹窗只提供 OAuth 配置
   const [mcpModal, setMcpModal] = useState(false);
+  // Figma 插件安装教程弹窗（入口在首页顶栏「下载 Figma 插件」）
+  const [pluginModal, setPluginModal] = useState(false);
+  // MCP 弹窗内当前选中的客户端
+  const [mcpClient, setMcpClient] = useState(MCP_CLIENT_GUIDES[0].id);
   const avatarMenuRef = useRef<HTMLDetailsElement | null>(null);
   const teamSwitchRef = useRef<HTMLDetailsElement | null>(null);
 
@@ -447,6 +495,8 @@ export default function HomePage() {
 
   const mcpEndpoint =
     typeof window !== 'undefined' ? `${window.location.origin}/mcp` : '/mcp';
+  const mcpGuide = MCP_CLIENT_GUIDES.find((c) => c.id === mcpClient) ?? MCP_CLIENT_GUIDES[0];
+  const [mcpTutorialOpen, setMcpTutorialOpen] = useState(false);
 
   // 顶栏 MCP 弹窗：OAuth 2.1 授权，配置里只有 url，令牌由客户端自动获取并随请求发送。
   const mcpOAuthConfigText = JSON.stringify(
@@ -817,14 +867,14 @@ export default function HomePage() {
       )}
       {/* 顶部状态栏：左侧 Figma 插件下载入口 + 右侧身份头像（团队切换器已移入左侧栏顶部，侧栏从页面顶部贯通到底） */}
       <header className="home-topbar">
-        <a
+        <button
+          type="button"
           className="topbar-action figma-plugin-download"
-          href="/figma-plugin.zip"
-          download="figma-plugin.zip"
-          title="下载 Figma 插件：解压后，在 Figma 桌面端 Plugins → Development → Import plugin from manifest… 选择解压出的 manifest.json，之后粘贴网站生成的导入令牌即可使用"
+          onClick={() => setPluginModal(true)}
+          title="查看 Figma 插件安装教程"
         >
           <Download size={15} /> 下载 Figma 插件
-        </a>
+        </button>
         <button
           type="button"
           className="topbar-action mcp-entry"
@@ -1483,21 +1533,19 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* MCP 接入弹窗：只给 OAuth 2.1 配置（type + url）。
+      {/* MCP 配置弹窗：左侧客户端列表 + 右侧随客户端变化的配置说明 + 底部操作栏。
           静态令牌统一走头像菜单「导入令牌」，此处不重复生成流程。 */}
       {mcpModal && (
         <div className="dlg-overlay" onClick={() => setMcpModal(false)}>
           <div
-            className="dlg token-modal"
+            className="mcp-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="MCP 接入"
+            aria-label="MCP 配置"
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="token-modal-head">
-              <div>
-                <h2>MCP 接入</h2>
-              </div>
+            <header className="mcp-modal-head">
+              <h2>MCP 配置</h2>
               <button
                 type="button"
                 className="token-modal-close"
@@ -1508,38 +1556,133 @@ export default function HomePage() {
               </button>
             </header>
 
+            <div className="mcp-modal-body">
+              <nav className="mcp-client-list" aria-label="选择 AI 工具">
+                {MCP_CLIENT_GUIDES.map((c) => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className={`mcp-client-item${c.id === mcpClient ? ' is-active' : ''}`}
+                    onClick={() => setMcpClient(c.id)}
+                  >
+                    <span className="mcp-client-glyph" style={{ backgroundColor: c.color }}>{c.glyph}</span>
+                    <span>{c.name}</span>
+                  </button>
+                ))}
+              </nav>
+
+              <div className="mcp-modal-content">
+                <h3 className="mcp-content-title">手动配置</h3>
+
+                <p className="mcp-method-title">方式一（推荐）：OAuth 2.1 授权登录</p>
+                {mcpGuide.oauthSteps.map((step, i) => (
+                  <div className="mcp-step" key={i}>
+                    <span className="mcp-step-no">{i + 1}</span>
+                    <div><p>{step}</p></div>
+                  </div>
+                ))}
+
+                <div className="mcp-config">
+                  <button type="button" className="mcp-copy-btn" aria-label="复制配置" onClick={() => void copyMcpOAuthConfig()}>
+                    <Copy size={14} />
+                  </button>
+                  <pre><code>{mcpOAuthConfigText}</code></pre>
+                </div>
+                <p className="dim small mcp-config-hint">{mcpGuide.configHint}。首次连接会自动打开本站授权页，选好团队后由客户端自己获取令牌，不用手填。</p>
+
+                <p className="mcp-method-title">方式二：访问令牌连接</p>
+                <div className="mcp-step">
+                  <span className="mcp-step-no">1</span>
+                  <div><p>在拾哩工作台点击右侧用户头像 →「导入令牌」生成个人访问令牌。</p></div>
+                </div>
+                <div className="mcp-step">
+                  <span className="mcp-step-no">2</span>
+                  <div><p>把令牌填到客户端对应字段即可（适用于不支持 OAuth 的工具）。</p></div>
+                </div>
+
+                {mcpTutorialOpen && (
+                  <div className="mcp-tutorial">
+                    <p className="mcp-method-title">工具链使用步骤</p>
+                    <p>连接成功后，在 AI 工具里按下面的顺序逐步定位画板、直接拿规格与 CSS 开发：</p>
+                    <pre><code>{'list_projects → list_files → list_frames\n→ get_frame_tree / get_node\n→ get_design_tokens / get_image'}</code></pre>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <footer className="mcp-modal-foot">
+              <button type="button" className="mcp-tutorial-link" onClick={() => setMcpTutorialOpen((v) => !v)}>
+                {mcpTutorialOpen ? '收起使用教程' : '查看使用教程'}
+              </button>
+              <button type="button" className="mcp-done-btn" onClick={() => setMcpModal(false)}>完成</button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {pluginModal && (
+        <div className="dlg-overlay" onClick={() => setPluginModal(false)}>
+          <div
+            className="dlg token-modal plugin-guide-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Figma 插件安装教程"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="token-modal-head">
+              <div>
+                <h2>Figma 插件安装教程</h2>
+                <p className="dim small">4 步完成安装，之后即可在 Figma 里把设计稿导出到本站。</p>
+              </div>
+              <button
+                type="button"
+                className="token-modal-close"
+                aria-label="关闭"
+                onClick={() => setPluginModal(false)}
+              >
+                <X />
+              </button>
+            </header>
+
             <section className="settings-section">
               <div className="mcp-step">
                 <span className="mcp-step-no">1</span>
                 <div>
-                  <p>把下面这段配置粘贴到 AI 工具的 MCP 配置文件（如 <code>.cursor/mcp.json</code>、<code>claude_desktop_config.json</code>）。</p>
-                  <p className="dim small">首次连接会自动打开本站登录与授权页，选好团队后由客户端自己获取令牌，不用手填。</p>
+                  <p><b>下载插件包</b>：点击下方「下载插件」按钮，得到 <code>figma-plugin.zip</code>。</p>
                 </div>
-              </div>
-
-              <div className="mcp-config">
-                <pre><code>{mcpOAuthConfigText}</code></pre>
-                <button type="button" className="ghost-btn" onClick={() => void copyMcpOAuthConfig()}>复制配置</button>
               </div>
 
               <div className="mcp-step">
                 <span className="mcp-step-no">2</span>
                 <div>
-                  <p>
-                    在 AI 工具里按 <code>list_projects → list_files → list_frames → get_frame_tree / get_node / get_design_tokens / get_image</code> 逐步定位画板，直接拿规格与 CSS 开发。
-                  </p>
+                  <p><b>解压压缩包</b>：把 zip 解压到一个固定文件夹，保留里面的 <code>manifest.json</code>、<code>code.js</code>、<code>ui.html</code>，不要单独移动文件。</p>
                 </div>
               </div>
 
-              <div className="mcp-clients">
-                <span className="dim small">适用客户端：</span>
-                <span className="role-badge collaborator">Cursor</span>
-                <span className="role-badge collaborator">Claude Desktop</span>
-                <span className="role-badge collaborator">Cline</span>
-                <span className="role-badge collaborator">WorkBuddy</span>
+              <div className="mcp-step">
+                <span className="mcp-step-no">3</span>
+                <div>
+                  <p><b>导入到 Figma</b>：打开 Figma 桌面客户端 → 菜单 <code>Plugins</code> → <code>Development</code> → <code>Import plugin from manifest…</code> → 选择解压出的 <code>manifest.json</code>。</p>
+                  <p className="dim small">导入一次即可，之后在 Plugins 里直接运行「设计协作 · 导出向导」。</p>
+                </div>
               </div>
 
-              <p className="dim small">客户端不支持 OAuth？到头像菜单「导入令牌」生成静态令牌。</p>
+              <div className="mcp-step">
+                <span className="mcp-step-no">4</span>
+                <div>
+                  <p><b>粘贴导入令牌</b>：回到本站，点头像 →「导入令牌」生成令牌，粘贴到插件的令牌输入框，即可把画板导出到当前团队。</p>
+                </div>
+              </div>
+
+              <div className="plugin-guide-download">
+                <a
+                  className="dlg-btn is-primary"
+                  href="/figma-plugin.zip"
+                  download="figma-plugin.zip"
+                >
+                  <Download size={15} /> 下载插件
+                </a>
+              </div>
             </section>
           </div>
         </div>
