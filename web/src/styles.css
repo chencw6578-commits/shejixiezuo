@@ -207,13 +207,18 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 /* ---------- 登录 / 注册页（浅色，与首页一致） ---------- */
 .auth-wrap {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-  background:
-    radial-gradient(1200px 500px at 15% -10%, rgba(26, 27, 30, 0.12), transparent 60%),
-    radial-gradient(900px 420px at 110% 20%, rgba(13, 153, 255, 0.12), transparent 55%),
-    #f5f6f8;
+  padding: 24px; position: relative; isolation: isolate;
+  background: #f5f6f8;
   color: #1d2129;
 }
+/* 登录页设计图形：淡网格 / 左上画板框(240 px) / 右上贝塞尔 / 左下像素 / 右下同心圆+色卡。
+   独立图层铺满，居中卡片不遮挡；窄屏图形整体淡出，避免干扰表单。 */
+.auth-wrap::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: url('/auth-decor.svg') center center / cover no-repeat;
+  pointer-events: none;
+}
+@media (max-width: 760px) { .auth-wrap::before { opacity: 0.35; } }
 .auth-card {
   width: 380px; max-width: 100%; background: #fff;
   border: 1px solid #e4e7ec; border-radius: 14px;
@@ -226,8 +231,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .auth-brand p { font-size: 12px; color: #6b7280; margin-top: 3px; }
 /* 登录页品牌区：拾哩 logo 上下排版（图形在上、中文「拾哩」在下，无英文）。
    图片取自 public/logo-*.png（原图提取、去白底透明），保持宽高比。 */
-.auth-brand .auth-brand-mark { display: block; width: 52px; height: auto; margin: 0 auto 8px; }
-.auth-brand .auth-brand-word { display: block; width: 72px; height: auto; margin: 0 auto; }
+.auth-brand .auth-brand-mark { display: block; width: 44px; height: auto; margin: 0 auto 8px; }
+.auth-brand .auth-brand-word { display: block; width: 58px; height: auto; margin: 0 auto; }
 .auth-tabs {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
   background: #f2f4f7; border-radius: 9px; padding: 4px; margin-bottom: 18px;
