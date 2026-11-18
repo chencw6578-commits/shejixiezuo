@@ -2625,11 +2625,7 @@ export default function ProjectCanvasPage() {
                   </div>
                   {openPages.has('__none:global') && (
                     <div className="page-frames" role={readOnly ? undefined : 'listbox'} aria-multiselectable={!readOnly}>
-                      {ungrouped.length === 0 ? (
-                        <p className="dim small page-empty-hint">从编组拖出，或把画板拖到这里移出编组</p>
-                      ) : (
-                        ungrouped.map((f) => renderFrameRow(f))
-                      )}
+                      {ungrouped.map((f) => renderFrameRow(f))}
                     </div>
                   )}
                 </div>
