@@ -612,17 +612,22 @@ export default function Canvas({
   );
   // 描边框与尺寸徽标共用同一口径：只框住真实切图范围（图标容器），
   // 内部 Vector 的 17×16 bbox 不再单独画一个框，也不再单独标一个尺寸。
+  // 画板边缘悬停（<=10px）：显示整板尺寸；有选中时兼做「元素到画板边缘」的测距触发。
+  const [frameEdgeHover, setFrameEdgeHover] = useState(false);
   const selectedOutline = sizeBadge(selected);
   const hoverOutline = sizeBadge(hovered);
   const sameOutline = (a: Rect | null, b: Rect | null) =>
     !!a && !!b &&
     Math.abs(a.x - b.x) <= 0.5 && Math.abs(a.y - b.y) <= 0.5 &&
     Math.abs(a.w - b.w) <= 0.5 && Math.abs(a.h - b.h) <= 0.5;
-  // hover 命中的是同一个图标的内外层时，只保留选中框，避免出现一大一小两个框
+  // hover 命中的是同一个图标的内外层时，只保留选中框，避免出现一大一小两个框；
+  // 悬停画板边缘时同样压住元素 hover 框——边缘是「看整板尺寸」的专属热区
   const showHoverOutline = !!hovered && hovered !== selected &&
-    !sameOutline(selectedOutline?.rect ?? null, hoverOutline?.rect ?? null);
-  // 任何时刻只保留一个尺寸徽标：有选中时以选中对象为准，未选中时才看悬停对象
-  const sizeTag = selectedOutline ?? hoverOutline;
+    !sameOutline(selectedOutline?.rect ?? null, hoverOutline?.rect ?? null) &&
+    !frameEdgeHover;
+  // 任何时刻只保留一个尺寸徽标：有选中时以选中对象为准，未选中时才看悬停对象；
+  // 悬停画板边缘时未选中分支直接让位给整板尺寸徽标，避免一屏两个尺寸数字
+  const sizeTag = selectedOutline ?? (frameEdgeHover ? null : hoverOutline);
   // 距离标注的触发口径：只有「选中 A + 鼠标移到另一个元素 B」时才显示 A↔B 的距离。
   // 不相交 → 两轴间距；B 包含 A（hover 父级背景）或 A 包含 B → 内层到外层四边的 inset；
   // 图标容器与内部绘制路径不算布局包含，避免 0~3pt 的碎片数字（沿用上一轮口径）。
@@ -649,7 +654,6 @@ export default function Canvas({
 
   // 画板边缘测距：选中元素后鼠标移到画板边边（<=10px）时，显示元素到画板左边/上边的距离。
   // 与节点间距标注同一套视觉（品牌色虚线 + 胶囊标签），标签只显示数值 + 单位。
-  const [frameEdgeHover, setFrameEdgeHover] = useState(false);
   const frameMeasures = useMemo<Measure[]>(() => {
     if (!frameEdgeHover || !selected) return [];
     const a = fmt(selected);
@@ -665,7 +669,9 @@ export default function Canvas({
   const FRAME_EDGE_PX = 10;
   const onArtboardMouseMove = (e: React.MouseEvent) => {
     const ab = artboardRef.current;
-    if (!ab || !selectedId) {
+    // 不再要求必须有选中：边缘悬停同时服务「整板尺寸提示」（无选中也可用）
+    // 与「元素到画板边缘测距」（有选中才画线，见 frameMeasures）。吸管模式下不提示。
+    if (!ab || eyedropper) {
       if (frameEdgeHover) setFrameEdgeHover(false);
       return;
     }
@@ -893,6 +899,26 @@ export default function Canvas({
         {sizeTag && (
           <div className={`badge ${selected ? 'badge-selected' : 'badge-hover'}`} style={badgeStyle(sizeTag.rect)}>
             {Math.round(sizeTag.w)} × {Math.round(sizeTag.h)} {unit}
+          </div>
+        )}
+        {/* 悬停画板边缘（<=10px）：画板正下方显示整板尺寸（Figma 式）。
+            此时元素 hover 徽标已被 showHoverOutline 压住；选中徽标不冲突（位置在元素处）。 */}
+        {frameEdgeHover && !eyedropper && (
+          <div
+            className="badge badge-frame-size"
+            data-frame-size="1"
+            style={{
+              position: 'absolute',
+              left: W / 2,
+              top: H + 8,
+              transform: 'translate(-50%, 0)',
+              fontSize: fs,
+              padding: '2px 6px',
+              borderRadius: 999,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {Math.round(frame.width)} × {Math.round(frame.height)} {unit}
           </div>
         )}
         {/* 选中 A + hover B 时显示 A↔B 的距离：每方向一条引线 + 一个品牌色胶囊标签 */}
