@@ -482,12 +482,21 @@ assetsRouter.post('/export-zip', async (req, res) => {
  * 本来就是 PNG 的直接原样返回，不重编码。sharp 不可用时回退为原始格式下载，不把用户卡死。
  */
 assetsRouter.get('/frame/:frameId/download', async (req, res) => {
-  const frame = (
-    await pool.query<{ name: string; thumb_url: string | null }>(
-      'SELECT name, thumb_url FROM frames WHERE id = $1 LIMIT 1',
-      [req.params.frameId]
-    )
-  ).rows[0];
+  // frames.id 是 uuid 列：非 UUID 输入会让 Postgres 抛 22P02 且 Express 4 不接异步异常 → 请求挂死
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.frameId)) {
+    return res.status(404).json({ error: '画板不存在' });
+  }
+  let frame: { name: string; thumb_url: string | null } | undefined;
+  try {
+    frame = (
+      await pool.query<{ name: string; thumb_url: string | null }>(
+        'SELECT name, thumb_url FROM frames WHERE id = $1 LIMIT 1',
+        [req.params.frameId]
+      )
+    ).rows[0];
+  } catch {
+    return res.status(502).json({ error: '数据库查询失败，请稍后重试' });
+  }
   if (!frame) return res.status(404).json({ error: '画板不存在' });
   if (!frame.thumb_url) return res.status(404).json({ error: '该画板没有已保存的整板位图，无法下载' });
 
