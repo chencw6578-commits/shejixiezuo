@@ -341,6 +341,9 @@ export default function HomePage() {
   const myMember = authUser ? members.find((m) => m.email === authUser.email) : undefined;
   const myRole: 'owner' | 'admin' | 'collaborator' = identity?.role ?? myMember?.role ?? 'collaborator';
   const canManage = myRole === 'owner' || myRole === 'admin';
+  // 新建项目：个人空间（无团队上下文）登录即可建（与服务端 teamRole 一致）；
+  // 团队空间仅 owner/admin——协作者点了也是 403，直接不显示
+  const canCreateProject = !activeTeam ? Boolean(authUser) : canManage;
 
   const loadTeams = useCallback(() => {
     api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
@@ -1083,9 +1086,11 @@ export default function HomePage() {
                       </button>
                     )}
                   </div>
-                  <button type="button" className="new-project-btn" onClick={openCreateProject}>
-                    <Plus /> 新建项目
-                  </button>
+                  {canCreateProject && (
+                    <button type="button" className="new-project-btn" onClick={openCreateProject}>
+                      <Plus /> 新建项目
+                    </button>
+                  )}
                 </div>
               </header>
 

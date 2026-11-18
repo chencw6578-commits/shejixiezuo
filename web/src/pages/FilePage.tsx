@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, getIdentity, setActiveTeam } from '../api';
+import { api, getIdentity, getMeCached, setActiveTeam } from '../api';
 import type { FileDetail, FrameRow } from '../types';
 import { useDialogs } from '../components/Dialogs';
 
@@ -13,16 +13,38 @@ export default function FilePage() {
   const [syncMsg, setSyncMsg] = useState('');
   const [readOnly, setReadOnly] = useState(false);
 
+  /**
+   * 与服务端 editGuard 对齐的只读判定：
+   * - 团队稿：优先用体验身份（localStorage identity），否则用成员表真实角色（/api/teams my_role）。
+   *   旧实现只看 identity——普通协作者从不写入 identity，导致删除/同步按钮可见、点击 403。
+   * - 个人空间稿：登录即可管理，未登录只读。
+   * - 角色查询失败时保守按只读处理（宁可少显示按钮，不让协作者点了报 403）。
+   */
+  const computeReadOnly = useCallback(async (teamId: string | null): Promise<boolean> => {
+    if (teamId) {
+      const identity = getIdentity(teamId);
+      if (identity) return identity.role === 'collaborator';
+      try {
+        const teams = await api.listTeams();
+        const role = teams.find((t) => t.id === teamId)?.my_role;
+        return role === 'collaborator' || role == null;
+      } catch {
+        return true;
+      }
+    }
+    return !getMeCached();
+  }, []);
+
   const load = useCallback(() => {
     api
       .getFile(fileId)
-      .then((f) => {
+      .then(async (f) => {
         setFile(f);
         setActiveTeam(f.team_id ?? null);
-        setReadOnly(getIdentity(f.team_id ?? '')?.role === 'collaborator');
+        setReadOnly(await computeReadOnly(f.team_id ?? null));
       })
       .catch((e) => setError(e.message));
-  }, [fileId]);
+  }, [fileId, computeReadOnly]);
 
   useEffect(load, [load]);
 
