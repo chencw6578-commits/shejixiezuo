@@ -8,6 +8,7 @@ import { getStorage } from '../storage/index.js';
 import { config } from '../config.js';
 import { editGuard } from './authz.js';
 import { presignRouter, isValidUploadKey, removeUploaded } from './presign.js';
+import { encodeThumbnail } from '../util/imageEncode.js';
 
 export const uploadsRouter = Router();
 
@@ -125,8 +126,18 @@ async function createImageImport(
   );
 
   const storage = await getStorage();
-  const ext = file.mimetype === 'image/jpeg' ? 'jpg' : (file.mimetype.split('/')[1] ?? 'png');
-  const url = await storage.put(`files/${f.id}/frames/${figmaKey}@1x.${ext}`, file.buffer, file.mimetype);
+  // 剪贴板截图普遍是 PNG 且体积大：转无损 WebP（像素零差异，吸管/切图安全）。
+  // GIF（可能带动画）与已是 WebP 的保持原样；JPEG 的无损 WebP 几乎必然更大，不处理。
+  let data = file.buffer;
+  let ext = file.mimetype === 'image/jpeg' ? 'jpg' : (file.mimetype.split('/')[1] ?? 'png');
+  let mime = file.mimetype;
+  if (/^image\/png$/i.test(file.mimetype)) {
+    const enc = await encodeThumbnail(file.buffer);
+    data = enc.data;
+    ext = enc.ext;
+    mime = enc.contentType;
+  }
+  const url = await storage.put(`files/${f.id}/frames/${figmaKey}@1x.${ext}`, data, mime);
 
   const { rows: [fr] } = await pool.query<{ id: string }>(
     `INSERT INTO frames (file_id, node_id, name, page_name, width, height, thumb_url, sort_order)

@@ -48,14 +48,23 @@ app.get('/api/health', (_req, res) => {
 // 用于确认缩略图无损 WebP 转码在线上生效（失败时 imageEncode 会静默回退 PNG，这里给出显式信号）。
 app.get('/api/health/sharp', async (_req, res) => {
   try {
-    const { encodeThumbnail } = await import('./util/imageEncode.js');
+    const { encodeThumbnail, getWebpFallbackStats } = await import('./util/imageEncode.js');
     // 1x1 红色 PNG，编码成功且体积可比对即认为可用
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
       'base64'
     );
     const encoded = await encodeThumbnail(png);
-    res.json({ ok: true, ext: encoded.ext, bytes: encoded.data.length, webpEnabled: config.thumbWebp });
+    const { webpFallbackCount, lastFallbackError } = getWebpFallbackStats();
+    res.json({
+      ok: true,
+      ext: encoded.ext,
+      bytes: encoded.data.length,
+      webpEnabled: config.thumbWebp,
+      // 进程启动以来异常回退 PNG 的次数（>0 说明出现过转码故障，具体错误见 lastFallbackError）
+      webpFallbackCount,
+      lastFallbackError,
+    });
   } catch (err) {
     res.status(500).json({
       ok: false,

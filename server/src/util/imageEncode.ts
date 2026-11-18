@@ -19,6 +19,16 @@ export interface EncodedImage {
 
 let warned = false;
 
+// 转码失败可观测性：只统计「异常导致的回退」（sharp 加载/编码失败），
+// 不含「WebP 反而更大」的正常格式择优回退——后者是预期行为，不算故障。
+let webpFallbackCount = 0;
+let lastFallbackError: string | null = null;
+
+/** 自进程启动以来 WebP 转码异常回退的次数与最近一次错误（暴露到 /api/health/sharp）。 */
+export function getWebpFallbackStats() {
+  return { webpFallbackCount, lastFallbackError };
+}
+
 /** 把图片 buffer 编码为体积最优且吸管安全的格式。 */
 export async function encodeThumbnail(png: Buffer): Promise<EncodedImage> {
   if (!config.thumbWebp) {
@@ -32,6 +42,8 @@ export async function encodeThumbnail(png: Buffer): Promise<EncodedImage> {
     }
     return { data, ext: 'webp', contentType: 'image/webp' };
   } catch (err) {
+    webpFallbackCount += 1;
+    lastFallbackError = err instanceof Error ? err.message : String(err);
     if (!warned) {
       console.warn('[imageEncode] WebP 转码不可用，回退 PNG:', err instanceof Error ? err.message : String(err));
       warned = true;
