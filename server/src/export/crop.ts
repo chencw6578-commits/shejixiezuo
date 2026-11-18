@@ -68,6 +68,27 @@ interface DecodedPng {
   rgba: Buffer;
 }
 
+/**
+ * 通用位图解码：PNG 仍走手写解码器（快路径）；WebP / JPEG 等其它格式用 sharp
+ * 兜底并输出同样的 RGBA 结构。缩略图自无损 WebP 化后，插件稿的 thumb_url 可能
+ * 是 .webp，整板裁剪必须能解，否则切图导出会静默退化。
+ */
+async function decodeImage(buf: Buffer): Promise<DecodedPng | null> {
+  if (buf.length >= 8 && buf.slice(0, 8).equals(PNG_SIG)) {
+    const dec = decodePng(buf);
+    if (dec) return dec;
+    // PNG 但手写解码器不支持（如 16bit / 隔行）：继续走 sharp，而不是直接放弃
+  }
+  try {
+    const sharp = (await import('sharp')).default;
+    const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    if (!info.width || !info.height || info.channels !== 4) return null;
+    return { width: info.width, height: info.height, rgba: Buffer.from(data) };
+  } catch {
+    return null;
+  }
+}
+
 /** 解码 8bit 非隔行 PNG 为 RGBA；不支持的格式返回 null 由调用方降级。 */
 export function decodePng(buf: Buffer): DecodedPng | null {
   if (buf.length < 33 || !buf.slice(0, 8).equals(PNG_SIG)) return null;
@@ -413,7 +434,7 @@ export async function cropSliceFromBoard(
   } catch {
     return null;
   }
-  const dec = decodePng(boardBuf);
+  const dec = await decodeImage(boardBuf);
   if (!dec) return null;
   const boardScale = dec.width / frame.width;
   if (!(boardScale > 0) || !Number.isFinite(boardScale)) return null;

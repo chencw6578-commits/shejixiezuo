@@ -4,6 +4,7 @@ import { pool } from '../db.js';
 import { getStorage } from '../storage/index.js';
 import { PluginImportError, parsePluginExport } from '../figma/pluginImport.js';
 import { newErrorId, userFacingFailure } from '../jobs/importFile.js';
+import { encodeThumbnail } from '../util/imageEncode.js';
 import { batchInsert } from '../util/batchInsert.js';
 
 export const pluginRouter = Router();
@@ -613,21 +614,25 @@ pluginRouter.post('/import', async (req, res) => {
       );
       if (!frameRow.rows[0]) continue;
       const targetFileId = frameRow.rows[0].file_id;
-      const key = `files/${targetFileId}/frames/${nodeId}@${scale}x.png`;
-      const url = await storage.put(key, buf, 'image/png');
+      // 无损 WebP：与 importFile.ts 缩略图链路同一编码层（像素逐字节一致，吸管安全；
+      // sharp 不可用时回退 PNG）。此前这里硬编码 PNG，是「插件导入缩略图未省空间」的根因。
+      const encoded = await encodeThumbnail(buf);
+      const key = `files/${targetFileId}/frames/${nodeId}@${scale}x.${encoded.ext}`;
+      const url = await storage.put(key, encoded.data, encoded.contentType);
       await pool.query('UPDATE frames SET thumb_url = $2 WHERE id = $1', [frameRow.rows[0].id, url]);
       await pool.query(
-        `DELETE FROM assets WHERE file_id = $1 AND node_id = $2 AND format = 'PNG' AND scale = $3`,
+        `DELETE FROM assets WHERE file_id = $1 AND node_id = $2 AND format IN ('PNG', 'WEBP') AND scale = $3`,
         [targetFileId, nodeId, scale]
       );
       await pool.query(
         `INSERT INTO assets (file_id, frame_id, node_id, name, format, scale, width, height, url)
-         VALUES ($1, $2, $3, $4, 'PNG', $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           targetFileId,
           frameRow.rows[0].id,
           nodeId,
           frame.name,
+          encoded.ext.toUpperCase(),
           scale,
           frame.width,
           frame.height,
