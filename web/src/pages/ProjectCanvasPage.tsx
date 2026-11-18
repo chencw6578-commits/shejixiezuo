@@ -22,6 +22,7 @@ import {
   Copy,
   DistributeH,
   DistributeV,
+  Download,
   ExternalLink,
   Folder,
   FolderMinus,
@@ -1121,6 +1122,15 @@ export default function ProjectCanvasPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, frameId: f.id });
   };
   const closeCtxMenu = () => setCtxMenu(null);
+
+  /** 画板右键「下载设计稿」：下载该画板的 Figma 原生整板位图（服务端 WebP 自动转 PNG） */
+  const downloadFrameImage = async (f: ProjectFrameRow) => {
+    try {
+      await api.downloadFrame(f.id);
+    } catch (e) {
+      fail(e);
+    }
+  };
 
   // ---------- 拖拽：拖进/拖出编组、跨组移动、组内排序 ----------
   const draggingIds = () => {
@@ -3036,6 +3046,9 @@ export default function ProjectCanvasPage() {
           >
             <div className="ctx-title">已选 {ctxIds().length} 个画板</div>
             {!ctxSameFile() && <div className="ctx-hint">跨设计稿选择不能编组或移动，请取消后重选</div>}
+            <button onClick={() => { closeCtxMenu(); void downloadFrameImage(ctxFrame); }}>
+              <Download /> 下载设计稿
+            </button>
             <button disabled={!ctxSameFile()} onClick={() => { closeCtxMenu(); void createGroupFromSelection(ctxFrame.page_id); }}>
               <Plus /> {ctxFrame.page_id
                 ? `在「${pages.find((p) => p.id === ctxFrame.page_id)?.name ?? '编组'}」内新建子编组…`

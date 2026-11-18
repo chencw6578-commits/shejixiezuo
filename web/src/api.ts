@@ -646,6 +646,27 @@ export const api = {
     URL.revokeObjectURL(a.href);
   },
 
+  /** 下载画板整图（画板右键「下载设计稿」）：服务端返回整板位图 PNG 并触发保存 */
+  downloadFrame: async (frameId: string): Promise<void> => {
+    const res = await fetch(`/api/assets/frame/${frameId}/download`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error ?? `下载失败 (${res.status})`);
+    }
+    const blob = await res.blob();
+    const name =
+      decodeURIComponent(
+        res.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/)?.[1] ?? 'frame.png'
+      );
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  },
+
   /**
    * 下载单张切图：先取回内存，再用同源 blob: URL 触发保存。
    *

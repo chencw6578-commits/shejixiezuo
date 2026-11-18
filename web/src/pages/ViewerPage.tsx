@@ -560,6 +560,15 @@ export default function ViewerPage() {
     }
   };
 
+  /** 画板右键「下载设计稿」：下载该画板的 Figma 原生整板位图（服务端 WebP 自动转 PNG） */
+  const downloadFrameImage = async (f: ProjectFrameRow) => {
+    try {
+      await api.downloadFrame(f.id);
+    } catch (e) {
+      fail(e);
+    }
+  };
+
   const onSelect = useCallback((id: string | null) => setSelectedId(id), []);
   const onHover = useCallback((id: string | null) => setHoverId(id), []);
 
@@ -1035,6 +1044,9 @@ export default function ViewerPage() {
           >
             <div className="ctx-title">已选 {ctxIds().length} 个画板</div>
             {!ctxSameFile() && <div className="ctx-hint">跨设计稿选择不能编组或移动，请取消后重选</div>}
+            <button onClick={() => { closeCtxMenu(); void downloadFrameImage(ctxFrame); }}>
+              <Download /> 下载设计稿
+            </button>
             <button
               disabled={!ctxSameFile()}
               onClick={() => {

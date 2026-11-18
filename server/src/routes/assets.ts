@@ -476,6 +476,49 @@ assetsRouter.post('/export-zip', async (req, res) => {
   res.send(buf);
 });
 
+/**
+ * 画板右键「下载设计稿」：交付插件导入时保存的 Figma 原生整板位图（通常 2x）。
+ * thumb_url 已无损 WebP 化（像素与原 PNG 完全一致），为通用性自动转回 PNG 交付；
+ * 本来就是 PNG 的直接原样返回，不重编码。sharp 不可用时回退为原始格式下载，不把用户卡死。
+ */
+assetsRouter.get('/frame/:frameId/download', async (req, res) => {
+  const frame = (
+    await pool.query<{ name: string; thumb_url: string | null }>(
+      'SELECT name, thumb_url FROM frames WHERE id = $1 LIMIT 1',
+      [req.params.frameId]
+    )
+  ).rows[0];
+  if (!frame) return res.status(404).json({ error: '画板不存在' });
+  if (!frame.thumb_url) return res.status(404).json({ error: '该画板没有已保存的整板位图，无法下载' });
+
+  let buf: Buffer;
+  try {
+    buf = await loadStoredAsset(frame.thumb_url);
+  } catch {
+    return res.status(502).json({ error: '整板位图读取失败，请稍后重试' });
+  }
+
+  // PNG 签名（89504E47）：是 PNG 直接交付原文件；否则（无损 WebP 等）用 sharp 无损转 PNG
+  const isPng = buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  let out = buf;
+  let ext = 'png';
+  let contentType = 'image/png';
+  if (!isPng) {
+    try {
+      const sharp = (await import('sharp')).default;
+      out = await sharp(buf).png({ compressionLevel: 9 }).toBuffer();
+    } catch {
+      out = buf;
+      ext = frame.thumb_url.toLowerCase().includes('.webp') ? 'webp' : 'png';
+      contentType = ext === 'webp' ? 'image/webp' : 'application/octet-stream';
+    }
+  }
+  const filename = encodeURIComponent(`${safeName(frame.name)}.${ext}`);
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+  res.send(out);
+});
+
 /** 某文件的切图历史 */
 assetsRouter.get('/file/:fileId', async (req, res) => {
   const { rows } = await pool.query<{ source: string; format: string; url: string }>(
