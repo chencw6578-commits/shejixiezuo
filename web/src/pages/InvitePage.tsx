@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, type AuthUser } from '../api';
 
-const ROLE_LABEL: Record<string, string> = { owner: '所有者', admin: '管理员', collaborator: '协作 · 只读' };
+const ROLE_LABEL: Record<string, string> = { owner: '所有者', admin: '管理员', collaborator: '团队成员' };
 
 /** 团队邀请落地页：/invite?token=xxx，公开路由 */
 export default function InvitePage() {

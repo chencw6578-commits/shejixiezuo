@@ -2353,7 +2353,7 @@ input:focus, input:focus-visible, select:focus, select:focus-visible { outline: 
 .home-shell .team-view .member-row .role-badge {
   border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 500;
   background: #f1f3f4; color: #5f6368; justify-self: start;
-  white-space: nowrap; /* 「协作 · 只读」等长标签不换行，保持各行单行等高 */
+  white-space: nowrap; /* 角色徽标等长标签不换行，保持各行单行等高 */
 }
 .home-shell .team-view .member-row .role-badge.owner { background: #fef3c7; color: #92400e; }
 /* 操作按钮保留原有文字与内边距（点击区不变），只把观感调成极淡的图标按钮 */

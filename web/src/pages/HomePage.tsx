@@ -166,7 +166,7 @@ function recordProjectView(id: string): void {
 const ROLE_LABEL: Record<string, string> = {
   owner: '所有者',
   admin: '管理员',
-  collaborator: '协作 · 只读',
+  collaborator: '团队成员',
 };
 
 /** 最近访问的团队：无 team 参数时优先用它，避免总落到列表第一个团队 */
@@ -1369,7 +1369,7 @@ export default function HomePage() {
                   value={memberRole}
                   onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')}
                 >
-                  <option value="collaborator">协作 · 只读</option>
+                  <option value="collaborator">团队成员</option>
                   <option value="admin">管理员（可编辑、可邀请）</option>
                 </select>
                 <p className="dim small">复制链接发给对方，对方点击链接登录后即以此身份加入团队；链接 7 天内有效，可发给多人。</p>
@@ -1400,7 +1400,7 @@ export default function HomePage() {
                   value={memberRole}
                   onChange={(e) => setMemberRole(e.target.value as 'admin' | 'collaborator')}
                 >
-                  <option value="collaborator">协作 · 只读</option>
+                  <option value="collaborator">团队成员</option>
                   <option value="admin">管理员（可编辑、可邀请）</option>
                 </select>
                 {inviteError ? (
@@ -1450,7 +1450,7 @@ export default function HomePage() {
               autoFocus
               onChange={(e) => setRoleDraft(e.target.value as 'admin' | 'collaborator')}
             >
-              <option value="collaborator">协作 · 只读</option>
+              <option value="collaborator">团队成员</option>
               <option value="admin">管理员（可编辑、可邀请）</option>
             </select>
             <div className="dlg-actions">
