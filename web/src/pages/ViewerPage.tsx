@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Plus,
   Sip,
+  Trash2,
 } from '../components/icons';
 
 /** 侧栏树：设计稿 → 编组 → 画板（跨设计稿时都带 file_id） */
@@ -33,6 +34,8 @@ interface CtxMenuState {
   x: number;
   y: number;
   frameId: string;
+  /** 画板本身右键时侧栏树可能还没加载，直接带上目标行 */
+  frame?: ProjectFrameRow;
 }
 
 export default function ViewerPage() {
@@ -524,7 +527,9 @@ export default function ViewerPage() {
     });
 
   // ---------- 右键菜单：支持侧栏多选（选中 2 个以上画板可创建子编组） ----------
-  const ctxFrame = ctxMenu ? frames.find((f) => f.id === ctxMenu.frameId) : undefined;
+  const ctxFrame = ctxMenu
+    ? frames.find((f) => f.id === ctxMenu.frameId) ?? ctxMenu.frame
+    : undefined;
   const ctxFileId = ctxFrame?.file_id ?? '';
   const ctxIds = () =>
     ctxMenu
@@ -543,6 +548,31 @@ export default function ViewerPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, frameId: f.id });
   };
   const closeCtxMenu = () => setCtxMenu(null);
+
+  /** 画板本身右键：复用侧栏画板的右键菜单（下载设计稿 / 删除设计稿等） */
+  const openArtboardCtxMenu = (e: React.MouseEvent) => {
+    if (readOnly) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cur = frames.find((f) => f.id === frameId);
+    // 侧栏树可能尚未加载完，退化成一个最小行对象，保证菜单仍可用
+    const target: ProjectFrameRow = cur ?? {
+      id: frameId,
+      file_id: fileId,
+      name: data?.frame.name ?? '画板',
+      page_name: data?.frame.page_name ?? null,
+      width: data?.frame.width ?? 0,
+      height: data?.frame.height ?? 0,
+      thumb_url: data?.frame.thumb_url ?? null,
+      file_name: file?.name ?? '',
+      source: 'figma',
+    };
+    if (!selectedFrameIds.has(target.id)) {
+      frameSelectionAnchorRef.current = target.id;
+      setSelectedFrameIds(new Set([target.id]));
+    }
+    setCtxMenu({ x: e.clientX, y: e.clientY, frameId: target.id, frame: target });
+  };
 
   const doExportZip = async (mode: 'presets' | 'all') => {
     setZipBusy(mode);
@@ -993,6 +1023,7 @@ export default function ViewerPage() {
           onExitEyedropper={() => setEyedropper(false)}
           onAddComment={onAddComment}
           onOpenComment={(id) => setActiveCommentId(id)}
+          onContextMenu={openArtboardCtxMenu}
         />
 
         {commentMode && (
@@ -1046,6 +1077,9 @@ export default function ViewerPage() {
             {!ctxSameFile() && <div className="ctx-hint">跨设计稿选择不能编组或移动，请取消后重选</div>}
             <button onClick={() => { closeCtxMenu(); void downloadFrameImage(ctxFrame); }}>
               <Download /> 下载设计稿
+            </button>
+            <button className="is-danger" onClick={() => { closeCtxMenu(); void removeFrame(ctxFrame); }}>
+              <Trash2 /> 删除设计稿
             </button>
             <button
               disabled={!ctxSameFile()}

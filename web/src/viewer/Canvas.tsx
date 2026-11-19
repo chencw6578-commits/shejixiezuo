@@ -26,6 +26,8 @@ interface Props {
   onExitEyedropper?: () => void;
   onAddComment?: (draft: { x: number; y: number; nodeId?: string }, body: string) => Promise<void>;
   onOpenComment?: (id: string) => void;
+  /** 画板右键菜单（下载设计稿 / 删除设计稿等），由父组件提供 */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 interface Draft { x: number; y: number; nodeId?: string }
@@ -180,7 +182,7 @@ function insetMeasures(inner: Rect, outer: Rect): Measure[] {
 export default function Canvas({
   frame, nodes, selectedId, hoverId, onSelect, onHover, onZoomChange, unit = 'px',
   comments = [], commentMode = false, onAddComment, onOpenComment, eyedropper = false,
-  onExitEyedropper,
+  onExitEyedropper, onContextMenu,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
@@ -750,6 +752,7 @@ export default function Canvas({
         ref={artboardRef}
         onMouseMove={onArtboardMouseMove}
         onMouseLeave={() => { if (frameEdgeHover) setFrameEdgeHover(false); }}
+        onContextMenu={onContextMenu}
         onClick={(e) => {
           // 吸管模式下，点击未被图层热区 / 评论钉点覆盖的画板空白与图片区域，同样取色
           if (!eyedropper || dragMovedRef.current || spaceRef.current) return;
