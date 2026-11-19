@@ -2430,9 +2430,7 @@ export default function ProjectCanvasPage() {
                 items={[
                   { label: '重命名编组', onClick: () => void renamePage(pg) },
                   {
-                    label: pg.parent_page_id
-                      ? `解散子编组，画板移入「${pages.find((p) => p.id === pg.parent_page_id)?.name ?? '上一级编组'}」`
-                      : '解散编组，画板移入未分组',
+                    label: pg.parent_page_id ? '解散子编组' : '解散编组',
                     onClick: () => void removePage(pg, 'dissolve'),
                   },
                   { label: '删除编组及内容', danger: true, onClick: () => void removePage(pg, 'content') },
