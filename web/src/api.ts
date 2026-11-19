@@ -1,5 +1,20 @@
 import type { ExportResult, FileDetail, FrameDetail, FrameLink, ProjectFrameRow, ProjectPageRow, SpecData } from './types';
 
+/** 轻量瞬时提示：下载已触发时给用户一个明确反馈（无需各页面持有 state） */
+function flashToast(message: string): void {
+  if (typeof document === 'undefined') return;
+  const el = document.createElement('div');
+  el.textContent = message;
+  Object.assign(el.style, {
+    position: 'fixed', left: '50%', bottom: '32px', transform: 'translateX(-50%)',
+    background: 'rgba(28, 30, 36, .92)', color: '#fff', padding: '9px 16px',
+    borderRadius: '8px', fontSize: '13px', zIndex: '99999', pointerEvents: 'none',
+    boxShadow: '0 4px 16px rgba(0,0,0,.18)',
+  } as CSSStyleDeclaration);
+  document.body.appendChild(el);
+  window.setTimeout(() => el.remove(), 2600);
+}
+
 /** 项目卡片封面用：一张画板的缩略图与原始尺寸 */
 export interface ProjectCoverFrame {
   name: string;
@@ -647,7 +662,7 @@ export const api = {
   },
 
   /** 下载画板整图（画板右键「下载设计稿」）：服务端返回整板位图 PNG 并触发保存 */
-  downloadFrame: async (frameId: string): Promise<void> => {
+  downloadFrame: async (frameId: string): Promise<string> => {
     const res = await fetch(`/api/assets/frame/${frameId}/download`);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -658,13 +673,20 @@ export const api = {
       decodeURIComponent(
         res.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/)?.[1] ?? 'frame.png'
       );
+    const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = objectUrl;
     a.download = name;
+    // 必须挂在 DOM 上再点击；部分浏览器对游离节点或同步 revoke 会静默取消下载
     document.body.appendChild(a);
     a.click();
-    a.remove();
-    URL.revokeObjectURL(a.href);
+    // 延迟释放：同步 revokeObjectURL 会在一些浏览器里让尚未开始的下载被取消
+    window.setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    }, 60_000);
+    flashToast(`已开始下载「${name}」，请到浏览器下载列表查看`);
+    return name;
   },
 
   /**
