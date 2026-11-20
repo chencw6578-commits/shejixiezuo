@@ -26,6 +26,33 @@ function asText(value: unknown): string | null {
 }
 
 /**
+ * 按 Figma 画布位置重排画板：先从上到下分行（y 差 ≤ 容差视为同一行），
+ * 每行内从左到右（x 升序），逐行拼接。
+ * 让平台列表顺序与用户在 Figma 画布上看到的排列一致，而不是导出时的选择顺序。
+ * 降级：所有画板 y 相同（如缺失 absoluteBoundingBox）时退化为纯横向 x 排序。
+ */
+function sortFramesByCanvasPosition(frames: ParsedFrame[]): ParsedFrame[] {
+  if (frames.length <= 1) return frames;
+  const ROW_TOLERANCE = 100; // px：同一行画板顶部 y 的容差
+  const remaining = [...frames].sort((a, b) => a.y - b.y || a.x - b.x);
+  const ordered: ParsedFrame[] = [];
+  while (remaining.length) {
+    const baseY = remaining[0].y;
+    const row: ParsedFrame[] = [];
+    for (let i = 0; i < remaining.length; ) {
+      if (Math.abs(remaining[i].y - baseY) <= ROW_TOLERANCE) {
+        row.push(remaining.splice(i, 1)[0]);
+      } else {
+        i++;
+      }
+    }
+    row.sort((a, b) => a.x - b.x);
+    ordered.push(...row);
+  }
+  return ordered;
+}
+
+/**
  * 校验并转换 Figma 插件导出的 JSON（schemaVersion 1）。
  * 复用 REST 导入同一套解析（parseNodeSubtree）：单个畸形画板/节点只跳过，不影响整次导入。
  */
@@ -107,9 +134,11 @@ export function parsePluginExport(input: unknown): PluginImportResult {
       '未找到可导入的画板：选中的节点里没有 FRAME / COMPONENT / INSTANCE 画板'
     );
   }
-  frames.forEach((frame, index) => {
+  // 按 Figma 画布位置重排：sort_order / 后续落库的 page_sort 都跟随画布顺序
+  const ordered = sortFramesByCanvasPosition(frames);
+  ordered.forEach((frame, index) => {
     frame.sortOrder = index;
   });
 
-  return { name, version, frames, raw: input, skipped };
+  return { name, version, frames: ordered, raw: input, skipped };
 }

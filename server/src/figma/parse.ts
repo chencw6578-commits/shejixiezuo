@@ -86,6 +86,9 @@ export interface ParsedFrame {
   pageName: string;
   width: number;
   height: number;
+  /** Figma 画布上的绝对左上角坐标（absoluteBoundingBox），用于按空间位置排序；非图层相对坐标 */
+  x: number;
+  y: number;
   sortOrder: number;
   layers: ParsedLayer[];
 }
@@ -447,6 +450,8 @@ function parseArtboard(node: FigmaNode, pageName: string, sortOrder: number): Pa
     pageName,
     width: round2(box.width),
     height: round2(box.height),
+    x: round2(ox),
+    y: round2(oy),
     sortOrder,
     layers,
   };

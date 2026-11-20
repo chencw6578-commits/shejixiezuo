@@ -104,8 +104,8 @@ CREATE TABLE IF NOT EXISTS frames (
   node_id     TEXT NOT NULL,
   name        TEXT NOT NULL,
   page_name   TEXT,
-  x           REAL NOT NULL DEFAULT 0,  -- 相对画板自身，恒为 0（画板原点）
-  y           REAL NOT NULL DEFAULT 0,
+  x           REAL NOT NULL DEFAULT 0,  -- Figma 画布绝对坐标（absoluteBoundingBox.x），用于按画布位置排序；非画板来源为 0
+  y           REAL NOT NULL DEFAULT 0,  -- Figma 画布绝对坐标（absoluteBoundingBox.y）
   width       REAL NOT NULL,
   height      REAL NOT NULL,
   thumb_url   TEXT,
