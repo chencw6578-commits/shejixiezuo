@@ -352,7 +352,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.6.0';
+  var UI_VERSION = '1.6.1';
   // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
   var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
   var UNASSIGNED_TEAM = 'unassigned';
@@ -432,9 +432,10 @@
   // 单个 exportAsync 就可能超过半分钟，30/90 秒的旧阈值实测会误判「无响应」，放宽到 120 秒。
   var STAGE_TIMEOUT_MS = { nodes: 120000, images: 120000, upload: 60000 };
   var HEARTBEAT_TIMEOUT_MS = STAGE_TIMEOUT_MS.nodes;
-  // v1.5.7：单次 export-board 的硬上限。pong 续命只延长「静默窗口」，不会无限等待；
-  // 主线程真死时也会在最后一次回声后触发超时。
-  var HARD_TIMEOUT_MS = 300000;
+  // v1.6.1：取消「单次导出总时长硬上限」。大稿/复杂矢量可能要导十几分钟，
+  // 只要主线程还在回 pong/progress（心跳），就一直等到导完，不再按总时长强行掐断。
+  // 0 = 不限总时长；真卡死仍由 STAGE_TIMEOUT_MS 静默超时（120s 无消息）兜底。
+  var HARD_TIMEOUT_MS = 0;
   function timeoutText(ms, hardExpired) {
     var now = Date.now();
     var freshPong = state.lastPongAt && (now - state.lastPongAt) < 30000;
@@ -489,11 +490,16 @@
         // nodes(60s)/images(120s) 两档消息，若小值覆盖大值，紧跟的长 exportAsync 会被误杀
         if (typeof ms === 'number' && ms > 0 && ms > entry.silenceMs) entry.silenceMs = ms;
         clearTimeout(entry.timer);
-        // v1.5.7：pong/progress 续命不能无限续，单次导出最多等 5 分钟
-        var left = HARD_TIMEOUT_MS - (Date.now() - entry.startedAt);
-        var delay = left <= 0 ? 1000 : Math.min(entry.silenceMs, left);
-        // 这次到点是不是因为硬上限到期（而不是普通静默超时），决定报错文案
-        entry.hardDue = left <= 0 || left < entry.silenceMs;
+        // v1.6.1：HARD_TIMEOUT_MS=0 表示不限总时长，只用「静默窗口」判定——
+        // 每次心跳都会重设这个计时器，只要还在导（有 progress/pong）就一直续，导完为止。
+        // 保留硬上限分支（>0 时生效）以便需要时可重新开启；默认关闭。
+        var delay = entry.silenceMs;
+        entry.hardDue = false;
+        if (HARD_TIMEOUT_MS > 0) {
+          var left = HARD_TIMEOUT_MS - (Date.now() - entry.startedAt);
+          delay = left <= 0 ? 1000 : Math.min(entry.silenceMs, left);
+          entry.hardDue = left <= 0 || left < entry.silenceMs;
+        }
         entry.timer = setTimeout(function () {
           pending.delete(requestId);
           imageChunkBufs.delete(requestId);
