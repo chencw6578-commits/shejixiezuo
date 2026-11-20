@@ -1,4 +1,5 @@
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { put as blobPut, head as blobHead, list as blobList, del as blobDel } from '@vercel/blob';
@@ -81,7 +82,7 @@ class LocalStorage implements Storage {
 }
 
 /**
- * S3 兼容客户端工厂（R2 / MinIO / AWS S3 通用）。预签名直传路由也复用它，
+ * S3 兼容客户端工厂（R2 / MinIO / AWS S3 / 腾讯云 COS）。预签名直传路由也复用它，
  * 保证签名 URL 与实际读写走同一份 endpoint / bucket / 凭据配置。
  */
 export async function createS3Client(): Promise<{
@@ -89,10 +90,15 @@ export async function createS3Client(): Promise<{
   client: S3Client;
 }> {
   const s3 = await import('@aws-sdk/client-s3');
+  const isCos = config.storage.s3.provider === 'cos';
   const client = new s3.S3Client({
     endpoint: config.storage.s3.endpoint,
     region: config.storage.s3.region,
-    forcePathStyle: true, // MinIO / Cloudflare R2 兼容
+    forcePathStyle: !isCos,
+    ...(isCos ? {
+      requestChecksumCalculation: 'WHEN_REQUIRED' as const,
+      responseChecksumValidation: 'WHEN_REQUIRED' as const,
+    } : {}),
     credentials: {
       accessKeyId: config.storage.s3.accessKeyId,
       secretAccessKey: config.storage.s3.secretAccessKey,
@@ -102,6 +108,8 @@ export async function createS3Client(): Promise<{
 }
 
 class S3Storage implements Storage {
+  private readonly isCos = config.storage.s3.provider === 'cos';
+
   private constructor(
     private s3: typeof import('@aws-sdk/client-s3'),
     private client: S3Client
@@ -155,30 +163,52 @@ class S3Storage implements Storage {
     return Buffer.concat(chunks);
   }
 
+  private async listPrefixPage(prefix: string, cursor?: string) {
+    const bucket = config.storage.s3.bucket;
+    if (this.isCos) {
+      const page = await this.client.send(new this.s3.ListObjectsCommand({
+        Bucket: bucket, Prefix: prefix, Marker: cursor,
+      }));
+      return {
+        objects: page.Contents,
+        hasMore: page.IsTruncated,
+        next: page.NextMarker || page.Contents?.at(-1)?.Key,
+      };
+    }
+    const page = await this.client.send(new this.s3.ListObjectsV2Command({
+      Bucket: bucket, Prefix: prefix, ContinuationToken: cursor,
+    }));
+    return { objects: page.Contents, hasMore: page.IsTruncated, next: page.NextContinuationToken };
+  }
+
   async delPrefix(prefix: string): Promise<number> {
-    const { ListObjectsV2Command, DeleteObjectsCommand } = this.s3;
-    let continuation: string | undefined;
+    let cursor: string | undefined;
     let deleted = 0;
     do {
-      const listed = await this.client.send(
-        new ListObjectsV2Command({
-          Bucket: config.storage.s3.bucket,
-          Prefix: prefix,
-          ContinuationToken: continuation,
-        })
-      );
-      const keys = (listed.Contents ?? []).flatMap((o) => (o.Key ? [{ Key: o.Key }] : []));
+      const page = await this.listPrefixPage(prefix, cursor);
+      if (page.hasMore && (!page.next || page.next === cursor)) {
+        throw new Error('Object storage returned a truncated listing without a usable cursor');
+      }
+      const keys = (page.objects ?? []).flatMap((object) => object.Key ? [{ Key: object.Key }] : []);
       if (keys.length) {
-        await this.client.send(
-          new DeleteObjectsCommand({
-            Bucket: config.storage.s3.bucket,
-            Delete: { Objects: keys, Quiet: true },
-          })
-        );
+        const command = new this.s3.DeleteObjectsCommand({
+          Bucket: config.storage.s3.bucket,
+          Delete: { Objects: keys, Quiet: true },
+        });
+        if (this.isCos) {
+          // 腾讯云 COS 批量删除要求用序列化后的 XML 请求体计算 Content-MD5。
+          command.middlewareStack.add((next) => async (args) => {
+            const request = args.request as { body: string; headers: Record<string, string> };
+            request.headers['content-md5'] = createHash('md5').update(request.body).digest('base64');
+            return next(args);
+          }, { step: 'build', name: 'cosDeleteContentMd5' });
+        }
+        const result = await this.client.send(command);
+        if (result.Errors?.length) throw new Error(`Object storage rejected ${result.Errors.length} deletions`);
         deleted += keys.length;
       }
-      continuation = listed.IsTruncated ? listed.NextContinuationToken : undefined;
-    } while (continuation);
+      cursor = page.hasMore ? page.next : undefined;
+    } while (cursor);
     return deleted;
   }
 }
