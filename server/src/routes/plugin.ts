@@ -1,6 +1,7 @@
 import express, { Router, type NextFunction, type Request, type Response } from 'express';
 import { createHash } from 'node:crypto';
 import { pool } from '../db.js';
+import { privateTeamStorage } from '../config.js';
 import { getStorage } from '../storage/index.js';
 import { PluginImportError, parsePluginExport } from '../figma/pluginImport.js';
 import { newErrorId, userFacingFailure } from '../jobs/importFile.js';
@@ -115,7 +116,7 @@ async function pluginAuth(req: Request, res: Response, next: NextFunction) {
       teamId: rows[0].team_id,
       teamName: rows[0].team_name,
       tokenId: rows[0].id,
-      scope: rows[0].scope === 'all' ? 'all' : 'team',
+      scope: !privateTeamStorage && rows[0].scope === 'all' ? 'all' : 'team',
     };
     next();
   } catch (err) {

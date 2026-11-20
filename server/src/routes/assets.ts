@@ -6,6 +6,7 @@ import { getStorage } from '../storage/index.js';
 import { isLocalFile, renderLocalSlice } from '../export/local.js';
 import { cropSliceFromBoard, hasVisiblePixels, loadStoredAsset, upscaleRealSlice } from '../export/crop.js';
 import { resolveExportTarget, loadNodeIndex, resolveFromIndex } from '../export/preset.js';
+import { requirePrivateAccess } from './privateAccess.js';
 
 export const assetsRouter = Router();
 
@@ -79,7 +80,7 @@ async function findNearestRealSlice(
 }
 
 /** 导出单个图层切图 */
-assetsRouter.post('/export', async (req, res) => {
+assetsRouter.post('/export', requirePrivateAccess('file', (req) => req.body?.fileId), async (req, res) => {
   const { fileId, nodeId, format = 'PNG', scale = 2, name } = req.body ?? {};
   if (!fileId || !nodeId) return res.status(400).json({ error: '缺少 fileId 或 nodeId' });
   if (!FORMATS.has(format)) return res.status(400).json({ error: `不支持的格式: ${format}` });
@@ -246,7 +247,7 @@ const MAX_ZIP_TASKS = 600;
  * mode = presets：按设计稿标记的导出预设导出有预设的图层
  * mode = all：画板内全部图层按统一格式/倍率导出
  */
-assetsRouter.post('/export-zip', async (req, res) => {
+assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?.fileId), async (req, res) => {
   const { fileId, frameId, mode = 'presets', format = 'PNG', scale = 2 } = req.body ?? {};
   if (!fileId || !frameId) return res.status(400).json({ error: '缺少 fileId 或 frameId' });
   // 两种批量模式：presets=按 Figma 标记逐个导出；all=按所选格式/倍率导出全部图层
@@ -481,7 +482,7 @@ assetsRouter.post('/export-zip', async (req, res) => {
  * thumb_url 已无损 WebP 化（像素与原 PNG 完全一致），为通用性自动转回 PNG 交付；
  * 本来就是 PNG 的直接原样返回，不重编码。sharp 不可用时回退为原始格式下载，不把用户卡死。
  */
-assetsRouter.get('/frame/:frameId/download', async (req, res) => {
+assetsRouter.get('/frame/:frameId/download', requirePrivateAccess('frame', (req) => req.params.frameId), async (req, res) => {
   // frames.id 是 uuid 列：非 UUID 输入会让 Postgres 抛 22P02 且 Express 4 不接异步异常 → 请求挂死
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.frameId)) {
     return res.status(404).json({ error: '画板不存在' });
@@ -529,7 +530,7 @@ assetsRouter.get('/frame/:frameId/download', async (req, res) => {
 });
 
 /** 某文件的切图历史 */
-assetsRouter.get('/file/:fileId', async (req, res) => {
+assetsRouter.get('/file/:fileId', requirePrivateAccess('file', (req) => req.params.fileId), async (req, res) => {
   const { rows } = await pool.query<{ source: string; format: string; url: string }>(
     `SELECT id, node_id, name, format, scale, url, source, created_at
      FROM assets WHERE file_id = $1 ORDER BY created_at DESC LIMIT 200`,

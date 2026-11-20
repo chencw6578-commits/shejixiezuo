@@ -7,6 +7,8 @@ WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci
 COPY web/ ./
+COPY tools/build-figma-plugin-zip.mjs /tools/
+COPY figma-plugin/ /figma-plugin/
 # npm run build（含 prebuild 生成 figma-plugin.zip），产物在 /web/dist
 RUN npm run build
 

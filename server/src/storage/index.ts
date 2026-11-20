@@ -2,7 +2,32 @@ import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { put as blobPut, head as blobHead, list as blobList, del as blobDel } from '@vercel/blob';
-import { config } from '../config.js';
+import { config, privateTeamStorage } from '../config.js';
+
+const PRIVATE_ASSET_PREFIX = '/api/storage/';
+const designObjectKey = /^(?:files|assets)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i;
+
+export function privateAssetKey(url: string): string | null {
+  if (!url.startsWith(PRIVATE_ASSET_PREFIX)) return null;
+  try {
+    const segments = url.slice(PRIVATE_ASSET_PREFIX.length).split('/').map(decodeURIComponent);
+    if (segments.some((part) => !part || part === '.' || part === '..' || /[/\\\x00-\x1f\x7f]/.test(part))) {
+      return null;
+    }
+    const key = segments.join('/');
+    return assetFileId(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+export function assetFileId(key: string): string | null {
+  return designObjectKey.exec(key)?.[1] ?? null;
+}
+
+export function storageKeyFromUrl(url: string): string | null {
+  return url.startsWith('/storage/') ? url.slice('/storage/'.length) : privateAssetKey(url);
+}
 
 export interface Storage {
   /** 存储对象并返回可访问的 URL。 */
@@ -88,6 +113,10 @@ class S3Storage implements Storage {
   }
 
   async put(key: string, data: Buffer, contentType: string): Promise<string> {
+    const privateUrl = privateTeamStorage
+      ? PRIVATE_ASSET_PREFIX + key.split('/').map(encodeURIComponent).join('/')
+      : null;
+    if (privateUrl && !privateAssetKey(privateUrl)) throw new Error('Invalid private asset key');
     const { PutObjectCommand } = this.s3;
     await this.client.send(
       new PutObjectCommand({
@@ -97,6 +126,7 @@ class S3Storage implements Storage {
         ContentType: contentType,
       })
     );
+    if (privateUrl) return privateUrl;
     if (config.storage.s3.publicBaseUrl) {
       const base = config.storage.s3.publicBaseUrl.replace(/\/$/, '');
       const prefix = config.storage.s3.publicIncludeBucket ? `/${config.storage.s3.bucket}` : '';
@@ -113,11 +143,13 @@ class S3Storage implements Storage {
     );
   }
 
-  async get(key: string): Promise<Buffer> {
+  async open(key: string) {
     const { GetObjectCommand } = this.s3;
-    const res = await this.client.send(
-      new GetObjectCommand({ Bucket: config.storage.s3.bucket, Key: key })
-    );
+    return this.client.send(new GetObjectCommand({ Bucket: config.storage.s3.bucket, Key: key }));
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const res = await this.open(key);
     const chunks: Buffer[] = [];
     for await (const chunk of res.Body as AsyncIterable<Buffer>) chunks.push(chunk);
     return Buffer.concat(chunks);
@@ -209,6 +241,12 @@ export function getStorage(): Promise<Storage> {
           : Promise.resolve(new LocalStorage(config.storage.localDir));
   }
   return storage;
+}
+
+export async function openPrivateAsset(key: string) {
+  const storage = await getStorage();
+  if (!(storage instanceof S3Storage)) throw new Error('Private assets require S3 storage');
+  return storage.open(key);
 }
 
 /**

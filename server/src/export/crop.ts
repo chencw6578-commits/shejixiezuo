@@ -14,7 +14,7 @@
  */
 import zlib from 'node:zlib';
 import { pool } from '../db.js';
-import { getStorage } from '../storage/index.js';
+import { getStorage, storageKeyFromUrl } from '../storage/index.js';
 import type { CropBounds } from './preset.js';
 
 export interface CropSlice {
@@ -196,11 +196,12 @@ export function encodePng(W: number, H: number, rgba: Buffer): Buffer {
   ]);
 }
 
-/** 把 /storage/... URL 还原成 storage key；非本地 URL 走 HTTP 读取。 */
+/** 站内资源直接从存储读取，旧版外部 URL 继续走 HTTP。 */
 export async function loadStoredAsset(url: string): Promise<Buffer> {
-  if (url.startsWith('/storage/')) {
+  const key = storageKeyFromUrl(url);
+  if (key) {
     const storage = await getStorage();
-    return storage.get(url.slice('/storage/'.length));
+    return storage.get(key);
   }
   const r = await fetch(url);
   if (!r.ok) throw new Error(`读取切图失败：HTTP ${r.status}`);

@@ -206,6 +206,7 @@ export interface AuthUser {
   email: string;
   name?: string;
   verified?: boolean;
+  privateTeamStorage?: boolean;
 }
 
 /** 邮箱验证提示条的「本次登录不再提示」标记（sessionStorage；登录成功时由 LoginPage 清除） */
@@ -580,7 +581,7 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   getProject: (id: string) =>
-    request<{ id: string; name: string; team_id: string | null; team_name: string | null }>(`/api/projects/${id}`),
+    request<{ id: string; name: string; team_id: string | null; team_name: string | null; can_manage_share?: boolean }>(`/api/projects/${id}`),
   /** 项目画板总览：所有设计稿的全部画板 + 编组（项目画板页用） */
   listProjectFrames: (projectId: string) =>
     request<{ frames: ProjectFrameRow[]; pages: ProjectPageRow[] }>(`/api/projects/${projectId}/frames`),

@@ -1,13 +1,16 @@
 import express, { Router, type Request, type Response } from 'express';
 import { pool } from '../db.js';
 import { getStorage } from '../storage/index.js';
-import { config } from '../config.js';
+import { config, privateTeamStorage } from '../config.js';
+import { requireUser } from '../auth.js';
 import { editGuard } from './authz.js';
+import { requireTeamProject } from './privateAccess.js';
 import { PluginImportError, parsePluginExport } from '../figma/pluginImport.js';
 import { importPluginJson, newErrorId, userFacingFailure } from '../jobs/importFile.js';
 import { isValidUploadKey, removeUploaded } from './presign.js';
 
 export const importJsonRouter = Router();
+if (privateTeamStorage) importJsonRouter.use('/figma-json', requireUser);
 
 // 插件导出的大文件可能超过全局 1mb 限制，这里单独放宽到 20mb（常驻部署）
 importJsonRouter.use(express.json({ limit: '20mb' }));
@@ -33,6 +36,7 @@ async function doImport(req: Request, res: Response, raw: unknown, body: Record<
   // 项目归属与只读校验（与 Figma 链接导入保持一致）
   let projectId: string | null = null;
   const rawProjectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (!requireTeamProject(rawProjectId, res)) return;
   if (rawProjectId) {
     const project = await pool.query<{ team_id: string | null }>(
       'SELECT team_id FROM projects WHERE id = $1',
@@ -91,8 +95,8 @@ importJsonRouter.post('/figma-json/from-storage', async (req, res) => {
   if (!isValidUploadKey(body.key)) {
     return res.status(400).json({ error: '无效的上传凭证' });
   }
-  if (config.storage.driver === 'local') {
-    return res.status(400).json({ error: '当前部署未启用对象存储，请改用普通导入' });
+  if (config.storage.driver === 'local' || privateTeamStorage) {
+    return res.status(400).json({ error: '当前部署请使用普通导入' });
   }
   try {
     const storage = await getStorage();

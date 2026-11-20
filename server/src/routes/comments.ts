@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { requirePrivateAccess } from './privateAccess.js';
 
 export const commentsRouter = Router();
+commentsRouter.use('/frames/:frameId', requirePrivateAccess('frame', (req) => req.params.frameId));
 
 interface CommentRow {
   id: string;
@@ -39,7 +41,7 @@ commentsRouter.post('/frames/:frameId', async (req, res) => {
 });
 
 /** 回复 */
-commentsRouter.post('/:id/replies', async (req, res) => {
+commentsRouter.post('/:id/replies', requirePrivateAccess('comment', (req) => req.params.id), async (req, res) => {
   const root = (await pool.query('SELECT id FROM comments WHERE id = $1', [req.params.id])).rows[0];
   if (!root) return res.status(404).json({ error: '评论不存在' });
   const { author, body } = req.body ?? {};
@@ -53,7 +55,7 @@ commentsRouter.post('/:id/replies', async (req, res) => {
 });
 
 /** 解决 / 取消解决 */
-commentsRouter.post('/:id/resolve', async (req, res) => {
+commentsRouter.post('/:id/resolve', requirePrivateAccess('comment', (req) => req.params.id), async (req, res) => {
   const { resolved = true } = req.body ?? {};
   const { rows } = await pool.query(
     'UPDATE comments SET resolved = $2 WHERE id = $1 RETURNING id, resolved',
@@ -63,7 +65,7 @@ commentsRouter.post('/:id/resolve', async (req, res) => {
   res.json(rows[0]);
 });
 
-commentsRouter.delete('/:id', async (req, res) => {
+commentsRouter.delete('/:id', requirePrivateAccess('comment', (req) => req.params.id), async (req, res) => {
   await pool.query('DELETE FROM comments WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });

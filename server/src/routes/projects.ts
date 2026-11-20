@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { getSessionUser } from '../auth.js';
+import { privateTeamStorage } from '../config.js';
 import { editGuard } from './authz.js';
+import { requirePrivateAccess } from './privateAccess.js';
 import { ensurePages } from './files.js';
 import { deleteFileBlobs } from '../storage/index.js';
 
 export const projectsRouter = Router();
+projectsRouter.use('/:id', requirePrivateAccess('project', (req) => req.params.id));
 
 /** 创建项目（可归属团队） */
 projectsRouter.post('/', async (req, res) => {
@@ -32,7 +36,18 @@ projectsRouter.post('/', async (req, res) => {
  */
 projectsRouter.get('/', async (req, res) => {
   const { teamId } = req.query;
-  const hasTeam = typeof teamId === 'string' && teamId;
+  const params: string[] = [];
+  const filters: string[] = [];
+  if (typeof teamId === 'string' && teamId) {
+    params.push(teamId);
+    filters.push('p.team_id = $1');
+  }
+  if (privateTeamStorage) {
+    const user = getSessionUser(req);
+    if (!user) return res.status(401).json({ error: '请先登录' });
+    params.push(user.email.trim().toLowerCase());
+    filters.push(`EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = p.team_id AND tm.email = $${params.length})`);
+  }
   const { rows } = await pool.query(
     `SELECT p.id, p.name, p.created_at,
             count(f.id) AS file_count,
@@ -56,11 +71,11 @@ projectsRouter.get('/', async (req, res) => {
              ) s WHERE s.ord <= 10) AS cover_frames
      FROM projects p
      LEFT JOIN design_files f ON f.project_id = p.id
-     ${hasTeam ? 'WHERE p.team_id = $1' : ''}
+     ${filters.length ? 'WHERE ' + filters.join(' AND ') : ''}
      GROUP BY p.id
      ORDER BY max(f.created_at) DESC NULLS LAST, p.created_at DESC
      LIMIT 200`,
-    hasTeam ? [teamId] : []
+    params
   );
   res.json(rows);
 });
@@ -168,6 +183,10 @@ projectsRouter.get('/:id', async (req, res) => {
     [req.params.id]
   );
   if (!rows[0]) return res.status(404).json({ error: '项目不存在' });
+  if (privateTeamStorage) {
+    const denied = await editGuard(rows[0].team_id, req);
+    return res.json({ ...rows[0], can_manage_share: !denied });
+  }
   res.json(rows[0]);
 });
 

@@ -5,12 +5,14 @@ import { enqueue } from '../queue.js';
 import { importSketch } from '../sketch/import.js';
 import { importPsd } from '../psd/import.js';
 import { getStorage } from '../storage/index.js';
-import { config } from '../config.js';
+import { config, privateTeamStorage } from '../config.js';
+import { requireUser } from '../auth.js';
 import { editGuard } from './authz.js';
 import { presignRouter, isValidUploadKey, removeUploaded } from './presign.js';
 import { encodeThumbnail } from '../util/imageEncode.js';
 
 export const uploadsRouter = Router();
+if (privateTeamStorage) uploadsRouter.use(requireUser);
 
 // 预签名直传（Vercel 4.5MB 请求体限制）；local 存储模式下返回 mode=multipart
 uploadsRouter.use(presignRouter);
@@ -54,7 +56,10 @@ async function setStatus(fileId: string, status: string, error?: string) {
 }
 
 async function assertProject(projectId: string | null, req: Request) {
-  if (!projectId) return;
+  if (!projectId) {
+    if (privateTeamStorage) throw new HttpError(400, '请选择一个团队项目');
+    return;
+  }
   const p = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [projectId]);
   if (!p.rows[0]) throw new HttpError(404, '项目不存在');
   const denied = await editGuard(p.rows[0].team_id, req);
@@ -155,8 +160,8 @@ async function createImageImport(
 
 /** 从对象存储取回直传的临时文件（读取后即删除临时对象） */
 async function readFromStorage(key: string): Promise<Buffer> {
-  if (config.storage.driver === 'local') {
-    throw new HttpError(400, '当前部署未启用对象存储，请改用普通上传');
+  if (config.storage.driver === 'local' || privateTeamStorage) {
+    throw new HttpError(400, '当前部署请使用普通上传');
   }
   const storage = await getStorage();
   const data = await storage.get(key);

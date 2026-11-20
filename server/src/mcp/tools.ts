@@ -4,8 +4,9 @@
  * 场景：AI 开发时通过 MCP 拿到画板结构、图层规格（含 CSS）、设计规范聚合与设计图，
  * 从而按设计稿精准还原 UI，而不是凭空猜测间距与颜色。
  */
+import { extname } from 'node:path';
 import { pool } from '../db.js';
-import { getStorage } from '../storage/index.js';
+import { getStorage, storageKeyFromUrl } from '../storage/index.js';
 import { renderLocalSlice } from '../export/local.js';
 
 // ---------- 工具结果类型（MCP content blocks） ----------
@@ -251,6 +252,14 @@ function treeOf(rows: NodeRow[], frameNodeId: string | null): unknown {
 
 // ---------- 图片内容 ----------
 
+const thumbnailMimeTypes: Record<string, string> = {
+  '.gif': 'image/gif',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
+
 async function frameThumbImage(frameId: string): Promise<ToolResult> {
   const { rows } = await pool.query<{ thumb_url: string | null; name: string }>(
     'SELECT thumb_url, name FROM frames WHERE id = $1',
@@ -258,12 +267,14 @@ async function frameThumbImage(frameId: string): Promise<ToolResult> {
   );
   const f = rows[0];
   if (!f) return text(`画板不存在: ${frameId}`, true);
-  if (!f.thumb_url || !f.thumb_url.startsWith('/storage/')) {
+  const key = f.thumb_url ? storageKeyFromUrl(f.thumb_url) : null;
+  if (!key) {
     return text(`画板「${f.name}」没有本地缩略图（Figma 远程文件请访问其 thumb_url）`, true);
   }
   const storage = await getStorage();
-  const buf = await storage.get(f.thumb_url.replace(/^\/storage\//, ''));
-  return { content: [{ type: 'image', data: buf.toString('base64'), mimeType: 'image/png' }] };
+  const buf = await storage.get(key);
+  const mimeType = thumbnailMimeTypes[extname(key).toLowerCase()] ?? 'image/png';
+  return { content: [{ type: 'image', data: buf.toString('base64'), mimeType }] };
 }
 
 async function sliceImage(frameId: string, nodeId: string, scale: number): Promise<ToolResult> {

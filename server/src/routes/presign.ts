@@ -17,7 +17,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { del as blobDel } from '@vercel/blob';
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
-import { config } from '../config.js';
+import { config, privateTeamStorage } from '../config.js';
 import { getSessionUser } from '../auth.js';
 import { createS3Client } from '../storage/index.js';
 
@@ -43,7 +43,7 @@ function safeName(name: string): string {
 }
 
 presignRouter.get('/presign', async (req, res) => {
-  if (config.storage.driver === 'local') {
+  if (config.storage.driver === 'local' || privateTeamStorage) {
     return res.json({ mode: 'multipart' as const });
   }
   // 直传凭证可写对象存储，要求已登录，避免匿名滥用存储桶
