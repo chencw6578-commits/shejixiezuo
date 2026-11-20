@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { privateTeamStorage } from '../config.js';
 import { getFileMeta } from '../figma/client.js';
 import { enqueueImport } from '../jobs/importFile.js';
 
@@ -23,6 +24,7 @@ interface FigmaWebhookBody {
  */
 webhooksRouter.post('/figma', async (req, res) => {
   const secret = process.env.WEBHOOK_SECRET;
+  if (privateTeamStorage && !secret) return res.status(404).json({ error: 'Webhook 未配置' });
   if (secret) {
     const provided = (req.headers['x-webhook-secret'] as string) ?? req.body?.passcode;
     if (provided !== secret) return res.status(401).json({ error: 'invalid secret' });

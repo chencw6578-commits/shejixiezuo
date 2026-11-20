@@ -1,5 +1,6 @@
 import { pool } from '../db.js';
 import { getSessionUser } from '../auth.js';
+import { privateTeamStorage } from '../config.js';
 import type { Request } from 'express';
 
 export type MemberRole = 'owner' | 'admin' | 'collaborator';
@@ -53,6 +54,7 @@ export async function teamRole(teamId: string | null | undefined, req: Request):
  * 返回 null 表示放行，否则为 403 错误消息。
  */
 export async function editGuard(teamId: string | null | undefined, req: Request): Promise<string | null> {
+  if (privateTeamStorage && !teamId) return '私有存储模式只支持团队项目';
   const role = await teamRole(teamId, req);
   if (role === 'collaborator') {
     return '协作者身份为只读（仅可查看与评论），编辑 / 上传 / 删除需要管理员及以上权限';

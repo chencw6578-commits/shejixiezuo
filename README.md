@@ -52,6 +52,25 @@ FIGMA_TOKEN=figd_xxx AUTH_SECRET=<随机串> docker compose up -d --build
 
 **Vercel（Serverless）**：`vercel.json` 把 `web/dist` 作为静态产物，`api/catch.mjs` 是唯一的 Express 函数；`/api/(.*)` 与 `/mcp` 都 rewrite 到它。需在 Vercel 项目里配置 `AUTH_SECRET`、`DATABASE_URL`，并连接 Blob Store。Serverless 文件系统只读，因此不要设 `STORAGE_DRIVER=local`。
 
+### 新团队实例使用私有桶
+
+使用根目录 Dockerfile 部署常驻服务，并创建一个关闭匿名读取的独立 S3 兼容桶。保留 `AUTH_SECRET` 和 `DATABASE_URL`，在运行容器时配置以下变量。存储凭据只需访问该桶，并允许读、写、列举和删除对象。
+
+```dotenv
+STORAGE_DRIVER=s3
+S3_PRIVATE=1
+S3_ENDPOINT=https://<S3 API 地址>
+S3_BUCKET=<私有桶名>
+S3_REGION=<供应商要求的区域，R2 使用 auto>
+S3_ACCESS_KEY=<访问密钥 ID>
+S3_SECRET_KEY=<访问密钥>
+S3_PUBLIC_BASE_URL=
+```
+
+先建立团队和项目，再导入设计稿。团队成员通过同源 API 读取素材。只有管理员或所有者能开启和关闭分享，访问者凭有效链接查看该项目的画板预览。团队导入令牌也仅在本团队有效。
+
+私有模式通过应用接收上传，反向代理的请求体上限需与使用的导入入口匹配。Figma 插件 JSON 接口上限为 40 MiB，Sketch/PSD 文件上限为 300 MiB（代理还需容纳 multipart 开销）。旧实例迁移时需复制历史文件并更新数据库中的资源地址后再启用此模式。
+
 ## 架构
 
 ```

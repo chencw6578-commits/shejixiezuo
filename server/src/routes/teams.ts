@@ -4,8 +4,9 @@ import { pool } from '../db.js';
 import { editGuard, manageGuard, ownerGuard, teamRole } from './authz.js';
 import { getSessionUser } from '../auth.js';
 import { createTeamInvite } from './invites.js';
-import { emailConfig } from '../config.js';
+import { emailConfig, privateTeamStorage } from '../config.js';
 import { deleteFileBlobs } from '../storage/index.js';
+import { requirePrivateAccess } from './privateAccess.js';
 
 export const teamsRouter = Router();
 
@@ -150,7 +151,7 @@ teamsRouter.post('/:id/leave', async (req, res) => {
 });
 
 /** 团队成员列表：昵称优先取账号表 users.name（与头像下拉同源），未注册的邀请成员回退成员表历史值 */
-teamsRouter.get('/:id/members', async (req, res) => {
+teamsRouter.get('/:id/members', requirePrivateAccess('team', (req) => req.params.id), async (req, res) => {
   const { rows } = await pool.query(
     `SELECT tm.id, tm.team_id,
             COALESCE(
@@ -313,7 +314,7 @@ teamsRouter.post('/:id/import-tokens', async (req, res) => {
   if (denied) return res.status(403).json({ error: denied });
   const t = await pool.query('SELECT 1 FROM teams WHERE id = $1', [req.params.id]);
   if (!t.rows[0]) return res.status(404).json({ error: '团队不存在' });
-  const scope = req.body?.scope === 'team' ? 'team' : 'all';
+  const scope = privateTeamStorage || req.body?.scope === 'team' ? 'team' : 'all';
   const active = await pool.query(
     'SELECT count(*)::int AS n FROM import_tokens WHERE team_id = $1 AND revoked_at IS NULL',
     [req.params.id]

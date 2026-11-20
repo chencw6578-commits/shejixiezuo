@@ -4,11 +4,12 @@
  * 图层生成透明热区，点击即切换到目标画板。Hash 路由支持浏览器前进/后退。
  *
  * 两种输出：
- *  - buildPrototypeHtml：单文件 HTML（图片直接引用 /storage/ URL，用于网页内预览）
- *  - buildPrototypeZip：  独立可分发的 zip（assets/ 内嵌画板 PNG + README）
+ *  - buildPrototypeHtml：同源预览
+ *  - buildPrototypeZip：  独立可分发的 zip（assets/ 内嵌画板图 + README）
  */
 import { pool } from './db.js';
-import { getStorage } from './storage/index.js';
+import { extname } from 'node:path';
+import { getStorage, storageKeyFromUrl } from './storage/index.js';
 
 interface FrameRow {
   id: string;
@@ -189,7 +190,7 @@ function routerScript(firstSlug: string): string {
 })();`;
 }
 
-async function assemble(fileId: string): Promise<{
+async function assemble(fileId: string, standalone = false): Promise<{
   html: string;
   assets: Array<{ name: string; buf: Buffer }>;
   file: { name: string };
@@ -202,18 +203,20 @@ async function assemble(fileId: string): Promise<{
   const pages: string[] = [];
   const nav: string[] = [];
   const assets: Array<{ name: string; buf: Buffer }> = [];
-  const storage = await getStorage();
   // 先算好全部 slug：页面 i 的热区可能跳转到排在它后面的页面
   const slugs = frames.map((f, i) => slugOf(f.name, i));
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
     const slug = slugs[i];
     const hotspots = buildHotspots(interactions, f.id, f, indexByFrameId, nameByIndex);
-    if (f.thumb_url && f.thumb_url.startsWith('/storage/')) {
-      const buf = await storage.get(f.thumb_url.replace(/^\/storage\//, ''));
-      assets.push({ name: `assets/${slug}.png`, buf });
+    let imgSrc = f.thumb_url ?? '';
+    const key = standalone ? storageKeyFromUrl(imgSrc) : null;
+    if (key) {
+      const storage = await getStorage();
+      const buf = await storage.get(key);
+      imgSrc = `assets/${slug}${extname(key) || '.png'}`;
+      assets.push({ name: imgSrc, buf });
     }
-    const imgSrc = f.thumb_url ?? '';
     pages.push(pageHtml(f, slug, hotspots, imgSrc, slugs));
     nav.push(`    <a href="#/${slug}">${esc(f.name)}</a>`);
   }
@@ -221,24 +224,19 @@ async function assemble(fileId: string): Promise<{
   return { html, assets, file, slugs };
 }
 
-/** 网页内预览：单文件 HTML，图片走 /storage/ 相对地址（同源） */
+/** 网页内预览：单文件 HTML，图片使用同源地址 */
 export async function buildPrototypeHtml(fileId: string): Promise<string | null> {
   const r = await assemble(fileId);
   return r?.html ?? null;
 }
 
-/** 可分发 zip：index.html + assets/*.png + README.md */
+/** 可分发 zip：index.html + 画板图 + README.md */
 export async function buildPrototypeZip(fileId: string): Promise<{ name: string; buf: Buffer } | null> {
-  const r = await assemble(fileId);
+  const r = await assemble(fileId, true);
   if (!r) return null;
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
-  // zip 内图片路径改为本地 assets/
-  const standalone = r.html.replace(/src="\/storage\/[^"]+"/g, (m) => {
-    const slug = m.match(/assets\/([^"]+)\.png/)?.[1];
-    return slug ? `src="assets/${slug}.png"` : m;
-  });
-  zip.file('index.html', standalone);
+  zip.file('index.html', r.html);
   for (const a of r.assets) zip.file(a.name, a.buf);
   zip.file(
     'README.md',

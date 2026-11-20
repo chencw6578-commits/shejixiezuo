@@ -6,6 +6,17 @@ function req(name: string, fallback?: string): string {
   return v;
 }
 
+const storageDriver = process.env.STORAGE_DRIVER ?? 'local';
+export const privateTeamStorage = process.env.S3_PRIVATE === '1';
+if (privateTeamStorage) {
+  if (storageDriver !== 's3' || process.env.S3_PUBLIC_BASE_URL?.trim()) {
+    throw new Error('S3_PRIVATE=1 requires STORAGE_DRIVER=s3 and an empty S3_PUBLIC_BASE_URL');
+  }
+  const required = ['AUTH_SECRET', 'S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'];
+  const missing = required.filter((name) => !process.env[name]?.trim());
+  if (missing.length) throw new Error(`S3_PRIVATE=1 requires ${missing.join(', ')}`);
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   figmaToken: req('FIGMA_TOKEN', '').trim(),
@@ -20,7 +31,7 @@ export const config = {
   thumbWebp: (process.env.THUMB_WEBP ?? '1') !== '0',
   storage: {
     // local: 本地磁盘（常驻部署）；s3: S3 兼容对象存储；blob: Vercel Blob（Serverless 默认）
-    driver: (process.env.STORAGE_DRIVER ?? 'local') as 'local' | 's3' | 'blob',
+    driver: storageDriver as 'local' | 's3' | 'blob',
     localDir: process.env.STORAGE_LOCAL_DIR ?? 'storage',
     s3: {
       endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',

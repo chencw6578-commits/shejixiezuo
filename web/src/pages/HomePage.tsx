@@ -186,7 +186,7 @@ function readLastTeamId() {
  * 仅在当前 SPA 会话有效，刷新页面会重新拉取。
  */
 const projectCache = new Map<string, Project[]>();
-const projectCacheKey = (team: string) => team || '__all__';
+const projectCacheKey = (userId: string, team: string) => `${userId}/${team}`;
 
 export default function HomePage() {
   const [searchParams] = useSearchParams();
@@ -197,10 +197,16 @@ export default function HomePage() {
   const [activeTeam, setActiveTeam] = useState<string>(searchParams.get('team') || readLastTeamId());
   // 会话缓存命中时直接渲染上次列表；未命中才走加载态
   const [projects, setProjects] = useState<Project[]>(
-    () => projectCache.get(projectCacheKey(activeTeam)) ?? []
+    () => {
+      const user = getMeCached();
+      return user ? projectCache.get(projectCacheKey(user.id, activeTeam)) ?? [] : [];
+    }
   );
   const [projectsLoading, setProjectsLoading] = useState(
-    () => !projectCache.has(projectCacheKey(activeTeam))
+    () => {
+      const user = getMeCached();
+      return !user || !projectCache.has(projectCacheKey(user.id, activeTeam));
+    }
   );
   // 请求序号：团队快速切换时，旧请求的迟到结果不得覆盖新团队的列表
   const projectReqId = useRef(0);
@@ -331,6 +337,8 @@ export default function HomePage() {
     try {
       await api.logout();
     } finally {
+      projectReqId.current++;
+      projectCache.clear();
       navigate('/login', { replace: true });
     }
   };
@@ -343,14 +351,14 @@ export default function HomePage() {
   const canManage = myRole === 'owner' || myRole === 'admin';
   // 新建项目：个人空间（无团队上下文）登录即可建（与服务端 teamRole 一致）；
   // 团队空间仅 owner/admin——协作者点了也是 403，直接不显示
-  const canCreateProject = !activeTeam ? Boolean(authUser) : canManage;
+  const canCreateProject = activeTeam ? canManage : Boolean(authUser && !authUser.privateTeamStorage);
+  const userId = authUser?.id;
 
   const loadTeams = useCallback(() => {
     api.listTeams().then((rows) => setTeams(Array.isArray(rows) ? rows : [])).catch((e) => setError(e.message));
   }, []);
 
   const loadProjects = useCallback(() => {
-    const key = projectCacheKey(activeTeam);
     const reqId = ++projectReqId.current;
     setProjectsLoading(true);
     api
@@ -358,7 +366,7 @@ export default function HomePage() {
       .then((rows) => {
         if (reqId !== projectReqId.current) return;
         const list = Array.isArray(rows) ? rows : [];
-        projectCache.set(key, list);
+        if (userId) projectCache.set(projectCacheKey(userId, activeTeam), list);
         setProjects(list);
       })
       .catch((e) => {
@@ -367,7 +375,7 @@ export default function HomePage() {
       .finally(() => {
         if (reqId === projectReqId.current) setProjectsLoading(false);
       });
-  }, [activeTeam]);
+  }, [activeTeam, userId]);
 
   // 按 Tab 过滤/排序：全部=原顺序；最近使用=localStorage 记录倒序；最近更新=按最后更新时间倒序
   const visibleProjects = useMemo(() => {
@@ -438,8 +446,8 @@ export default function HomePage() {
 
   // 切换团队时先切到该团队的缓存（没有就清空），避免短暂显示上一团队的项目
   useEffect(() => {
-    setProjects(projectCache.get(projectCacheKey(activeTeam)) ?? []);
-  }, [activeTeam]);
+    setProjects(userId ? projectCache.get(projectCacheKey(userId, activeTeam)) ?? [] : []);
+  }, [activeTeam, userId]);
 
   useEffect(loadProjects, [loadProjects]);
 
@@ -484,7 +492,7 @@ export default function HomePage() {
     setBusy(true);
     setError('');
     try {
-      const created = await api.createImportToken(activeTeam, tokenScope);
+      const created = await api.createImportToken(activeTeam, authUser?.privateTeamStorage ? 'team' : tokenScope);
       setNewToken(created.token);
       loadTokens();
     } catch (err) {
@@ -1521,11 +1529,11 @@ export default function HomePage() {
                 </div>
                 <div className="token-create">
                   <select
-                    value={tokenScope}
+                    value={authUser?.privateTeamStorage ? 'team' : tokenScope}
                     aria-label="令牌作用范围"
                     onChange={(e) => setTokenScope(e.target.value as ImportToken['scope'])}
                   >
-                    <option value="all">全部团队</option>
+                    {!authUser?.privateTeamStorage && <option value="all">全部团队</option>}
                     <option value="team">仅 {activeTeamName}</option>
                   </select>
                   <button type="button" className="new-project-btn" disabled={busy} onClick={() => void createToken()}>

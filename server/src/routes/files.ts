@@ -1,13 +1,15 @@
 import { Router, type Response } from 'express';
 import { pool } from '../db.js';
-import { isFigmaConfigured } from '../config.js';
+import { isFigmaConfigured, privateTeamStorage } from '../config.js';
 import { FigmaApiError, getFileMeta, parseFigmaUrl } from '../figma/client.js';
 import { enqueueImport, fetchImportData, newErrorId, userFacingFailure } from '../jobs/importFile.js';
 import { editGuard, fileTeamId } from './authz.js';
+import { requirePrivateAccess, requireTeamProject } from './privateAccess.js';
 import { attachPresetAncestors } from '../export/preset.js';
 import { deleteFileBlobs } from '../storage/index.js';
 
 export const filesRouter = Router();
+filesRouter.use('/:id', requirePrivateAccess('file', (req) => req.params.id));
 
 const ROUTE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -90,6 +92,7 @@ function respondFigmaError(res: Response, err: unknown) {
  */
 filesRouter.post('/', async (req, res) => {
   const { url, projectId, token } = req.body ?? {};
+  if (!requireTeamProject(projectId, res)) return;
   let teamId: string | null = null;
   if (projectId) {
     const p = await pool.query<{ team_id: string | null }>('SELECT team_id FROM projects WHERE id = $1', [projectId]);
@@ -149,7 +152,10 @@ filesRouter.post('/', async (req, res) => {
 });
 
 /** 文件列表（支持 ?projectId= 过滤；无参数返回未归属项目的文件） */
-filesRouter.get('/', async (req, res) => {
+filesRouter.get('/', (req, res, next) => {
+  if (privateTeamStorage && !req.query.projectId) return res.json([]);
+  return next();
+}, requirePrivateAccess('project', (req) => req.query.projectId), async (req, res) => {
   const { projectId } = req.query;
   if (typeof projectId === 'string' && projectId) {
     const { rows } = await pool.query(
@@ -529,6 +535,10 @@ filesRouter.get('/:id/frames/:frameId', async (req, res) => {
 
 /** 手动同步：版本有变化才重新导入 */
 filesRouter.post('/:id/sync', async (req, res) => {
+  if (privateTeamStorage) {
+    const denied = await editGuard(await fileTeamId(req.params.id), req);
+    if (denied) return res.status(403).json({ error: denied });
+  }
   const file = (
     await pool.query<{ id: string; figma_key: string; version: string | null; status: string }>(
       'SELECT id, figma_key, version, status FROM design_files WHERE id = $1',

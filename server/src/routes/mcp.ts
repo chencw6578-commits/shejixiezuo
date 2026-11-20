@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto';
 import { handleRpcMessage, SERVER_INFO } from '../mcp/handler.js';
 import type { McpCtx } from '../mcp/tools.js';
 import { pool } from '../db.js';
+import { privateTeamStorage } from '../config.js';
 import { canonicalResource, publicOrigin } from './oauth.js';
 
 const hashToken = (t: string) => createHash('sha256').update(t).digest('hex');
@@ -39,9 +40,10 @@ async function resolveCtx(req: Request): Promise<CtxResult> {
   // 线上环境若放开匿名，任何人知道 /mcp URL 就能以 scope=all 读全库设计稿，
   // 因此默认拒绝；/mcp 与 /api/mcp 共用本校验。
   if (!m) {
-    const allowAnonymous =
+    const allowAnonymous = !privateTeamStorage && (
       (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) ||
-      process.env.MCP_ALLOW_ANONYMOUS === '1';
+      process.env.MCP_ALLOW_ANONYMOUS === '1'
+    );
     return { ctx: { teamId: null, scope: 'all' }, ok: allowAnonymous };
   }
   const bearer = m[1];
@@ -74,7 +76,7 @@ async function resolveCtx(req: Request): Promise<CtxResult> {
   if (!rows[0]) return { ctx: { teamId: null, scope: 'all' }, ok: false };
   await pool.query('UPDATE import_tokens SET last_used_at = now() WHERE hash = $1', [hashToken(bearer)]);
   return {
-    ctx: { teamId: rows[0].team_id, scope: rows[0].scope === 'all' ? 'all' : 'team' },
+    ctx: { teamId: rows[0].team_id, scope: !privateTeamStorage && rows[0].scope === 'all' ? 'all' : 'team' },
     ok: true,
   };
 }

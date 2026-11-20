@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { privateTeamStorage } from '../config.js';
 import {
   clearSessionCookie,
   getSessionUser,
@@ -11,6 +12,7 @@ import { consumeEmailToken, sendPasswordResetEmail, sendVerificationEmail } from
 import { runInBackground } from '../queue.js';
 
 export const authRouter = Router();
+const storageMode = privateTeamStorage ? { privateTeamStorage: true } : {};
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -193,9 +195,10 @@ authRouter.get('/me', async (req, res) => {
       email: user.email,
       name: rows[0]?.name || fallbackName,
       verified: rows[0]?.verified ?? false,
+      ...storageMode,
     });
   } catch {
-    res.json({ id: user.uid, email: user.email, name: fallbackName, verified: false });
+    res.json({ id: user.uid, email: user.email, name: fallbackName, verified: false, ...storageMode });
   }
 });
 
@@ -212,7 +215,7 @@ authRouter.patch('/me', async (req, res) => {
       [name, user.uid]
     );
     if (!rows[0]) return res.status(404).json({ error: '账号不存在' });
-    res.json({ id: user.uid, email: user.email, name: rows[0].name, verified: rows[0].verified });
+    res.json({ id: user.uid, email: user.email, name: rows[0].name, verified: rows[0].verified, ...storageMode });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : '修改昵称失败' });
   }

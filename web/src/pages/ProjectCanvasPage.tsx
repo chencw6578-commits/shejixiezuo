@@ -191,7 +191,7 @@ interface HistoryEntry {
 export default function ProjectCanvasPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const [project, setProject] = useState<{ id: string; name: string; team_id: string | null; team_name: string | null } | null>(null);
+  const [project, setProject] = useState<Awaited<ReturnType<typeof api.getProject>> | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const readOnlyRef = useRef(false);
   // ---------- 画板连线（有向，落库；公开只读分享里只展示不可编辑） ----------
@@ -2484,7 +2484,7 @@ export default function ProjectCanvasPage() {
             <LinkIcon /> <span>连线</span>
           </button>
         )}
-        <div className="share-wrap">
+        <div className="share-wrap" hidden={project?.can_manage_share === false}>
           <button
             type="button"
             className={`icon-btn share-btn${shareOpen ? ' is-active' : ''}`}
