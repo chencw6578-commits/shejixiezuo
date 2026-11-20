@@ -509,7 +509,8 @@ pluginRouter.post('/import', async (req, res) => {
         const pageSort = await takePageSort();
         await client.query(
           `UPDATE frames SET name = $2, page_name = $3, page_id = $4, page_sort = $5,
-                  x = $6, y = $7, width = $8, height = $9, platform = $10, scale = $11
+                  x = $6, y = $7, canvas_x = $8, canvas_y = $9,
+                  width = $10, height = $11, platform = $12, scale = $13
            WHERE id = $1`,
           [
             existing.rows[0].id,
@@ -517,6 +518,8 @@ pluginRouter.post('/import', async (req, res) => {
             groupName,
             groupId,
             pageSort,
+            frame.x,
+            frame.y,
             frame.x,
             frame.y,
             frame.width,
@@ -531,8 +534,8 @@ pluginRouter.post('/import', async (req, res) => {
         const sortOrder = nextSort.rows[0].next + frameCount;
         const pageSort = await takePageSort();
         const inserted = await client.query<{ id: string }>(
-          `INSERT INTO frames (file_id, node_id, name, page_name, page_id, page_sort, x, y, width, height, sort_order, platform, scale)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+          `INSERT INTO frames (file_id, node_id, name, page_name, page_id, page_sort, x, y, canvas_x, canvas_y, width, height, sort_order, platform, scale)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
           [
             fileId,
             frame.nodeId,
@@ -540,6 +543,8 @@ pluginRouter.post('/import', async (req, res) => {
             groupName,
             groupId,
             pageSort,
+            frame.x,
+            frame.y,
             frame.x,
             frame.y,
             frame.width,
