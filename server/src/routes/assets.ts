@@ -299,7 +299,7 @@ assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?
   if (tasks.length === 0) {
     return res.status(400).json({
       error: mode === 'presets'
-        ? '该画板没有标记导出预设的图层（在 Figma 中为图层添加导出设置后重新导入），或改用「全部图层」模式'
+        ? '该画板没有标记导出预设的图层，请在 Figma 中为图层添加导出设置后重新导入'
         : '该画板没有图层',
     });
   }
