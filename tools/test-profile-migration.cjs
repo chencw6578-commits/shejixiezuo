@@ -23,7 +23,7 @@ function extractFn(name) {
   return html.slice(start, i);
 }
 
-const fnNames = ['newProfileId', 'suggestProfileName', 'makeProfile', 'activeProfileById', 'restoreRetiredProfile', 'normalizeProfiles'];
+const fnNames = ['newProfileId', 'suggestProfileName', 'makeProfile', 'activeProfileById', 'restoreRetiredProfile', 'normalizeOldSiteHost', 'normalizeProfiles'];
 const fnSrc = fnNames.map(extractFn).join('\n');
 
 // 抽取两个常量定义
@@ -58,7 +58,8 @@ function check(name, cond, detail) {
 }
 
 const NEW = 'https://sjxz.yundongchangzu.com';
-const OLD = 'https://shilipix.cn';
+const OLD = 'https://www.shilipix.cn';      // v1.8.2 起还原目标为 www 域
+const OLD_BARE = 'https://shilipix.cn';    // 裸域，应被规范化为 www
 
 console.log('== 用例 1：被污染的旧站配置（名字旧站+域名新站）应还原 ==');
 {
@@ -137,6 +138,42 @@ console.log('== 用例 6：无 profiles 的空 prefs（新安装兜底）==');
   check('默认指向新站', r[0].baseUrl === NEW, r[0].baseUrl);
   // 注：v4 分支用原始 prefs.baseUrl(空) 命名，suggestProfileName 返回中性的「设计协作」（既有行为）
   check('默认名字为中性「设计协作」', r[0].name === '设计协作', r[0].name);
+}
+
+console.log('== 用例 7：v1.8.1 已还原成裸域的配置（带 retiredRestored）应被规范成 www ==');
+{
+  // 这正是用户截图的实际状态：名字旧站、baseUrl 裸域、已打标记、令牌空
+  const prefs = { version: 5, profiles: [
+    { id: 'p_bare', name: '设计协作（旧站）', baseUrl: OLD_BARE, token: '', teamId: '', projectId: '', groupId: '', newGroupName: '', retiredRestored: true },
+  ], activeProfileId: 'p_bare' };
+  const r = normalize(prefs);
+  const p = r[0];
+  check('裸域被规范成 www', p.baseUrl === OLD, p.baseUrl);
+  check('retiredRestored 标记保留', p.retiredRestored === true);
+  check('id 保留', p.id === 'p_bare', p.id);
+}
+
+console.log('== 用例 8：用户在高级设置手动填裸域+已填令牌，规范化不丢令牌/路径 ==');
+{
+  const prefs = { version: 5, profiles: [
+    { id: 'p_manual', name: '我的旧站', baseUrl: OLD_BARE + '/', token: 'imp_USER_FILLED', teamId: 'tm', projectId: 'pj', groupId: 'gp', newGroupName: '' },
+  ], activeProfileId: 'p_manual' };
+  const r = normalize(prefs);
+  const p = r[0];
+  check('裸域+斜杠规范成 www+斜杠', p.baseUrl === OLD + '/', p.baseUrl);
+  check('已填令牌保留', p.token === 'imp_USER_FILLED', p.token);
+  check('三级目标保留', p.teamId === 'tm' && p.projectId === 'pj' && p.groupId === 'gp');
+  check('用户自定义名保留', p.name === '我的旧站', p.name);
+}
+
+console.log('== 用例 9：www 域配置重复规范化保持幂等 ==');
+{
+  const prefs = { version: 5, profiles: [
+    { id: 'p_www', name: '设计协作（旧站）', baseUrl: OLD, token: 'imp_OK', teamId: '', projectId: '', groupId: '', newGroupName: '', retiredRestored: true },
+  ], activeProfileId: 'p_www' };
+  const r = normalize(prefs);
+  check('www 域不变', r[0].baseUrl === OLD, r[0].baseUrl);
+  check('令牌不变', r[0].token === 'imp_OK', r[0].token);
 }
 
 console.log('\n结果: ' + pass + ' PASS / ' + fail + ' FAIL');

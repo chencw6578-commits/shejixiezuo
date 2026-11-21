@@ -384,10 +384,11 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.8.1';
+  var UI_VERSION = '1.8.2';
   // 线上后端默认值。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
-  // v1.8.1：双域名并存——旧站 shilipix.cn 仍可用，每个配置独立记各自的 baseUrl+令牌，
+  // v1.8.1：双域名并存——旧站 www.shilipix.cn 仍可用，每个配置独立记各自的 baseUrl+令牌，
   // 不再强制把旧域名改成新站。DEFAULT_BASE_URL 只是「新建配置」的默认值。
+  // v1.8.2：旧站必须用 www 裸域名会被 Vercel 308 跳转且丢 CORS 头，插件 fetch 失败。
   var DEFAULT_BASE_URL = 'https://sjxz.yundongchangzu.com';
   var RETIRED_BASE_URL_RE = /^(https?:\/\/)?(www\.)?(shejixiezuo-gd7w\.vercel\.app|shilipix\.cn)([\/:]|$)/i;
   var UNASSIGNED_TEAM = 'unassigned';
@@ -1198,7 +1199,9 @@
     state.fallbackTried = false;
     state.targetOpen = false;
   }
-  var OLD_SITE_URL = 'https://shilipix.cn'; // 旧站真实地址，用于还原被污染的配置
+  // 旧站真实地址，必须用 www：Vercel 把裸域 shilipix.cn 302/308 到 www，
+  // 而重定向响应不带 CORS 头，Figma data iframe(origin=null) 里 fetch 会 Failed to fetch。
+  var OLD_SITE_URL = 'https://www.shilipix.cn';
 
   /**
    * v1.8.1：一次性还原被 v1.7.0/v1.8.0 强制迁移污染的配置。
@@ -1208,17 +1211,35 @@
    * 注意：正常的新站配置名字是「设计协作（新站）」，不会被误伤；用户改过名的配置也不动。
    */
   function restoreRetiredProfile(p) {
-    if (p.retiredRestored) return p;
-    var isRetiredName = p.name === '设计协作（旧站）';
-    var pointsToNewSite = /sjxz\.yundongchangzu\.com/i.test(p.baseUrl || '');
-    if (isRetiredName && pointsToNewSite) {
-      console.warn('[prefs] 还原被强制迁移污染的配置「' + p.name + '」：新站域名 → ' + OLD_SITE_URL);
-      p.baseUrl = OLD_SITE_URL;
-      p.token = '';
-      p.teamId = '';
-      p.projectId = '';
-      p.groupId = '';
-      p.retiredRestored = true;
+    // v1.8.1 的污染还原只做一次；但下面的裸域修正必须每次都跑（见 normalizeOldSiteHost）。
+    if (!p.retiredRestored) {
+      var isRetiredName = p.name === '设计协作（旧站）';
+      var pointsToNewSite = /sjxz\.yundongchangzu\.com/i.test(p.baseUrl || '');
+      if (isRetiredName && pointsToNewSite) {
+        console.warn('[prefs] 还原被强制迁移污染的配置「' + p.name + '」：新站域名 → ' + OLD_SITE_URL);
+        p.baseUrl = OLD_SITE_URL;
+        p.token = '';
+        p.teamId = '';
+        p.projectId = '';
+        p.groupId = '';
+        p.retiredRestored = true;
+      }
+    }
+    return normalizeOldSiteHost(p);
+  }
+
+  /**
+   * v1.8.2：把裸域 shilipix.cn 规范成 www.shilipix.cn（幂等，不动令牌/目标）。
+   * 覆盖两类用户：① v1.8.1 已还原成裸域且带 retiredRestored 标记的配置；
+   * ② 用户在高级设置里手动填了裸域。裸域会 308 到 www 且重定向无 CORS 头，插件 fetch 必失败。
+   * 只改 baseUrl 主机，保留用户已填的令牌和三级目标。
+   */
+  function normalizeOldSiteHost(p) {
+    var bare = /^(https?:\/\/)shilipix\.cn([\/:]|$)/i.exec(p.baseUrl || '');
+    if (bare) {
+      var rest = (p.baseUrl || '').replace(/^https?:\/\/shilipix\.cn/i, '');
+      console.warn('[prefs] 旧站裸域规范化：' + p.baseUrl + ' → ' + OLD_SITE_URL + rest);
+      p.baseUrl = OLD_SITE_URL + rest;
     }
     return p;
   }
