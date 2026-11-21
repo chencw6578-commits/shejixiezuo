@@ -6,7 +6,7 @@ import { EXPORT_SCALES, PLATFORM_LABEL, type PlatformId } from './devices';
 import { generateSnippet, SNIPPET_LANGS, type SnippetLang } from './snippets';
 import { parseGradientCss } from './gradient';
 import { metricToPx, renderable } from './textMetric';
-import type { Unit } from '../unit';
+import { unitValue, type Unit } from '../unit';
 
 interface Props {
   frame: FrameDetail['frame'];
@@ -67,6 +67,8 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
   const [snippetLang, setSnippetLang] = useState<SnippetLang>('CSS');
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [textCopied, setTextCopied] = useState(false);
+  // rpx 换算：以当前画板宽度为基准（750rpx = 屏宽 = 画板宽）。px/pt/dp 原样返回。
+  const uv = (raw: number) => unitValue(raw, unit, frame.width);
   // 文本图层：内容回填 + 可编辑（失焦 / 回车写回数据库）
   const isText = selected?.type === 'TEXT';
   const [textDraft, setTextDraft] = useState(selected?.props?.text?.content ?? '');
@@ -144,7 +146,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         <div className="prop-section">
           <h3>画板</h3>
           <div className="kv"><span>名称</span><b>{frame.name}</b></div>
-          <div className="kv"><span>尺寸</span><b>{Math.round(frame.width)} × {Math.round(frame.height)} {unit}</b></div>
+          <div className="kv"><span>尺寸</span><b>{uv(frame.width)} × {uv(frame.height)} {unit}</b></div>
           <div className="kv"><span>图层数</span><b>{nodeCount}</b></div>
         </div>
         <p className="prop-hint">
@@ -219,23 +221,23 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         <div className="size-grid">
           <div className="size-cell">
             <span className="cell-label">X</span>
-            <CopyChip text={String(coords?.absolute.x ?? selected.x)}>
-              <b>{coords?.absolute.x ?? selected.x} {unit}</b>
+            <CopyChip text={String(uv(coords?.absolute.x ?? selected.x))}>
+              <b>{uv(coords?.absolute.x ?? selected.x)} {unit}</b>
             </CopyChip>
           </div>
           <div className="size-cell">
             <span className="cell-label">Y</span>
-            <CopyChip text={String(coords?.absolute.y ?? selected.y)}>
-              <b>{coords?.absolute.y ?? selected.y} {unit}</b>
+            <CopyChip text={String(uv(coords?.absolute.y ?? selected.y))}>
+              <b>{uv(coords?.absolute.y ?? selected.y)} {unit}</b>
             </CopyChip>
           </div>
-          <div className="size-cell"><span className="cell-label">W</span><CopyChip text={String(selected.width)}><b>{selected.width} {unit}</b></CopyChip></div>
-          <div className="size-cell"><span className="cell-label">H</span><CopyChip text={String(selected.height)}><b>{selected.height} {unit}</b></CopyChip></div>
+          <div className="size-cell"><span className="cell-label">W</span><CopyChip text={String(uv(selected.width))}><b>{uv(selected.width)} {unit}</b></CopyChip></div>
+          <div className="size-cell"><span className="cell-label">H</span><CopyChip text={String(uv(selected.height))}><b>{uv(selected.height)} {unit}</b></CopyChip></div>
           {p.cornerRadius !== undefined && p.cornerRadius > 0 && (
-            <div className="size-cell"><span className="cell-label">圆角</span><b className="cell-value">{renderable(p.cornerRadius)}</b></div>
+            <div className="size-cell"><span className="cell-label">圆角</span><b className="cell-value">{uv(p.cornerRadius)} {unit}</b></div>
           )}
           {p.cornerRadii && (
-            <div className="size-cell"><span className="cell-label">四角</span><b className="cell-value">{renderable(p.cornerRadii)}</b></div>
+            <div className="size-cell"><span className="cell-label">四角</span><b className="cell-value">{p.cornerRadii.map(uv).join(' / ')} {unit}</b></div>
           )}
           <div className="size-cell"><span className="cell-label">透明度</span><b className="cell-value">{renderable(Math.round((Number(p.opacity) || 1) * 100))}%</b></div>
         </div>
@@ -284,13 +286,13 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
           </div>
           {p.text?.family && <div className="kv"><span>字体</span><CopyChip text={renderable(p.text.family)}><b>{renderable(p.text.family)}</b></CopyChip></div>}
           {textSize !== null && textSize > 0 && (
-            <div className="kv"><span>字号</span><CopyChip text={renderable(textSize)}><b>{renderable(textSize)}{unit} / {renderable(p.text?.weight ?? 400)}</b></CopyChip></div>
+            <div className="kv"><span>字号</span><CopyChip text={String(uv(textSize))}><b>{uv(textSize)} {unit} / {renderable(p.text?.weight ?? 400)}</b></CopyChip></div>
           )}
           {lineHeightPx !== null && lineHeightPx > 0 && (
-            <div className="kv"><span>行高</span><b>{renderable(lineHeightPx)}px</b></div>
+            <div className="kv"><span>行高</span><b>{uv(lineHeightPx)} {unit}</b></div>
           )}
           {letterSpacingPx !== null && (
-            <div className="kv"><span>字间距</span><b>{renderable(letterSpacingPx)}px</b></div>
+            <div className="kv"><span>字间距</span><b>{uv(letterSpacingPx)} {unit}</b></div>
           )}
           {p.text?.alignHorizontal && <div className="kv"><span>对齐</span><b>{renderable(p.text.alignHorizontal)}</b></div>}
         </div>
@@ -345,7 +347,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         <div className="prop-section">
           <h3>描边</h3>
           {p.strokes.filter((s) => s.visible).map((s, i) =>
-            s.color ? <ColorRow key={i} color={s.color} label={p.strokeWeight ? `${Math.round(Number(p.strokeWeight) * 100) / 100}px` : undefined} /> : null
+            s.color ? <ColorRow key={i} color={s.color} label={p.strokeWeight ? `${uv(Number(p.strokeWeight))} ${unit}` : undefined} /> : null
           )}
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FrameDetail, LayerNode } from '../types';
 import type { CommentItem } from '../api';
-import type { Unit } from '../unit';
+import { unitValue, type Unit } from '../unit';
 import { canvasBgStyle, useCanvasBg } from '../canvasBg';
 import CanvasBgPicker from '../components/CanvasBgPicker';
 import { metricToPx } from './textMetric';
@@ -184,6 +184,8 @@ export default function Canvas({
   comments = [], commentMode = false, onAddComment, onOpenComment, eyedropper = false,
   onExitEyedropper, onContextMenu,
 }: Props) {
+  // rpx 换算：以画板宽度为基准（750rpx = 屏宽 = 画板宽），与属性面板保持一致
+  const uv = (raw: number) => unitValue(raw, unit, frame.width);
   const containerRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   // 用 ref 存关闭回调：吸管模式下 mousemove 会频繁重渲染，避免 effect 反复解绑/重绑监听
@@ -889,7 +891,7 @@ export default function Canvas({
             key={`slice-${n.node_id}`}
             className="slice-outline"
             data-slice-outline={n.node_id}
-            title={`切图：${n.name} · ${Math.round(n.width)}×${Math.round(n.height)} ${unit ?? ''}`}
+            title={`切图：${n.name} · ${uv(n.width)}×${uv(n.height)} ${unit ?? ''}`}
             style={{
               left: n.x * zoom, top: n.y * zoom,
               width: n.width * zoom, height: n.height * zoom,
@@ -901,7 +903,7 @@ export default function Canvas({
             且选中状态下 hover 到别的图层也不再叠出第二个尺寸数字 */}
         {sizeTag && (
           <div className={`badge ${selected ? 'badge-selected' : 'badge-hover'}`} style={badgeStyle(sizeTag.rect)}>
-            {Math.round(sizeTag.w)} × {Math.round(sizeTag.h)} {unit}
+            {uv(sizeTag.w)} × {uv(sizeTag.h)} {unit}
           </div>
         )}
         {/* 悬停画板边缘（<=10px）：画板正下方显示整板尺寸（Figma 式）。
@@ -921,7 +923,7 @@ export default function Canvas({
               whiteSpace: 'nowrap',
             }}
           >
-            {Math.round(frame.width)} × {Math.round(frame.height)} {unit}
+            {uv(frame.width)} × {uv(frame.height)} {unit}
           </div>
         )}
         {/* 选中 A + hover B 时显示 A↔B 的距离：每方向一条引线 + 一个品牌色胶囊标签 */}
@@ -954,7 +956,7 @@ export default function Canvas({
               whiteSpace: 'nowrap',
             }}
           >
-            {Math.round(m.gap)} {unit}
+            {uv(m.gap)} {unit}
           </div>
         ))}
         {/* 画板边缘测距标签：数值 = 元素到画板上边/左边的距离，锚在引线中点 */}
@@ -974,7 +976,7 @@ export default function Canvas({
               whiteSpace: 'nowrap',
             }}
           >
-            {Math.round(m.gap)} {unit}
+            {uv(m.gap)} {unit}
           </div>
         ))}
         {/* 评论钉点 */}
