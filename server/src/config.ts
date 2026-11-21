@@ -34,6 +34,7 @@ export const config = {
     driver: storageDriver as 'local' | 's3' | 'blob',
     localDir: process.env.STORAGE_LOCAL_DIR ?? 'storage',
     s3: {
+      provider: process.env.S3_PROVIDER ?? 's3',
       endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
       bucket: process.env.S3_BUCKET ?? 'designhub',
       region: process.env.S3_REGION ?? 'us-east-1',

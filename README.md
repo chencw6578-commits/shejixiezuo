@@ -59,6 +59,7 @@ FIGMA_TOKEN=figd_xxx AUTH_SECRET=<随机串> docker compose up -d --build
 ```dotenv
 STORAGE_DRIVER=s3
 S3_PRIVATE=1
+S3_PROVIDER=s3
 S3_ENDPOINT=https://<S3 API 地址>
 S3_BUCKET=<私有桶名>
 S3_REGION=<供应商要求的区域，R2 使用 auto>
@@ -66,6 +67,8 @@ S3_ACCESS_KEY=<访问密钥 ID>
 S3_SECRET_KEY=<访问密钥>
 S3_PUBLIC_BASE_URL=
 ```
+
+使用腾讯云 COS 时，设置 `S3_PROVIDER=cos`，`S3_BUCKET` 填带 APPID 的完整桶名，`S3_ENDPOINT` 和 `S3_REGION` 填桶所在地域（南京示例为 `https://cos.ap-nanjing.myqcloud.com` 和 `ap-nanjing`）。SDK 会将桶名加到请求域名前，凭据使用仅授权该桶的 CAM 子用户密钥。
 
 先建立团队和项目，再导入设计稿。团队成员通过同源 API 读取素材。只有管理员或所有者能开启和关闭分享，访问者凭有效链接查看该项目的画板预览。团队导入令牌也仅在本团队有效。
 
