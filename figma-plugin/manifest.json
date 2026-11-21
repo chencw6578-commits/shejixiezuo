@@ -9,6 +9,6 @@
   "networkAccess": {
     "allowedDomains": ["*"],
     "devAllowedDomains": ["http://localhost:4000"],
-    "reasoning": "导出向导需要把画板 JSON 与位图直接上传到协作网站。支持保存多套上传目标配置（不同站点地址 + 令牌），可切换到任一账号；默认线上地址 https://sjxz.yundongchangzu.com，也允许改自建或本地后端。"
+    "reasoning": "导出向导需要把画板 JSON 与位图直接上传到协作网站。只需一个导入令牌，插件自动识别令牌归属站点（新站或旧站）后上传，无需配置域名。网络访问仅限内置的两个协作站点域名。"
   }
 }

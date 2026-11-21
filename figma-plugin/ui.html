@@ -60,10 +60,6 @@
   }
   .gate input:focus { border-color: var(--accent); }
   .gate .wide { width: 100%; }
-  .gate .server-line { margin-top: 14px; }
-  .gate .server-line button { padding: 0 2px; }
-  .gate #gateServerRow { margin-top: 8px; }
-
   main { flex: 1 1 auto; overflow-y: auto; padding: 12px 16px 8px; }
 
   .field { margin-bottom: 12px; }
@@ -163,19 +159,6 @@
   .btn.text { border: none; background: transparent; color: var(--accent); padding: 4px; }
   .btn.text:hover { text-decoration: underline; }
 
-  /* v1.8.0 多配置 Profile 选择器：夹在 header 与内容之间，gate/main 都可见 */
-  .profilebar {
-    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
-    flex: 0 0 auto;
-  }
-  .profilebar .pb-row { display: flex; align-items: center; gap: 6px; }
-  .profilebar .pb-k { font-size: 11px; color: var(--dim); flex: 0 0 auto; }
-  .profilebar select { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; margin: 0; }
-  .profilebar .pb-actions { display: flex; gap: 4px; flex: 0 0 auto; }
-  .profilebar .pb-edit { display: flex; gap: 6px; margin-top: 8px; }
-  .profilebar .pb-edit input { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; margin: 0; }
-  .profilebar .pb-hint { font-size: 11px; color: var(--dim); margin-top: 6px; }
-
   footer.foot {
     display: flex; align-items: center; gap: 8px; padding: 12px 16px;
     border-top: 1px solid var(--border); flex: 0 0 auto;
@@ -218,25 +201,6 @@
     <button id="close" class="link" type="button">关闭</button>
   </header>
 
-  <!-- v1.8.0 上传目标：多配置切换，gate 与 main 都可见 -->
-  <section id="profileBar" class="profilebar hidden">
-    <div class="pb-row">
-      <span class="pb-k">上传目标</span>
-      <select id="profileSelect"></select>
-      <span class="pb-actions">
-        <button id="profileAdd" class="btn small" type="button" title="新建配置">＋</button>
-        <button id="profileRename" class="btn small" type="button" title="重命名当前配置">改名</button>
-        <button id="profileDelete" class="btn small" type="button" title="删除当前配置">删除</button>
-      </span>
-    </div>
-    <div id="profileEditRow" class="pb-edit hidden">
-      <input id="profileNameInput" type="text" maxlength="24" placeholder="配置名称，例如：账号甲 / 新站" />
-      <button id="profileEditOk" class="btn small" type="button">确定</button>
-      <button id="profileEditCancel" class="btn small" type="button">取消</button>
-    </div>
-    <div id="profileHint" class="pb-hint hidden"></div>
-  </section>
-
   <div id="error" class="error hidden">
     <div class="row">
       <span id="errorText"></span>
@@ -244,20 +208,13 @@
     </div>
   </div>
 
-  <!-- 首次运行：粘贴令牌 -->
+  <!-- 首次运行：粘贴令牌（v1.9.0：只需令牌，站点自动识别） -->
   <section id="gate" class="gate hidden">
     <h2>粘贴导入令牌</h2>
-    <p class="dim small">在网站「团队设置 → 导入令牌」生成，粘贴到这里保存。</p>
+    <p class="dim small">在网站「团队设置 → 导入令牌」生成，粘贴到这里保存。插件会自动识别令牌属于哪个站点，无需填写域名。</p>
     <input id="gateToken" type="text" placeholder="imp_ 开头" autocomplete="off" spellcheck="false" />
     <button id="gateSave" class="btn primary wide" type="button">保存并继续</button>
-    <p class="dim small server-line">
-      服务器：<span id="gateServerText">https://sjxz.yundongchangzu.com</span>
-      <button id="gateServerEdit" class="btn text" type="button">更改</button>
-    </p>
     <p id="gateStorageHint" class="dim small hidden"></p>
-    <div id="gateServerRow" class="hidden">
-      <input id="gateBaseUrl" type="text" placeholder="https://sjxz.yundongchangzu.com" />
-    </div>
   </section>
 
   <!-- 单屏主界面 -->
@@ -321,22 +278,15 @@
     </section>
 
     <details id="advanced" class="advanced">
-      <summary>高级设置</summary>
+      <summary>更换令牌</summary>
       <div class="adv-body">
-        <div class="field">
-          <label>服务器地址</label>
-          <div class="row">
-            <input id="baseUrl" class="grow" type="text" placeholder="https://sjxz.yundongchangzu.com" />
-            <button id="reconnect" class="btn" type="button">重新连接</button>
-          </div>
-        </div>
-
         <div class="field">
           <label>导入令牌</label>
           <div class="row">
             <input id="token" class="grow" type="password" placeholder="imp_ 开头" />
-            <button id="saveToken" class="btn" type="button">保存令牌</button>
+            <button id="saveToken" class="btn" type="button">保存并重连</button>
           </div>
+          <div id="tokenHint" class="hint">粘贴新令牌后自动识别归属站点，无需填写域名。</div>
         </div>
       </div>
     </details>
@@ -384,13 +334,15 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.8.2';
-  // 线上后端默认值。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
-  // v1.8.1：双域名并存——旧站 www.shilipix.cn 仍可用，每个配置独立记各自的 baseUrl+令牌，
-  // 不再强制把旧域名改成新站。DEFAULT_BASE_URL 只是「新建配置」的默认值。
-  // v1.8.2：旧站必须用 www 裸域名会被 Vercel 308 跳转且丢 CORS 头，插件 fetch 失败。
-  var DEFAULT_BASE_URL = 'https://sjxz.yundongchangzu.com';
-  var RETIRED_BASE_URL_RE = /^(https?:\/\/)?(www\.)?(shejixiezuo-gd7w\.vercel\.app|shilipix\.cn)([\/:]|$)/i;
+  var UI_VERSION = '1.9.0';
+  // v1.9.0：单令牌自动判站点——用户只填令牌，不再配置域名/多账号。
+  // 内置站点白名单（界面不出现）：连接时并发对每个站点请求 /api/plugin/me，
+  // 谁认这个令牌（HTTP 200）就上传到谁；都认或都不认都有明确提示。
+  // 旧站必须用 www：裸域 shilipix.cn 被 Vercel 308 到 www 且丢 CORS 头，插件 fetch 会失败。
+  var SITES = [
+    { id: 'new', name: '新站', baseUrl: 'https://sjxz.yundongchangzu.com' },
+    { id: 'old', name: '旧站', baseUrl: 'https://www.shilipix.cn' },
+  ];
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -407,14 +359,10 @@
     prefsTokenSrc: '',
     // v1.5.9：manifest 里写死的插件 id（主线程回报），用于确认导入的是带 id 的版本
     pluginId: '',
-    // v1.8.0：多配置 Profile。每个配置独立保存 baseUrl/token/team/project/group。
-    // 顶层 baseUrl/token/teamId/... 仍是「当前激活配置」的活动镜像——现有读写逻辑全部不动；
-    // persistPrefs 时把镜像写回 active profile，切换配置时把 profile 加载回镜像。
-    profiles: [],
-    activeProfileId: '',
-    baseUrl: DEFAULT_BASE_URL,
-    // v1.5.6：老安装偏好里存的是 localhost，连不上时自动回退一次到线上服务
-    fallbackTried: false,
+    // v1.9.0：单令牌自动判站点。baseUrl 由探测动态决定（命中站点的地址），
+    // 不再持久化用户填写的域名；token 是唯一需要用户提供的凭证。
+    baseUrl: '',          // 探测命中的站点地址（运行时）
+    siteName: '',         // 探测命中的站点名（运行时，用于显示）
     token: '',
     scope: '',
     // 连接状态：区分「没连上服务器」和「连上了但没选目标」，
@@ -620,8 +568,6 @@
     $('foot').classList.add('hidden');
     var tokenInput = $('gateToken');
     tokenInput.value = '';
-    $('gateServerText').textContent = baseUrl();
-    $('gateBaseUrl').value = state.baseUrl;
     // v1.5.9：manifest 已写死固定插件 id，Figma 接受后 clientStorage 就是令牌的家。
     // 这里据实告诉用户令牌存在哪、能不能跨文件，以及没生效时怎么排查。
     var probe = state.prefsProbe;
@@ -715,7 +661,6 @@
       var input = l.querySelector('input');
       if (input) input.checked = Number(l.dataset.scale) === state.scale;
     });
-    $('baseUrl').value = state.baseUrl;
     $('token').value = state.token;
     $('scaleHint').textContent = '导 3x 切图请选 4x 位图（整板分辨率高于切图倍率时最清晰）；大画板导出较慢（单张最长 90 秒），单张超过 5MB 自动跳过图片。';
   }
@@ -730,58 +675,7 @@
   // ---------- 三级目标：团队 → 项目 → 编组 ----------
   function baseUrl() {
     var v = String(state.baseUrl || '').trim().replace(/\/+$/, '');
-    return v || DEFAULT_BASE_URL;
-  }
-
-  // ---------- v1.8.0 配置选择器 ----------
-  function profileLabel() {
-    var p = activeProfile();
-    return p ? p.name : '默认配置';
-  }
-  function renderProfileBar() {
-    if (!state.profiles.length) { $('profileBar').classList.add('hidden'); return; }
-    $('profileBar').classList.remove('hidden');
-    $('profileSelect').innerHTML = state.profiles.map(function (p) {
-      var host = String(p.baseUrl || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-      return '<option value="' + esc(p.id) + '"' + (p.id === state.activeProfileId ? ' selected' : '') + '>'
-        + esc(p.name) + ' · ' + esc(host) + '</option>';
-    }).join('');
-    // 只有一个配置时禁用删除，避免误删到空
-    $('profileDelete').disabled = state.profiles.length <= 1;
-  }
-  /** 切换配置：保存当前镜像 → 加载目标 → 立即落盘 → 重连 */
-  async function switchProfile(id) {
-    if (id === state.activeProfileId) return;
-    var target = activeProfileById(id);
-    if (!target) return;
-    if (state.busy) { showError('正在上传，等完成后再切换配置'); $('profileSelect').value = state.activeProfileId; return; }
-    clearError();
-    syncToProfile();          // 保存当前配置的编辑态
-    loadProfile(target);      // 加载目标配置（已清空连接态）
-    persistPrefs(true);
-    renderProfileBar();
-    renderSettings();
-    renderTargets();
-    // 目标配置有令牌就自动连接；没有就进门禁页填该站的令牌
-    if (state.token && /^imp_/.test(state.token)) {
-      showMain();
-      try {
-        await connectWithFallback();
-        $('meta').textContent = '配置「' + profileLabel() + '」· 已连接 ' + baseUrl();
-      } catch (err) {
-        state.connected = false;
-        state.connectError = (err && err.message) || String(err);
-        renderTargets();
-        if (err && err.status === 401) {
-          clearActiveToken();
-          showGate('配置「' + profileLabel() + '」的令牌已失效：' + err.message);
-        } else {
-          showError('切换配置后连接失败（' + baseUrl() + '）：' + state.connectError, retryConnect);
-        }
-      }
-    } else {
-      showGate('已切换到配置「' + profileLabel() + '」，请粘贴该账号的导入令牌');
-    }
+    return v || SITES[0].baseUrl;
   }
 
   function teamById(id) {
@@ -893,21 +787,60 @@
     el.classList.toggle('err', !!isError);
   }
 
-  /** 本机地址：老安装的默认偏好是 localhost，多数用户并没有本地后端 */
-  function isLocalBaseUrl(url) {
-    return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(String(url || ''));
+  /** fetch 失败时给出可操作的排查路径 */
+  function describeConnectionError(url) {
+    return '无法访问 ' + url + '：可能是域名不可达、HTTPS/证书、CORS、mixed content，或该域名未在插件 manifest 的 networkAccess 中授权。'
+      + '排查：在浏览器打开 ' + url + '/api/health，应看到 {"ok":true}。';
   }
 
-  /** fetch 失败时给出可操作的排查路径；不再把所有非 localhost 失败都归因于 manifest */
-  function describeConnectionError(url) {
-    var m = /^https?:\/\/([^/:?#]+)/i.exec(String(url || ''));
-    if (!m) return '服务器地址不正确：请检查高级设置里的地址（需要以 http:// 或 https:// 开头）';
-    var host = m[1].toLowerCase();
-    var check = ' 排查：在浏览器打开 ' + url + '/api/health，应看到 {"ok":true}；再检查服务端 CORS 与插件 manifest 的 networkAccess。';
-    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
-      return '连不上本机服务 ' + url + '（请求根本没发出去）：插件会自动改用线上服务 ' + DEFAULT_BASE_URL + '；若要连本地后端，请先启动 cd server && npm run dev。' + check;
+  /**
+   * v1.9.0：探测单个站点是否认这个令牌。此时还没定 baseUrl，不能走 api()，
+   * 直接对内置站点的 /api/plugin/me 发 Bearer 请求。
+   * 返回 { ok, site, me?, status, error? }。
+   */
+  async function probeSite(site, token) {
+    var url = site.baseUrl + '/api/plugin/me';
+    var started = Date.now();
+    try {
+      var res = await fetch(url, { method: 'GET', headers: { Authorization: 'Bearer ' + token } });
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* 非 JSON 响应 */ }
+      recordNet({ method: 'GET', url: url, bodyBytes: 0, ms: Date.now() - started, status: res.status });
+      if (res.ok && data && data.teamId) return { ok: true, site: site, me: data, status: res.status };
+      return { ok: false, site: site, status: res.status, error: (data && data.error) || ('HTTP ' + res.status) };
+    } catch (err) {
+      recordNet({ method: 'GET', url: url, bodyBytes: 0, ms: Date.now() - started, error: (err && err.message) || String(err) });
+      return { ok: false, site: site, status: 0, error: (err && err.message) || String(err) };
     }
-    return '无法访问 ' + url + '：可能是域名不可达、HTTPS/证书、CORS、mixed content，或该域名未在插件 manifest 的 networkAccess 中授权。' + check;
+  }
+
+  /**
+   * v1.9.0：并发探测内置站点，找到认这个令牌的站点，设置 state.baseUrl/siteName。
+   * 判定：① 有站点返回 200 → 命中（多个命中取第一个并告警）；② 全部 401 → 令牌无效(401)；
+   * ③ 有网络失败 → 连接类错误；④ 其它 → 站点异常。
+   */
+  async function detectSite(token) {
+    var results = await Promise.all(SITES.map(function (site) { return probeSite(site, token); }));
+    var hits = results.filter(function (r) { return r.ok; });
+    if (hits.length) {
+      if (hits.length > 1) {
+        console.warn('[site] 多个站点同时认此令牌，取第一个：' + hits.map(function (h) { return h.site.name; }).join(' / '));
+      }
+      state.baseUrl = hits[0].site.baseUrl;
+      state.siteName = hits[0].site.name;
+      return { site: hits[0].site, me: hits[0].me };
+    }
+    var all401 = results.every(function (r) { return r.status === 401; });
+    if (all401) {
+      var e401 = new Error('令牌在新站和旧站都无效或已撤销：请在网站「团队设置 → 导入令牌」重新生成');
+      e401.status = 401;
+      throw e401;
+    }
+    var netFail = results.filter(function (r) { return r.status === 0; });
+    if (netFail.length) {
+      throw new Error('无法连接 ' + netFail[0].site.name + '（' + netFail[0].site.baseUrl + '）：' + netFail[0].error);
+    }
+    throw new Error('站点返回异常：' + results.map(function (r) { return r.site.name + ' HTTP ' + r.status; }).join('，'));
   }
 
   /** 网络打点：URL、请求体字节数、状态码/错误、耗时，成功失败都显示并打到插件控制台 */
@@ -974,13 +907,18 @@
     return data;
   }
 
-  /** 校验令牌并拉取团队列表；401 回到粘贴令牌态 */
+  /**
+   * v1.9.0：探测令牌归属站点 → 拉团队/项目。
+   * detectSite 会设置 state.baseUrl / siteName，后续 api() 都打到命中的站点。
+   * me 由探测阶段一并返回，无需再请求一次 /api/plugin/me。
+   */
   async function connect() {
     clearError();
     state.connected = false;
     state.connectInfo = '';
     renderTargetSummary();
-    var me = await api('/api/plugin/me');
+    var hit = await detectSite(state.token);   // 命中站点并设 baseUrl
+    var me = hit.me;
     state.scope = me.scope === 'team' ? 'team' : 'all';
     state.teams = await api('/api/plugin/teams');
     if (!Array.isArray(state.teams)) state.teams = [];
@@ -991,45 +929,12 @@
     }
     state.connected = true;
     state.connectError = '';
-    state.connectInfo = '已连接 ' + baseUrl() + ' · ' + state.teams.length + ' 个团队';
+    state.connectInfo = '已连接 ' + state.siteName + ' · ' + state.teams.length + ' 个团队';
     renderTargets();
     if (state.teamId) await loadProjects();
     state.connectInfo += ' / ' + state.projects.length + ' 个项目';
     renderTeams();
     persistPrefs();
-  }
-
-  /**
-   * v1.5.6：老安装偏好里存的是 http://localhost:4000，而多数用户并没有本地后端。
-   * 本机连接失败时自动重试一次线上服务；401 是令牌问题，与地址无关，不回退。
-   * 回退成功后持久化新地址，用户仍可在「高级设置 → 服务器」改回本机。
-   */
-  async function connectWithFallback() {
-    try {
-      return await connect();
-    } catch (err) {
-      if (err && err.status === 401) throw err;
-      if (state.fallbackTried || !isLocalBaseUrl(baseUrl())) throw err;
-      state.fallbackTried = true;
-      var oldUrl = baseUrl();
-      state.baseUrl = DEFAULT_BASE_URL;
-      renderSettings();
-      try {
-        await connect();
-        state.connectInfo = '已自动改用线上服务 · ' + state.teams.length + ' 个团队 / ' + state.projects.length + ' 个项目';
-        renderTargets();
-        persistPrefs(true);
-        return;
-      } catch (err2) {
-        // 线上也连不上：还原原地址并抛出最初的错误，不把真实故障藏掉
-        state.baseUrl = oldUrl;
-        renderSettings();
-        state.connected = false;
-        state.connectError = (err && err.message) || String(err);
-        renderTargets();
-        throw err;
-      }
-    }
   }
 
   async function loadProjects() {
@@ -1138,153 +1043,63 @@
       return prefs;
     } catch (e) { return null; }
   }
-  // ---------- v1.8.0 多配置 Profile ----------
-  function newProfileId() {
-    return 'p_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1e6).toString(36);
-  }
-  /** 按域名给默认配置起个可辨识的名字 */
-  function suggestProfileName(baseUrl) {
-    if (/sjxz\.yundongchangzu\.com/i.test(baseUrl || '')) return '设计协作（新站）';
-    if (RETIRED_BASE_URL_RE.test(baseUrl || '')) return '设计协作（旧站）';
-    if (/localhost|127\.0\.0\.1/i.test(baseUrl || '')) return '本地开发';
-    return '设计协作';
-  }
-  function makeProfile(name, baseUrl, token, teamId, projectId, groupId, newGroupName) {
-    return {
-      id: newProfileId(),
-      name: name || '设计协作',
-      baseUrl: baseUrl || DEFAULT_BASE_URL,
-      token: token || '',
-      teamId: teamId || '',
-      projectId: projectId || '',
-      groupId: groupId || '',
-      newGroupName: newGroupName || '',
-    };
-  }
-  function activeProfile() {
-    for (var i = 0; i < state.profiles.length; i++) {
-      if (state.profiles[i].id === state.activeProfileId) return state.profiles[i];
-    }
-    return null;
-  }
-  /** 把当前 state 镜像写回激活配置（切配置/保存前调用） */
-  function syncToProfile() {
-    var p = activeProfile();
-    if (!p) return;
-    p.baseUrl = state.baseUrl;
-    p.token = state.token;
-    p.teamId = state.teamId;
-    p.projectId = state.projectId;
-    p.groupId = state.groupId;
-    p.newGroupName = state.newGroupName;
-  }
-  /** 把某配置加载进 state 镜像，并清掉连接态（切配置后必须重新连） */
-  function loadProfile(p) {
-    if (!p) return;
-    state.baseUrl = p.baseUrl || DEFAULT_BASE_URL;
-    state.token = p.token || '';
-    state.teamId = p.teamId || '';
-    state.projectId = p.projectId || '';
-    state.groupId = p.groupId || '';
-    state.newGroupName = p.newGroupName || '';
-    state.activeProfileId = p.id;
-    // 换配置 = 换域名/账号，团队项目编组必须重新拉，不能沿用上一套
-    state.teams = [];
-    state.projects = [];
-    state.groups = [];
-    state.scope = '';
-    state.connected = false;
-    state.connectError = '';
-    state.connectInfo = '';
-    state.fallbackTried = false;
-    state.targetOpen = false;
-  }
-  // 旧站真实地址，必须用 www：Vercel 把裸域 shilipix.cn 302/308 到 www，
-  // 而重定向响应不带 CORS 头，Figma data iframe(origin=null) 里 fetch 会 Failed to fetch。
-  var OLD_SITE_URL = 'https://www.shilipix.cn';
-
+  // ---------- v1.9.0 单令牌偏好（去掉 Profile / 域名 / 强制迁移） ----------
   /**
-   * v1.8.1：一次性还原被 v1.7.0/v1.8.0 强制迁移污染的配置。
-   * 污染特征：配置名是「设计协作（旧站）」(suggestProfileName 对旧域名生成)，
-   * 但 baseUrl 却是新域名、令牌被清空 —— 这是强制迁移改了域名却没改名字留下的错配。
-   * 还原：域名改回旧站、清空在新域名下填的无效令牌，打 retiredRestored 标记只做一次。
-   * 注意：正常的新站配置名字是「设计协作（新站）」，不会被误伤；用户改过名的配置也不动。
+   * v5 → v6 迁移：v5 里是 profiles[] + activeProfileId，每个配置各存 baseUrl/token/目标。
+   * v6 只保留一个令牌 + 三级目标，域名全部丢弃（改由 detectSite 自动判）。
+   * 取令牌策略：优先激活配置的 token；若为空则退到第一个非空 token 的配置；
+   * 再退到顶层镜像 prefs.token。这样被强制迁移污染过的旧数据也能救回有效令牌。
    */
-  function restoreRetiredProfile(p) {
-    // v1.8.1 的污染还原只做一次；但下面的裸域修正必须每次都跑（见 normalizeOldSiteHost）。
-    if (!p.retiredRestored) {
-      var isRetiredName = p.name === '设计协作（旧站）';
-      var pointsToNewSite = /sjxz\.yundongchangzu\.com/i.test(p.baseUrl || '');
-      if (isRetiredName && pointsToNewSite) {
-        console.warn('[prefs] 还原被强制迁移污染的配置「' + p.name + '」：新站域名 → ' + OLD_SITE_URL);
-        p.baseUrl = OLD_SITE_URL;
-        p.token = '';
-        p.teamId = '';
-        p.projectId = '';
-        p.groupId = '';
-        p.retiredRestored = true;
+  function normalizePrefs(prefs) {
+    var out = {
+      version: 6,
+      token: '',
+      teamId: '',
+      projectId: '',
+      groupId: '',
+      newGroupName: '',
+      platform: prefs.platform,
+      scale: prefs.scale,
+    };
+    var profiles = Array.isArray(prefs.profiles) ? prefs.profiles : [];
+    var pick = null;
+    if (profiles.length) {
+      // 优先激活配置
+      for (var i = 0; i < profiles.length; i++) {
+        if (profiles[i].id === prefs.activeProfileId) { pick = profiles[i]; break; }
+      }
+      // 激活配置无令牌 → 找第一个有令牌的
+      if (!pick || !/^imp_/.test(pick.token || '')) {
+        for (var j = 0; j < profiles.length; j++) {
+          if (/^imp_/.test(profiles[j].token || '')) { pick = profiles[j]; break; }
+        }
+      }
+      if (!pick) pick = profiles[0];
+      if (pick) {
+        out.token = /^imp_/.test(pick.token || '') ? pick.token : '';
+        out.teamId = pick.teamId || '';
+        out.projectId = pick.projectId || '';
+        out.groupId = pick.groupId || '';
+        out.newGroupName = pick.newGroupName || '';
       }
     }
-    return normalizeOldSiteHost(p);
-  }
-
-  /**
-   * v1.8.2：把裸域 shilipix.cn 规范成 www.shilipix.cn（幂等，不动令牌/目标）。
-   * 覆盖两类用户：① v1.8.1 已还原成裸域且带 retiredRestored 标记的配置；
-   * ② 用户在高级设置里手动填了裸域。裸域会 308 到 www 且重定向无 CORS 头，插件 fetch 必失败。
-   * 只改 baseUrl 主机，保留用户已填的令牌和三级目标。
-   */
-  function normalizeOldSiteHost(p) {
-    var bare = /^(https?:\/\/)shilipix\.cn([\/:]|$)/i.exec(p.baseUrl || '');
-    if (bare) {
-      var rest = (p.baseUrl || '').replace(/^https?:\/\/shilipix\.cn/i, '');
-      console.warn('[prefs] 旧站裸域规范化：' + p.baseUrl + ' → ' + OLD_SITE_URL + rest);
-      p.baseUrl = OLD_SITE_URL + rest;
+    // 顶层镜像兜底令牌（v4 及更早，或 profiles 里没令牌）
+    if (!/^imp_/.test(out.token) && /^imp_/.test(prefs.token || '')) {
+      out.token = prefs.token;
+      if (!out.teamId) out.teamId = prefs.teamId || '';
+      if (!out.projectId) out.projectId = prefs.projectId || '';
+      if (!out.groupId) out.groupId = prefs.groupId || '';
+      if (!out.newGroupName) out.newGroupName = prefs.newGroupName || '';
     }
-    return p;
-  }
-
-  /** v4 → v5 迁移：旧的单配置 prefs 包成第一个 Profile */
-  function normalizeProfiles(prefs) {
-    if (Array.isArray(prefs.profiles) && prefs.profiles.length) {
-      // 已经是 v5：保留原 id（activeProfileId 依赖它），只补全缺失字段；顺带还原被污染的旧站配置
-      return prefs.profiles.map(function (p) {
-        var fixed = restoreRetiredProfile({
-          id: p.id || newProfileId(),
-          name: p.name || suggestProfileName(p.baseUrl),
-          baseUrl: p.baseUrl || DEFAULT_BASE_URL,
-          token: p.token || '',
-          teamId: p.teamId || '',
-          projectId: p.projectId || '',
-          groupId: p.groupId || '',
-          newGroupName: p.newGroupName || '',
-          retiredRestored: !!p.retiredRestored,
-        });
-        return fixed;
-      });
-    }
-    // v4 或更早：把顶层单配置包成默认配置，保留 id 语义由新生成
-    return [restoreRetiredProfile(makeProfile(
-      suggestProfileName(prefs.baseUrl),
-      prefs.baseUrl || DEFAULT_BASE_URL,
-      prefs.token || '',
-      prefs.teamId,
-      prefs.projectId,
-      prefs.groupId,
-      prefs.newGroupName
-    ))];
+    return out;
   }
 
   function persistPrefs(immediate) {
     clearTimeout(prefsTimer);
     var send = function () {
-      syncToProfile();
       var prefs = {
-        version: 5,
-        profiles: state.profiles,
-        activeProfileId: state.activeProfileId,
-        // 顶层镜像仍写：code.js 的 token 三路单独存储依赖 prefs.token / prefs.baseUrl
-        baseUrl: state.baseUrl,
+        version: 6,
+        // 只存令牌与三级目标；baseUrl / 域名 / profiles 一律不再持久化
         token: state.token,
         platform: state.platform,
         scale: state.scale,
@@ -1296,7 +1111,6 @@
         newGroupName: state.newGroupName,
       };
       postToPlugin({ type: 'save-prefs', prefs: prefs });
-      // 记住 UI 侧 localStorage 是否写入成功：主线程三路都不可用时，这里仍可能存住令牌
       state.lsSaved = lsSavePrefs(prefs);
     };
     if (immediate) { send(); return; }
@@ -1305,52 +1119,40 @@
 
   function applyPrefs(prefs, src) {
     if (!prefs || typeof prefs !== 'object') return;
-    // v1.8.0：先把单配置旧偏好迁移成 profiles[]，再加载激活配置
-    state.profiles = normalizeProfiles(prefs);
-    var activeId = prefs.activeProfileId;
-    var found = activeProfileById(activeId);
-    if (!found) found = state.profiles[0];
-    loadProfile(found);
+    var p = (Number(prefs.version) >= 6) ? prefs : normalizePrefs(prefs);
+    state.token = /^imp_/.test(p.token || '') ? p.token : '';
+    state.teamId = p.teamId || '';
+    state.projectId = p.projectId || '';
+    state.groupId = p.groupId || '';
+    state.newGroupName = p.newGroupName || '';
+    // 站点由令牌探测决定，不读取任何历史 baseUrl
+    state.baseUrl = '';
+    state.siteName = '';
+    state.teams = [];
+    state.projects = [];
+    state.groups = [];
+    state.scope = '';
+    state.connected = false;
+    state.connectError = '';
+    state.connectInfo = '';
+    state.targetOpen = false;
 
-    var migrated = false;
-    // 旧会话偏好里可能残留历史后端端口（5002 = 已下线的 preview-runtime16），
-    // 现在后端固定跑 4000：一次性迁移，避免「上传失败 HTTP 000」每次都要手动改地址
-    var stale = /^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?/i.exec(state.baseUrl);
-    if (stale && stale[3] && stale[3] !== ':4000') {
-      console.warn('[prefs] 旧服务地址 ' + state.baseUrl + ' 已迁移为 http://localhost:4000');
-      state.baseUrl = 'http://localhost:4000';
-      migrated = true;
-    }
-    // v1.8.1：不再强制迁移旧域名。双域名并存是合法用法（每个配置独立指向自己的站点+令牌），
-    // 旧域名 shilipix.cn 仍在用，强制改成新站会破坏「旧站」配置。被 v1.7.0/v1.8.0 污染的配置
-    // 由 normalizeProfiles 里的 restoreRetiredProfile 一次性还原。
-    // 把可能迁移过的镜像值同步回激活配置，保证 profiles[] 与 state 一致
-    syncToProfile();
-
-    if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
-    if ([1, 2, 3, 4].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
+    if (p.platform === 'ios' || p.platform === 'android' || p.platform === 'web') state.platform = p.platform;
+    if ([1, 2, 3, 4].indexOf(Number(p.scale)) >= 0) state.scale = Number(p.scale);
     // v1.5.2：位图切图 / 逐图层高清切图固定开启，忽略旧偏好里保存的开关状态
     state.includeImage = true;
     state.includeSlices = true;
-    // v1.5.4：记录偏好读取来源，门禁页据此显示「上次登录状态」存在哪
     if (src && typeof src === 'object') {
       state.prefsSrc = { client: !!src.client, doc: !!src.doc, page: !!src.page };
     }
-    renderProfileBar();
     renderSettings();
     renderTargets();
-    // 版本升级或地址迁移后立即落盘，固化新的 profiles[] 结构
-    if (migrated || prefs.version !== 5) persistPrefs(true);
+    // 旧版本偏好（v5 及更早）迁移后立即落盘，固化 v6 结构
+    if (Number(prefs.version) !== 6) persistPrefs(true);
   }
 
-  function activeProfileById(id) {
-    for (var i = 0; i < state.profiles.length; i++) {
-      if (state.profiles[i].id === id) return state.profiles[i];
-    }
-    return null;
-  }
-  /** 令牌失效：只清空当前激活配置的令牌与三级目标，不影响其它配置 */
-  function clearActiveToken() {
+  /** 令牌失效：清空令牌与三级目标 */
+  function clearToken() {
     state.token = '';
     state.teamId = '';
     state.projectId = '';
@@ -1358,11 +1160,12 @@
     state.teams = [];
     state.projects = [];
     state.groups = [];
-    syncToProfile();
+    state.baseUrl = '';
+    state.siteName = '';
     persistPrefs(true);
   }
 
-  /** boot 之后启动：没令牌先粘贴；有令牌则校验并恢复三级选择 */
+  /** boot 之后启动：没令牌先粘贴；有令牌则探测站点并恢复三级选择 */
   async function start() {
     if (state.started) return;
     state.started = true;
@@ -1374,19 +1177,17 @@
     renderSettings();
     renderTargets();
     try {
-      await connectWithFallback();
+      await connect();
     } catch (err) {
       state.connected = false;
       state.connectError = (err && err.message) || String(err);
       renderTargets();
       if (err && err.status === 401) {
-        // 只有服务端明确返回 401（令牌无效/已撤销）才清空——且只清当前配置
-        clearActiveToken();
-        showGate('当前配置「' + profileLabel() + '」的令牌已失效或已撤销：' + err.message);
+        clearToken();
+        showGate('令牌已失效或已撤销：' + err.message);
         postToPlugin({ type: 'notify', message: '导入令牌已失效，请重新粘贴' });
       } else {
-        // 网络失败/超时/CORS/5xx：保留已存令牌，给重试
-        showError('连接失败（' + baseUrl() + '），令牌已保留：' + state.connectError, function () { retryConnect(); });
+        showError('连接失败，令牌已保留：' + state.connectError, function () { retryConnect(); });
       }
     }
   }
@@ -1394,15 +1195,15 @@
   function retryConnect() {
     clearError();
     showMain();
-    connectWithFallback().catch(function (err) {
+    connect().catch(function (err) {
       state.connected = false;
       state.connectError = (err && err.message) || String(err);
       renderTargets();
       if (err && err.status === 401) {
-        clearActiveToken();
-        showGate('当前配置「' + profileLabel() + '」的令牌已失效或已撤销：' + err.message);
+        clearToken();
+        showGate('令牌已失效或已撤销：' + err.message);
       } else {
-        showError('连接失败（' + baseUrl() + '），令牌已保留：' + state.connectError, retryConnect);
+        showError('连接失败，令牌已保留：' + state.connectError, retryConnect);
       }
     });
   }
@@ -1650,117 +1451,13 @@
   // ---------- 事件绑定 ----------
   $('close').onclick = function () { postToPlugin({ type: 'close' }); };
 
-  // 配置切换
-  $('profileSelect').onchange = function () { void switchProfile($('profileSelect').value); };
-
-  // 新建 / 改名：复用同一行内联输入，避免依赖 prompt
-  var profileEditMode = ''; // 'add' | 'rename'
-  function openProfileEdit(mode) {
-    profileEditMode = mode;
-    $('profileEditRow').classList.remove('hidden');
-    $('profileHint').classList.add('hidden');
-    var input = $('profileNameInput');
-    if (mode === 'rename') {
-      input.value = profileLabel();
-    } else {
-      input.value = '';
-      input.placeholder = '例如：账号甲 / 新站';
-    }
-    input.focus();
-    input.select();
-  }
-  function closeProfileEdit() {
-    profileEditMode = '';
-    $('profileEditRow').classList.add('hidden');
-  }
-  $('profileAdd').onclick = function () { openProfileEdit('add'); };
-  $('profileRename').onclick = function () { openProfileEdit('rename'); };
-  $('profileEditCancel').onclick = function () { closeProfileEdit(); };
-  $('profileEditOk').onclick = function () {
-    var name = $('profileNameInput').value.trim();
-    if (!name) { $('profileNameInput').focus(); return; }
-    var mode = profileEditMode;
-    var newId = '';
-    if (mode === 'rename') {
-      var p = activeProfile();
-      if (p) p.name = name;
-    } else if (mode === 'add') {
-      // 新配置：默认指向线上新域名，令牌留空 → 建好后进门禁页填该站令牌
-      var np = makeProfile(name, DEFAULT_BASE_URL);
-      state.profiles.push(np);
-      newId = np.id;
-    }
-    closeProfileEdit();
-    persistPrefs(true);
-    if (newId) { void switchProfile(newId); return; } // 新建后自动切过去（会落盘+重连/进门禁）
-    renderProfileBar();
-    renderSettings();
-    renderTargets();
-  };
-  $('profileNameInput').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); $('profileEditOk').click(); }
-    else if (e.key === 'Escape') { closeProfileEdit(); }
-  });
-
-  // 删除：二次确认，避免误删
-  var deleteArmed = false;
-  var deleteTimer = null;
-  $('profileDelete').onclick = function () {
-    if (state.profiles.length <= 1) return;
-    var btn = $('profileDelete');
-    if (!deleteArmed) {
-      deleteArmed = true;
-      btn.textContent = '确认删除?';
-      $('profileHint').textContent = '再点一次「确认删除?」删除当前配置「' + profileLabel() + '」；此操作只删本地配置，不影响网站数据。';
-      $('profileHint').classList.remove('hidden');
-      clearTimeout(deleteTimer);
-      deleteTimer = setTimeout(function () {
-        deleteArmed = false;
-        btn.textContent = '删除';
-        $('profileHint').classList.add('hidden');
-      }, 4000);
-      return;
-    }
-    clearTimeout(deleteTimer);
-    deleteArmed = false;
-    btn.textContent = '删除';
-    $('profileHint').classList.add('hidden');
-    var idx = -1;
-    for (var i = 0; i < state.profiles.length; i++) {
-      if (state.profiles[i].id === state.activeProfileId) { idx = i; break; }
-    }
-    if (idx < 0) return;
-    state.profiles.splice(idx, 1);
-    var next = state.profiles[Math.min(idx, state.profiles.length - 1)];
-    syncToProfile();
-    loadProfile(next);
-    persistPrefs(true);
-    renderProfileBar();
-    renderSettings();
-    renderTargets();
-    if (state.token && /^imp_/.test(state.token)) {
-      showMain();
-      void connectWithFallback().catch(function () {});
-    } else {
-      showGate('已删除配置，请粘贴令牌');
-    }
-  };
-
   $('errorRetry').onclick = function () {
     var fn = retryHandler;
     clearError();
     if (fn) fn();
   };
 
-  // 首次粘贴令牌
-  $('gateServerEdit').onclick = function () {
-    $('gateServerRow').classList.toggle('hidden');
-  };
-  $('gateBaseUrl').oninput = function () {
-    state.baseUrl = $('gateBaseUrl').value.trim();
-    state.fallbackTried = false;
-    $('gateServerText').textContent = baseUrl();
-  };
+  // 首次粘贴令牌（v1.9.0：只需令牌，站点自动识别）
   async function saveGateToken() {
     var token = $('gateToken').value.trim();
     if (!token) { showError('请粘贴导入令牌'); return; }
@@ -1772,22 +1469,24 @@
     state.teamId = '';
     state.projectId = '';
     state.groupId = '';
+    state.baseUrl = '';
+    state.siteName = '';
     clearError();
     persistPrefs(true);
     showMain();
     renderSettings();
     try {
-      await connectWithFallback();
-      $('meta').textContent = '已连接 ' + baseUrl();
+      await connect();
+      $('meta').textContent = '已连接 ' + state.siteName;
     } catch (err) {
       state.connected = false;
       state.connectError = (err && err.message) || String(err);
       renderTargets();
       if (err && err.status === 401) {
-        clearActiveToken();
-        showGate('配置「' + profileLabel() + '」令牌无效或已撤销：' + err.message);
+        clearToken();
+        showGate('令牌无效或已撤销：' + err.message);
       } else {
-        showError('连接失败（' + baseUrl() + '）：' + state.connectError, retryConnect);
+        showError('连接失败：' + state.connectError, retryConnect);
       }
     }
   }
@@ -1844,26 +1543,7 @@
     persistPrefs();
   };
 
-  // 高级设置
-  $('baseUrl').oninput = function () {
-    var next = $('baseUrl').value.trim();
-    if (next === state.baseUrl) return;
-    state.baseUrl = next;
-    state.fallbackTried = false; // 用户主动改地址后，允许下次再自动回退
-    // 换了后端就可能换了数据库：旧团队/项目/编组不能沿用，必须重新连接
-    state.connected = false;
-    state.connectError = '服务器地址已修改，请点「重新连接」';
-    state.connectInfo = '';
-    state.teams = [];
-    state.projects = [];
-    state.groups = [];
-    state.teamId = '';
-    state.projectId = '';
-    state.groupId = '';
-    renderTargets();
-    persistPrefs();
-  };
-  $('reconnect').onclick = function () { retryConnect(); };
+  // 更换令牌（v1.9.0：换令牌即重新探测站点）
   $('token').oninput = function () { state.token = $('token').value.trim(); persistPrefs(); };
   $('saveToken').onclick = function () {
     var token = $('token').value.trim();
@@ -1872,7 +1552,9 @@
     state.teamId = '';
     state.projectId = '';
     state.groupId = '';
-    persistPrefs();
+    state.baseUrl = '';
+    state.siteName = '';
+    persistPrefs(true);
     retryConnect();
   };
   document.querySelectorAll('#platformGroup button').forEach(function (b) {
