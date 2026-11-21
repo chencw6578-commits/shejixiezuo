@@ -163,6 +163,19 @@
   .btn.text { border: none; background: transparent; color: var(--accent); padding: 4px; }
   .btn.text:hover { text-decoration: underline; }
 
+  /* v1.8.0 多配置 Profile 选择器：夹在 header 与内容之间，gate/main 都可见 */
+  .profilebar {
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+    flex: 0 0 auto;
+  }
+  .profilebar .pb-row { display: flex; align-items: center; gap: 6px; }
+  .profilebar .pb-k { font-size: 11px; color: var(--dim); flex: 0 0 auto; }
+  .profilebar select { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; margin: 0; }
+  .profilebar .pb-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+  .profilebar .pb-edit { display: flex; gap: 6px; margin-top: 8px; }
+  .profilebar .pb-edit input { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; margin: 0; }
+  .profilebar .pb-hint { font-size: 11px; color: var(--dim); margin-top: 6px; }
+
   footer.foot {
     display: flex; align-items: center; gap: 8px; padding: 12px 16px;
     border-top: 1px solid var(--border); flex: 0 0 auto;
@@ -204,6 +217,25 @@
     </div>
     <button id="close" class="link" type="button">关闭</button>
   </header>
+
+  <!-- v1.8.0 上传目标：多配置切换，gate 与 main 都可见 -->
+  <section id="profileBar" class="profilebar hidden">
+    <div class="pb-row">
+      <span class="pb-k">上传目标</span>
+      <select id="profileSelect"></select>
+      <span class="pb-actions">
+        <button id="profileAdd" class="btn small" type="button" title="新建配置">＋</button>
+        <button id="profileRename" class="btn small" type="button" title="重命名当前配置">改名</button>
+        <button id="profileDelete" class="btn small" type="button" title="删除当前配置">删除</button>
+      </span>
+    </div>
+    <div id="profileEditRow" class="pb-edit hidden">
+      <input id="profileNameInput" type="text" maxlength="24" placeholder="配置名称，例如：账号甲 / 新站" />
+      <button id="profileEditOk" class="btn small" type="button">确定</button>
+      <button id="profileEditCancel" class="btn small" type="button">取消</button>
+    </div>
+    <div id="profileHint" class="pb-hint hidden"></div>
+  </section>
 
   <div id="error" class="error hidden">
     <div class="row">
@@ -352,7 +384,7 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.7.0';
+  var UI_VERSION = '1.8.0';
   // 线上后端。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
   // v1.7.0：旧域名（shejixiezuo-gd7w.vercel.app / shilipix.cn）已停用，统一指向新域名。
   var DEFAULT_BASE_URL = 'https://sjxz.yundongchangzu.com';
@@ -373,6 +405,11 @@
     prefsTokenSrc: '',
     // v1.5.9：manifest 里写死的插件 id（主线程回报），用于确认导入的是带 id 的版本
     pluginId: '',
+    // v1.8.0：多配置 Profile。每个配置独立保存 baseUrl/token/team/project/group。
+    // 顶层 baseUrl/token/teamId/... 仍是「当前激活配置」的活动镜像——现有读写逻辑全部不动；
+    // persistPrefs 时把镜像写回 active profile，切换配置时把 profile 加载回镜像。
+    profiles: [],
+    activeProfileId: '',
     baseUrl: DEFAULT_BASE_URL,
     // v1.5.6：老安装偏好里存的是 localhost，连不上时自动回退一次到线上服务
     fallbackTried: false,
@@ -692,6 +729,57 @@
   function baseUrl() {
     var v = String(state.baseUrl || '').trim().replace(/\/+$/, '');
     return v || DEFAULT_BASE_URL;
+  }
+
+  // ---------- v1.8.0 配置选择器 ----------
+  function profileLabel() {
+    var p = activeProfile();
+    return p ? p.name : '默认配置';
+  }
+  function renderProfileBar() {
+    if (!state.profiles.length) { $('profileBar').classList.add('hidden'); return; }
+    $('profileBar').classList.remove('hidden');
+    $('profileSelect').innerHTML = state.profiles.map(function (p) {
+      var host = String(p.baseUrl || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      return '<option value="' + esc(p.id) + '"' + (p.id === state.activeProfileId ? ' selected' : '') + '>'
+        + esc(p.name) + ' · ' + esc(host) + '</option>';
+    }).join('');
+    // 只有一个配置时禁用删除，避免误删到空
+    $('profileDelete').disabled = state.profiles.length <= 1;
+  }
+  /** 切换配置：保存当前镜像 → 加载目标 → 立即落盘 → 重连 */
+  async function switchProfile(id) {
+    if (id === state.activeProfileId) return;
+    var target = activeProfileById(id);
+    if (!target) return;
+    if (state.busy) { showError('正在上传，等完成后再切换配置'); $('profileSelect').value = state.activeProfileId; return; }
+    clearError();
+    syncToProfile();          // 保存当前配置的编辑态
+    loadProfile(target);      // 加载目标配置（已清空连接态）
+    persistPrefs(true);
+    renderProfileBar();
+    renderSettings();
+    renderTargets();
+    // 目标配置有令牌就自动连接；没有就进门禁页填该站的令牌
+    if (state.token && /^imp_/.test(state.token)) {
+      showMain();
+      try {
+        await connectWithFallback();
+        $('meta').textContent = '配置「' + profileLabel() + '」· 已连接 ' + baseUrl();
+      } catch (err) {
+        state.connected = false;
+        state.connectError = (err && err.message) || String(err);
+        renderTargets();
+        if (err && err.status === 401) {
+          clearActiveToken();
+          showGate('配置「' + profileLabel() + '」的令牌已失效：' + err.message);
+        } else {
+          showError('切换配置后连接失败（' + baseUrl() + '）：' + state.connectError, retryConnect);
+        }
+      }
+    } else {
+      showGate('已切换到配置「' + profileLabel() + '」，请粘贴该账号的导入令牌');
+    }
   }
 
   function teamById(id) {
@@ -1048,11 +1136,105 @@
       return prefs;
     } catch (e) { return null; }
   }
+  // ---------- v1.8.0 多配置 Profile ----------
+  function newProfileId() {
+    return 'p_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1e6).toString(36);
+  }
+  /** 按域名给默认配置起个可辨识的名字 */
+  function suggestProfileName(baseUrl) {
+    if (/sjxz\.yundongchangzu\.com/i.test(baseUrl || '')) return '设计协作（新站）';
+    if (RETIRED_BASE_URL_RE.test(baseUrl || '')) return '设计协作（旧站）';
+    if (/localhost|127\.0\.0\.1/i.test(baseUrl || '')) return '本地开发';
+    return '设计协作';
+  }
+  function makeProfile(name, baseUrl, token, teamId, projectId, groupId, newGroupName) {
+    return {
+      id: newProfileId(),
+      name: name || '设计协作',
+      baseUrl: baseUrl || DEFAULT_BASE_URL,
+      token: token || '',
+      teamId: teamId || '',
+      projectId: projectId || '',
+      groupId: groupId || '',
+      newGroupName: newGroupName || '',
+    };
+  }
+  function activeProfile() {
+    for (var i = 0; i < state.profiles.length; i++) {
+      if (state.profiles[i].id === state.activeProfileId) return state.profiles[i];
+    }
+    return null;
+  }
+  /** 把当前 state 镜像写回激活配置（切配置/保存前调用） */
+  function syncToProfile() {
+    var p = activeProfile();
+    if (!p) return;
+    p.baseUrl = state.baseUrl;
+    p.token = state.token;
+    p.teamId = state.teamId;
+    p.projectId = state.projectId;
+    p.groupId = state.groupId;
+    p.newGroupName = state.newGroupName;
+  }
+  /** 把某配置加载进 state 镜像，并清掉连接态（切配置后必须重新连） */
+  function loadProfile(p) {
+    if (!p) return;
+    state.baseUrl = p.baseUrl || DEFAULT_BASE_URL;
+    state.token = p.token || '';
+    state.teamId = p.teamId || '';
+    state.projectId = p.projectId || '';
+    state.groupId = p.groupId || '';
+    state.newGroupName = p.newGroupName || '';
+    state.activeProfileId = p.id;
+    // 换配置 = 换域名/账号，团队项目编组必须重新拉，不能沿用上一套
+    state.teams = [];
+    state.projects = [];
+    state.groups = [];
+    state.scope = '';
+    state.connected = false;
+    state.connectError = '';
+    state.connectInfo = '';
+    state.fallbackTried = false;
+    state.targetOpen = false;
+  }
+  /** v4 → v5 迁移：旧的单配置 prefs 包成第一个 Profile */
+  function normalizeProfiles(prefs) {
+    if (Array.isArray(prefs.profiles) && prefs.profiles.length) {
+      // 已经是 v5：保留原 id（activeProfileId 依赖它），只补全缺失字段
+      return prefs.profiles.map(function (p) {
+        return {
+          id: p.id || newProfileId(),
+          name: p.name || suggestProfileName(p.baseUrl),
+          baseUrl: p.baseUrl || DEFAULT_BASE_URL,
+          token: p.token || '',
+          teamId: p.teamId || '',
+          projectId: p.projectId || '',
+          groupId: p.groupId || '',
+          newGroupName: p.newGroupName || '',
+        };
+      });
+    }
+    // v4 或更早：把顶层单配置包成默认配置，保留 id 语义由新生成
+    return [makeProfile(
+      suggestProfileName(prefs.baseUrl),
+      prefs.baseUrl || DEFAULT_BASE_URL,
+      prefs.token || '',
+      prefs.teamId,
+      prefs.projectId,
+      prefs.groupId,
+      prefs.newGroupName
+    )];
+  }
+
   function persistPrefs(immediate) {
     clearTimeout(prefsTimer);
     var send = function () {
+      syncToProfile();
       var prefs = {
-        version: 4,
+        version: 5,
+        profiles: state.profiles,
+        activeProfileId: state.activeProfileId,
+        // 顶层镜像仍写：code.js 的 token 三路单独存储依赖 prefs.token / prefs.baseUrl
         baseUrl: state.baseUrl,
         token: state.token,
         platform: state.platform,
@@ -1074,48 +1256,69 @@
 
   function applyPrefs(prefs, src) {
     if (!prefs || typeof prefs !== 'object') return;
-    if (typeof prefs.baseUrl === 'string' && prefs.baseUrl) {
-      state.baseUrl = prefs.baseUrl;
-      // 旧会话偏好里可能残留历史后端端口（5002 = 已下线的 preview-runtime16），
-      // 现在后端固定跑 4000：一次性迁移，避免「上传失败 HTTP 000」每次都要手动改地址
-      var stale = /^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?/i.exec(state.baseUrl);
-      if (stale && stale[3] && stale[3] !== ':4000') {
-        console.warn('[prefs] 旧服务地址 ' + state.baseUrl + ' 已迁移为 http://localhost:4000');
-        state.baseUrl = 'http://localhost:4000';
-        persistPrefs();
-      }
+    // v1.8.0：先把单配置旧偏好迁移成 profiles[]，再加载激活配置
+    state.profiles = normalizeProfiles(prefs);
+    var activeId = prefs.activeProfileId;
+    var found = activeProfileById(activeId);
+    if (!found) found = state.profiles[0];
+    loadProfile(found);
+
+    var migrated = false;
+    // 旧会话偏好里可能残留历史后端端口（5002 = 已下线的 preview-runtime16），
+    // 现在后端固定跑 4000：一次性迁移，避免「上传失败 HTTP 000」每次都要手动改地址
+    var stale = /^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?/i.exec(state.baseUrl);
+    if (stale && stale[3] && stale[3] !== ':4000') {
+      console.warn('[prefs] 旧服务地址 ' + state.baseUrl + ' 已迁移为 http://localhost:4000');
+      state.baseUrl = 'http://localhost:4000';
+      migrated = true;
     }
-    if (typeof prefs.token === 'string') state.token = prefs.token;
-    // v1.7.0：旧域名已停用 —— 老安装自动迁移到新域名。
-    // 两套库互相独立，旧令牌在新库无效；一并清空三路残留，让用户直接在门禁页填新令牌。
+    // v1.7.0：旧域名已停用 —— 激活配置若指向旧域名，自动迁移到新域名。
+    // 两套库互相独立，旧令牌在新库无效；一并清空令牌/三级目标，让用户直接在门禁页填新令牌。
     if (RETIRED_BASE_URL_RE.test(state.baseUrl)) {
-      console.warn('[prefs] 旧服务地址 ' + state.baseUrl + ' 已迁移为 ' + DEFAULT_BASE_URL);
+      console.warn('[prefs] 配置「' + found.name + '」旧服务地址 ' + state.baseUrl + ' 已迁移为 ' + DEFAULT_BASE_URL);
       state.baseUrl = DEFAULT_BASE_URL;
       state.token = '';
       state.teamId = '';
       state.projectId = '';
       state.groupId = '';
-      state.teams = [];
-      state.projects = [];
-      state.groups = [];
-      state.connected = false;
-      persistPrefs(true);
+      migrated = true;
     }
+    // 把可能迁移过的镜像值同步回激活配置，保证 profiles[] 与 state 一致
+    syncToProfile();
+
     if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
     if ([1, 2, 3, 4].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
     // v1.5.2：位图切图 / 逐图层高清切图固定开启，忽略旧偏好里保存的开关状态
     state.includeImage = true;
     state.includeSlices = true;
-    if (typeof prefs.teamId === 'string') state.teamId = prefs.teamId;
-    if (typeof prefs.projectId === 'string') state.projectId = prefs.projectId;
-    if (typeof prefs.groupId === 'string') state.groupId = prefs.groupId;
-    if (typeof prefs.newGroupName === 'string') state.newGroupName = prefs.newGroupName;
     // v1.5.4：记录偏好读取来源，门禁页据此显示「上次登录状态」存在哪
     if (src && typeof src === 'object') {
       state.prefsSrc = { client: !!src.client, doc: !!src.doc, page: !!src.page };
     }
+    renderProfileBar();
     renderSettings();
     renderTargets();
+    // 版本升级或地址迁移后立即落盘，固化新的 profiles[] 结构
+    if (migrated || prefs.version !== 5) persistPrefs(true);
+  }
+
+  function activeProfileById(id) {
+    for (var i = 0; i < state.profiles.length; i++) {
+      if (state.profiles[i].id === id) return state.profiles[i];
+    }
+    return null;
+  }
+  /** 令牌失效：只清空当前激活配置的令牌与三级目标，不影响其它配置 */
+  function clearActiveToken() {
+    state.token = '';
+    state.teamId = '';
+    state.projectId = '';
+    state.groupId = '';
+    state.teams = [];
+    state.projects = [];
+    state.groups = [];
+    syncToProfile();
+    persistPrefs(true);
   }
 
   /** boot 之后启动：没令牌先粘贴；有令牌则校验并恢复三级选择 */
@@ -1136,13 +1339,9 @@
       state.connectError = (err && err.message) || String(err);
       renderTargets();
       if (err && err.status === 401) {
-        // 只有服务端明确返回 401（令牌无效/已撤销）才清空本地令牌
-        state.token = '';
-        state.teams = [];
-        state.projects = [];
-        state.groups = [];
-        persistPrefs();
-        showGate('令牌已失效或已撤销：' + err.message);
+        // 只有服务端明确返回 401（令牌无效/已撤销）才清空——且只清当前配置
+        clearActiveToken();
+        showGate('当前配置「' + profileLabel() + '」的令牌已失效或已撤销：' + err.message);
         postToPlugin({ type: 'notify', message: '导入令牌已失效，请重新粘贴' });
       } else {
         // 网络失败/超时/CORS/5xx：保留已存令牌，给重试
@@ -1159,9 +1358,8 @@
       state.connectError = (err && err.message) || String(err);
       renderTargets();
       if (err && err.status === 401) {
-        state.token = '';
-        persistPrefs();
-        showGate('令牌已失效或已撤销：' + err.message);
+        clearActiveToken();
+        showGate('当前配置「' + profileLabel() + '」的令牌已失效或已撤销：' + err.message);
       } else {
         showError('连接失败（' + baseUrl() + '），令牌已保留：' + state.connectError, retryConnect);
       }
@@ -1410,6 +1608,103 @@
 
   // ---------- 事件绑定 ----------
   $('close').onclick = function () { postToPlugin({ type: 'close' }); };
+
+  // 配置切换
+  $('profileSelect').onchange = function () { void switchProfile($('profileSelect').value); };
+
+  // 新建 / 改名：复用同一行内联输入，避免依赖 prompt
+  var profileEditMode = ''; // 'add' | 'rename'
+  function openProfileEdit(mode) {
+    profileEditMode = mode;
+    $('profileEditRow').classList.remove('hidden');
+    $('profileHint').classList.add('hidden');
+    var input = $('profileNameInput');
+    if (mode === 'rename') {
+      input.value = profileLabel();
+    } else {
+      input.value = '';
+      input.placeholder = '例如：账号甲 / 新站';
+    }
+    input.focus();
+    input.select();
+  }
+  function closeProfileEdit() {
+    profileEditMode = '';
+    $('profileEditRow').classList.add('hidden');
+  }
+  $('profileAdd').onclick = function () { openProfileEdit('add'); };
+  $('profileRename').onclick = function () { openProfileEdit('rename'); };
+  $('profileEditCancel').onclick = function () { closeProfileEdit(); };
+  $('profileEditOk').onclick = function () {
+    var name = $('profileNameInput').value.trim();
+    if (!name) { $('profileNameInput').focus(); return; }
+    var mode = profileEditMode;
+    var newId = '';
+    if (mode === 'rename') {
+      var p = activeProfile();
+      if (p) p.name = name;
+    } else if (mode === 'add') {
+      // 新配置：默认指向线上新域名，令牌留空 → 建好后进门禁页填该站令牌
+      var np = makeProfile(name, DEFAULT_BASE_URL);
+      state.profiles.push(np);
+      newId = np.id;
+    }
+    closeProfileEdit();
+    persistPrefs(true);
+    if (newId) { void switchProfile(newId); return; } // 新建后自动切过去（会落盘+重连/进门禁）
+    renderProfileBar();
+    renderSettings();
+    renderTargets();
+  };
+  $('profileNameInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); $('profileEditOk').click(); }
+    else if (e.key === 'Escape') { closeProfileEdit(); }
+  });
+
+  // 删除：二次确认，避免误删
+  var deleteArmed = false;
+  var deleteTimer = null;
+  $('profileDelete').onclick = function () {
+    if (state.profiles.length <= 1) return;
+    var btn = $('profileDelete');
+    if (!deleteArmed) {
+      deleteArmed = true;
+      btn.textContent = '确认删除?';
+      $('profileHint').textContent = '再点一次「确认删除?」删除当前配置「' + profileLabel() + '」；此操作只删本地配置，不影响网站数据。';
+      $('profileHint').classList.remove('hidden');
+      clearTimeout(deleteTimer);
+      deleteTimer = setTimeout(function () {
+        deleteArmed = false;
+        btn.textContent = '删除';
+        $('profileHint').classList.add('hidden');
+      }, 4000);
+      return;
+    }
+    clearTimeout(deleteTimer);
+    deleteArmed = false;
+    btn.textContent = '删除';
+    $('profileHint').classList.add('hidden');
+    var idx = -1;
+    for (var i = 0; i < state.profiles.length; i++) {
+      if (state.profiles[i].id === state.activeProfileId) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    state.profiles.splice(idx, 1);
+    var next = state.profiles[Math.min(idx, state.profiles.length - 1)];
+    syncToProfile();
+    loadProfile(next);
+    persistPrefs(true);
+    renderProfileBar();
+    renderSettings();
+    renderTargets();
+    if (state.token && /^imp_/.test(state.token)) {
+      showMain();
+      void connectWithFallback().catch(function () {});
+    } else {
+      showGate('已删除配置，请粘贴令牌');
+    }
+  };
+
   $('errorRetry').onclick = function () {
     var fn = retryHandler;
     clearError();
@@ -1448,9 +1743,8 @@
       state.connectError = (err && err.message) || String(err);
       renderTargets();
       if (err && err.status === 401) {
-        state.token = '';
-        persistPrefs();
-        showGate('令牌无效或已撤销：' + err.message);
+        clearActiveToken();
+        showGate('配置「' + profileLabel() + '」令牌无效或已撤销：' + err.message);
       } else {
         showError('连接失败（' + baseUrl() + '）：' + state.connectError, retryConnect);
       }
