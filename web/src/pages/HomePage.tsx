@@ -216,12 +216,9 @@ export default function HomePage() {
   const [projectQuery, setProjectQuery] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState<'admin' | 'collaborator'>('collaborator');
-  // 最近一次生成的邀请链接：只展示给操作者，可复制（链接邀请不绑定邮箱，可多人使用）
-  const [inviteLink, setInviteLink] = useState<{ email?: string | null; role: string; inviteUrl: string } | null>(null);
   // 邀请成员走弹窗（替代原内联表单）：link=复制邀请链接 / email=邮箱直接加入
   const [inviteModal, setInviteModal] = useState(false);
   const [inviteMode, setInviteMode] = useState<'link' | 'email'>('link');
-  const [inviteCopied, setInviteCopied] = useState(false);
   // 弹窗内专用提示：页面底部 home-error 会被弹窗遮住，重复成员/接口错误必须就地显示
   const [inviteError, setInviteError] = useState('');
   // 编辑成员身份走弹窗：记录目标成员与草稿角色，点保存才提交
@@ -763,16 +760,30 @@ export default function HomePage() {
     }
   };
 
-  /** 链接邀请：选好身份生成邀请链接，复制发给别人，对方点击链接登录后即可加入 */
+  /** 链接邀请：选好身份后生成链接并直接复制到剪贴板，不在页面常驻显示；7 天有效 */
   const createInviteLink = async () => {
     if (busy || !activeTeam) return;
     setBusy(true);
     setError('');
     try {
       const inv = await api.createInviteLink(activeTeam, memberRole);
-      setInviteLink(inv);
-      setInviteCopied(false);
-      setInviteModal(false);
+      try {
+        await navigator.clipboard.writeText(inv.inviteUrl);
+        setInviteModal(false);
+        void dialogs.alert(
+          '邀请链接已复制，直接粘贴发给对方即可。链接 7 天内有效，可邀请多人；任何持有链接的人登录后都能加入团队，请只发给可信的人。',
+          '已复制邀请链接'
+        );
+      } catch {
+        // 剪贴板不可用（非 HTTPS / 无权限）：链接不显示在页面上，必须让用户能手动复制
+        setInviteModal(false);
+        await dialogs.prompt({
+          title: '手动复制邀请链接',
+          label: '浏览器不允许自动复制，请选中下方链接手动复制（7 天内有效，可邀请多人）：',
+          initialValue: inv.inviteUrl,
+          confirmText: '完成',
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -810,17 +821,6 @@ export default function HomePage() {
       setInviteError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const copyInviteLink = async () => {
-    if (!inviteLink) return;
-    try {
-      await navigator.clipboard.writeText(inviteLink.inviteUrl);
-      setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 2000);
-    } catch {
-      /* 剪贴板不可用时用户可手动选中复制 */
     }
   };
 
@@ -1246,19 +1246,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {canManage && inviteLink && (
-                <div className="invite-link-box">
-                  <span className="small dim">
-                    {inviteLink.email
-                      ? `已向 ${inviteLink.email} 发送邀请邮件（${ROLE_LABEL[inviteLink.role] ?? inviteLink.role}，7 天有效）。对方也可通过链接接受：`
-                      : `已生成邀请链接（${ROLE_LABEL[inviteLink.role] ?? inviteLink.role}，7 天内有效，可发给多人）。对方点击链接登录后即可加入：`}
-                  </span>
-                  <code className="invite-link-url">{inviteLink.inviteUrl}</code>
-                  <button type="button" onClick={() => void copyInviteLink()}>
-                    {inviteCopied ? '已复制 ✓' : '复制链接'}
-                  </button>
-                </div>
-              )}
               {!canManage && (
                 <p className="empty">你是协作者身份，仅可查看设计稿；邀请与管理成员需要管理员权限</p>
               )}
@@ -1380,11 +1367,11 @@ export default function HomePage() {
                   <option value="collaborator">团队成员</option>
                   <option value="admin">管理员（可编辑、可邀请）</option>
                 </select>
-                <p className="dim small">复制链接发给对方，对方点击链接登录后即以此身份加入团队；链接 7 天内有效，可发给多人。</p>
+                <p className="dim small">点「复制链接」会自动生成并复制到剪贴板，直接粘贴发给对方即可；链接 7 天内有效，可邀请多人。</p>
                 <div className="dlg-actions">
                   <button type="button" className="dlg-btn" onClick={() => setInviteModal(false)}>取消</button>
                   <button type="submit" className="dlg-btn is-primary" disabled={busy}>
-                    {busy ? '生成中…' : '生成邀请链接'}
+                    {busy ? '生成中…' : '复制链接'}
                   </button>
                 </div>
               </>

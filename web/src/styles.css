@@ -1990,23 +1990,6 @@ input:focus, input:focus-visible, select:focus, select:focus-visible { outline: 
 .verify-banner button.verify-banner-close:hover:not(:disabled) { background: rgba(245, 158, 11, 0.18); }
 .verify-banner button.verify-banner-close svg { width: 14px; height: 14px; }
 
-/* ---------- 邀请链接提示框 ---------- */
-.invite-link-box {
-  margin-top: 10px; padding: 10px 12px; max-width: 1120px;
-  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
-  display: flex; flex-direction: column; gap: 6px; font-size: 13px;
-}
-.invite-link-box .invite-link-url {
-  font-size: 12px; color: #166534; word-break: break-all;
-  background: rgba(255,255,255,0.7); border-radius: 6px; padding: 6px 8px;
-}
-.invite-link-box button {
-  align-self: flex-start; padding: 5px 12px; border-radius: 6px;
-  border: 1px solid #22c55e; background: #fff; color: #166534;
-  font: inherit; font-size: 12px; cursor: pointer;
-}
-.invite-link-box button:hover { background: #f0fdf4; }
-
 /* ---------- 登录页底部文字按钮（忘记密码 / 去登录） ---------- */
 .auth-link-btn {
   border: 0; background: transparent; padding: 0;
@@ -2307,9 +2290,6 @@ input:focus, input:focus-visible, select:focus, select:focus-visible { outline: 
 }
 .home-shell .team-view .member-role-filter:focus { background: #fff; border-color: var(--accent); }
 .home-shell .team-view .member-count { color: #80868b; font-size: 12px; }
-/* 邀请成功条跟着内容列宽度走，避免右侧越界 */
-.home-shell .team-view .invite-link-box { max-width: 100%; }
-
 /* 列表表头：与成员行完全相同的 5 列栅格，只有文字、无点击区 */
 .home-shell .team-view .member-list-head {
   display: grid;
