@@ -891,7 +891,7 @@ export default function ViewerPage() {
                 <option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
               </select>
             </div>
-            <button disabled={!!zipBusy} onClick={() => void doExportZip('presets')}>
+            <button disabled={!!zipBusy} onClick={() => void doExportZip('all')}>
               {zipBusy ? '导出中…' : '批量导出切图'}
             </button>
           </div>
