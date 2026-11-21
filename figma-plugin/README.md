@@ -85,8 +85,14 @@ Figma 对**没有固定插件 id 的开发插件**会禁用 `clientStorage`（�
 
 ## 服务器地址（默认连线上）
 
-插件默认连接线上服务 `https://shejixiezuo-gd7w.vercel.app`，**开箱即用，不需要在本机跑后端**。
-在浏览器打开 `https://shejixiezuo-gd7w.vercel.app/api/health`，看到 `{"ok":true,…}` 即表示服务正常。
+插件默认连接线上服务 `https://sjxz.yundongchangzu.com`，**开箱即用，不需要在本机跑后端**。
+在浏览器打开 `https://sjxz.yundongchangzu.com/api/health`，看到 `{"ok":true,…}` 即表示服务正常。
+
+### 旧域名已停用（v1.7.0+）
+
+原 `https://shejixiezuo-gd7w.vercel.app` / `https://www.shilipix.cn` 已停用。老安装启动时会一次性把
+服务器地址迁移到新域名，并清空旧令牌（两套库互相独立，旧令牌在新库无效）；迁移后会停在「粘贴导入令牌」
+页面，请在**新域名**网站「团队设置 → 导入令牌」重新生成并粘贴，团队 / 项目 / 编组选择也会一并重置。
 
 `manifest.json` 的 `allowedDomains: ["*"]` 已允许任意域名（Figma 官方 manifest 文档：`allowedDomains`
 适用于已发布插件，`devAllowedDomains` 只是开发期的附加白名单）。因此**换地址不需要改 manifest**，
@@ -131,7 +137,7 @@ v1.5.6 之前默认地址是 `http://localhost:4000`，老安装的偏好里可�
 - **401**：令牌填错或已在网站撤销 → 回团队设置重新生成并粘贴。
 - **403**：令牌作用范围不允许访问该团队/项目 → 换「全部团队」范围的令牌，或改选令牌所属团队。
 - **连不上服务器**：先看顶部常显的「已连接 / 未连接服务器」状态与地址。默认是线上服务
-  `https://shejixiezuo-gd7w.vercel.app`；在浏览器打开它的 `/api/health`，能看到 `{"ok":true,…}` 就说明服务正常。
+  `https://sjxz.yundongchangzu.com`；在浏览器打开它的 `/api/health`，能看到 `{"ok":true,…}` 就说明服务正常。
   老安装若还存着 `http://localhost:4000`，本机没跑后端时会自动回退到线上（v1.5.6+）。
 - **域名 / TLS / CORS / mixed content**：请求没发出去时，错误文案会列出可能原因并附 `/api/health` 排查指引。
   `allowedDomains: ["*"]` 已允许任意域名，一般不必改 `manifest.json`（见上文「服务器地址」）。

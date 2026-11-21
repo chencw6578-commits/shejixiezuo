@@ -219,12 +219,12 @@
     <input id="gateToken" type="text" placeholder="imp_ 开头" autocomplete="off" spellcheck="false" />
     <button id="gateSave" class="btn primary wide" type="button">保存并继续</button>
     <p class="dim small server-line">
-      服务器：<span id="gateServerText">https://shejixiezuo-gd7w.vercel.app</span>
+      服务器：<span id="gateServerText">https://sjxz.yundongchangzu.com</span>
       <button id="gateServerEdit" class="btn text" type="button">更改</button>
     </p>
     <p id="gateStorageHint" class="dim small hidden"></p>
     <div id="gateServerRow" class="hidden">
-      <input id="gateBaseUrl" type="text" placeholder="https://shejixiezuo-gd7w.vercel.app" />
+      <input id="gateBaseUrl" type="text" placeholder="https://sjxz.yundongchangzu.com" />
     </div>
   </section>
 
@@ -294,7 +294,7 @@
         <div class="field">
           <label>服务器地址</label>
           <div class="row">
-            <input id="baseUrl" class="grow" type="text" placeholder="https://shejixiezuo-gd7w.vercel.app" />
+            <input id="baseUrl" class="grow" type="text" placeholder="https://sjxz.yundongchangzu.com" />
             <button id="reconnect" class="btn" type="button">重新连接</button>
           </div>
         </div>
@@ -352,9 +352,11 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.6.1';
-  // 线上后端（Vercel 生产）。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
-  var DEFAULT_BASE_URL = 'https://shejixiezuo-gd7w.vercel.app';
+  var UI_VERSION = '1.7.0';
+  // 线上后端。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
+  // v1.7.0：旧域名（shejixiezuo-gd7w.vercel.app / shilipix.cn）已停用，统一指向新域名。
+  var DEFAULT_BASE_URL = 'https://sjxz.yundongchangzu.com';
+  var RETIRED_BASE_URL_RE = /^(https?:\/\/)?(www\.)?(shejixiezuo-gd7w\.vercel\.app|shilipix\.cn)([\/:]|$)/i;
   var UNASSIGNED_TEAM = 'unassigned';
   var state = {
     boards: [],
@@ -1084,6 +1086,21 @@
       }
     }
     if (typeof prefs.token === 'string') state.token = prefs.token;
+    // v1.7.0：旧域名已停用 —— 老安装自动迁移到新域名。
+    // 两套库互相独立，旧令牌在新库无效；一并清空三路残留，让用户直接在门禁页填新令牌。
+    if (RETIRED_BASE_URL_RE.test(state.baseUrl)) {
+      console.warn('[prefs] 旧服务地址 ' + state.baseUrl + ' 已迁移为 ' + DEFAULT_BASE_URL);
+      state.baseUrl = DEFAULT_BASE_URL;
+      state.token = '';
+      state.teamId = '';
+      state.projectId = '';
+      state.groupId = '';
+      state.teams = [];
+      state.projects = [];
+      state.groups = [];
+      state.connected = false;
+      persistPrefs(true);
+    }
     if (prefs.platform === 'ios' || prefs.platform === 'android' || prefs.platform === 'web') state.platform = prefs.platform;
     if ([1, 2, 3, 4].indexOf(Number(prefs.scale)) >= 0) state.scale = Number(prefs.scale);
     // v1.5.2：位图切图 / 逐图层高清切图固定开启，忽略旧偏好里保存的开关状态
