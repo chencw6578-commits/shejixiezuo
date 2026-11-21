@@ -324,7 +324,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 /* 画板上方名称标签（双击行内重命名） */
 .pcanvas-frame-name {
   position: absolute; bottom: calc(100% + 5px); left: 0;
-  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: #6b7280; font-weight: 500; line-height: 1.25; letter-spacing: 0.01em;
   user-select: none; cursor: text;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.85);
