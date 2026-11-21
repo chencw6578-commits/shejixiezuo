@@ -245,12 +245,12 @@ const MAX_ZIP_TASKS = 600;
 /**
  * 批量切图打包 zip。
  * mode = presets：按设计稿标记的导出预设导出有预设的图层
- * mode = all：画板内全部图层按统一格式/倍率导出
+ * mode = all：画板内标记了切图（有导出预设）的图层按统一格式/倍率导出
  */
 assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?.fileId), async (req, res) => {
   const { fileId, frameId, mode = 'presets', format = 'PNG', scale = 2 } = req.body ?? {};
   if (!fileId || !frameId) return res.status(400).json({ error: '缺少 fileId 或 frameId' });
-  // 两种批量模式：presets=按 Figma 标记逐个导出；all=按所选格式/倍率导出全部图层
+  // 两种批量模式：presets=按 Figma 标记逐个导出；all=仅标记切图的图层按所选格式/倍率导出
   if (mode !== 'presets' && mode !== 'all') {
     return res.status(400).json({ error: `不支持的导出模式: ${mode}` });
   }
@@ -292,15 +292,16 @@ assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?
       }
     }
   } else {
+    // 只导出标记了切图的图层（Figma 里设了导出预设 / exportPresets 非空），
+    // 未标记的图层一律跳过——与画布上「切图标记」的判定口径一致。
     for (const n of nodes) {
+      if (!(n.props?.exportPresets?.length)) continue;
       tasks.push({ nodeId: n.node_id, name: n.name, format, scale: s, suffix: s !== 1 ? `@${s}x` : '' });
     }
   }
   if (tasks.length === 0) {
     return res.status(400).json({
-      error: mode === 'presets'
-        ? '该画板没有标记导出预设的图层，请在 Figma 中为图层添加导出设置后重新导入'
-        : '该画板没有图层',
+      error: '该画板没有标记切图的图层，请在 Figma 中为需要导出的图层添加导出设置（Export）后重新导入',
     });
   }
   if (tasks.length > MAX_ZIP_TASKS) {
