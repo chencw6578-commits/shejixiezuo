@@ -1,11 +1,11 @@
 /** 设计尺寸单位：只影响数值后缀/标注，不改变尺寸与坐标数据（1:1 显示） */
-export type Unit = 'px' | 'pt' | 'dp';
+export type Unit = 'px' | 'pt' | 'dp' | 'rpx';
 
 const KEY = 'designhub-unit';
 
 export function readUnit(): Unit {
   const v = localStorage.getItem(KEY);
-  return v === 'pt' || v === 'dp' ? v : 'px';
+  return v === 'pt' || v === 'dp' || v === 'rpx' ? v : 'px';
 }
 
 export function saveUnit(u: Unit) {
@@ -13,7 +13,7 @@ export function saveUnit(u: Unit) {
 }
 
 export function unitLabel(u: Unit): string {
-  return u === 'pt' ? 'pt（iOS）' : u === 'dp' ? 'dp（Android）' : 'px（Web）';
+  return u === 'pt' ? 'pt（iOS）' : u === 'dp' ? 'dp（Android）' : u === 'rpx' ? 'rpx（微信小程序）' : 'px（Web）';
 }
 
 /** 导入平台对应的默认单位：iOS → pt、Android → dp、Web → px */

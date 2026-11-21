@@ -913,6 +913,7 @@ export default function ViewerPage() {
             <option value="px">单位：px（Web）</option>
             <option value="pt">单位：pt（iOS）</option>
             <option value="dp">单位：dp（Android）</option>
+            <option value="rpx">单位：rpx（微信小程序）</option>
           </select>
           <ChevronDown />
         </span>

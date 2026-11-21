@@ -95,7 +95,7 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
 
   // 倍率分组跟随顶栏单位平台：pt→iOS / dp→Android / px→Web，其它平台分组不再显示
   //（用户要求：单位选 iOS 时，切图倍率下拉只保留 iOS 的 1x/2x/3x）
-  const UNIT_PLATFORM: Record<Unit, PlatformId> = { pt: 'ios', dp: 'android', px: 'web' };
+  const UNIT_PLATFORM: Record<Unit, PlatformId> = { pt: 'ios', dp: 'android', rpx: 'ios', px: 'web' };
   const scaleGroups = EXPORT_SCALES[UNIT_PLATFORM[unit]];
 
   // 原型交互（跳转到画板）
