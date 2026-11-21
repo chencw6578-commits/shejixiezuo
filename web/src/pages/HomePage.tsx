@@ -286,6 +286,8 @@ export default function HomePage() {
   // 团队访问令牌（通用凭据）：newToken 只在生成后展示一次
   const [tokens, setTokens] = useState<ImportToken[]>([]);
   const [newToken, setNewToken] = useState('');
+  // 「复制令牌」按钮的成功反馈：复制后短暂显示「已复制 ✓」
+  const [tokenCopied, setTokenCopied] = useState(false);
   // 令牌作用范围：默认「全部团队」
   const [tokenScope, setTokenScope] = useState<ImportToken['scope']>('all');
   const navigate = useNavigate();
@@ -491,6 +493,7 @@ export default function HomePage() {
     try {
       const created = await api.createImportToken(activeTeam, authUser?.privateTeamStorage ? 'team' : tokenScope);
       setNewToken(created.token);
+      setTokenCopied(false);
       loadTokens();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -500,11 +503,37 @@ export default function HomePage() {
   };
 
   const copyToken = async () => {
+    if (!newToken) return;
+    let ok = false;
     try {
       await navigator.clipboard.writeText(newToken);
-      setError('');
+      ok = true;
     } catch {
-      setError('复制失败：请手动选中令牌文本复制');
+      // 非 HTTPS / 无剪贴板权限时退回 execCommand，保证仍能复制
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = newToken;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        ta.remove();
+      } catch {
+        ok = false;
+      }
+    }
+    if (ok) {
+      setError('');
+      setTokenCopied(true);
+      window.setTimeout(() => setTokenCopied(false), 2000);
+    } else {
+      // 令牌只显示这一次，彻底失败必须告诉用户去手动复制
+      void dialogs.alert(
+        '浏览器不允许自动复制，请手动选中上方文本框里的令牌，按 Ctrl+C（Mac 为 Cmd+C）复制。令牌只显示这一次，请务必保存。',
+        '复制失败'
+      );
     }
   };
 
@@ -1534,7 +1563,14 @@ export default function HomePage() {
                   <div className="token-once-head">新令牌（只显示这一次）</div>
                   <div className="token-once-body">
                     <code>{newToken}</code>
-                    <button type="button" className="ghost-btn" onClick={() => void copyToken()}>复制</button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      style={tokenCopied ? { color: '#15803d', borderColor: '#22c55e', background: '#f0fdf4' } : undefined}
+                      onClick={() => void copyToken()}
+                    >
+                      {tokenCopied ? '已复制 ✓' : '复制'}
+                    </button>
                   </div>
                   <p className="dim small">请立即保存，之后无法再从网站查看明文。</p>
                 </div>
