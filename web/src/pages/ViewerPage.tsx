@@ -878,9 +878,6 @@ export default function ViewerPage() {
         <details className="export-menu">
           <summary><Download /> 批量切图</summary>
           <div className="export-menu-pop">
-            <button disabled={!!zipBusy} onClick={() => void doExportZip('presets')}>
-              {zipBusy === 'presets' ? '导出中…' : '按设计标记导出 zip'}
-            </button>
             <div className="export-scale">
               <span>格式</span>
               <select value={zipFormat} onChange={(e) => setZipFormat(e.target.value)}>
@@ -894,13 +891,9 @@ export default function ViewerPage() {
                 <option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
               </select>
             </div>
-            <button disabled={!!zipBusy} onClick={() => void doExportZip('all')}>
-              {zipBusy === 'all' ? '导出中…' : '导出全部图层 zip'}
+            <button disabled={!!zipBusy} onClick={() => void doExportZip('presets')}>
+              {zipBusy ? '导出中…' : '批量导出切图'}
             </button>
-            <p className="dim small">
-              「按设计标记」按 Figma 里设置的格式与倍率逐个导出；「全部图层」按上方所选格式 / 倍率导出当前画板所有图层。
-              两者均打包 zip 下载（上限 600 项）。服务端渲染，复杂图形 / 渐变可能失真。
-            </p>
           </div>
         </details>
         <span className="unit-select-wrap">
