@@ -103,11 +103,16 @@ Figma 对**没有固定插件 id 的开发插件**会禁用 `clientStorage`（�
 插件默认连接线上服务 `https://sjxz.yundongchangzu.com`，**开箱即用，不需要在本机跑后端**。
 在浏览器打开 `https://sjxz.yundongchangzu.com/api/health`，看到 `{"ok":true,…}` 即表示服务正常。
 
-### 旧域名已停用（v1.7.0+）
+### 双域名并存（v1.8.1+）
 
-原 `https://shejixiezuo-gd7w.vercel.app` / `https://www.shilipix.cn` 已停用。老安装启动时会一次性把
-服务器地址迁移到新域名，并清空旧令牌（两套库互相独立，旧令牌在新库无效）；迁移后会停在「粘贴导入令牌」
-页面，请在**新域名**网站「团队设置 → 导入令牌」重新生成并粘贴，团队 / 项目 / 编组选择也会一并重置。
+两套站点各自独立、可以同时用：新站 `https://sjxz.yundongchangzu.com`、旧站 `https://shilipix.cn`。
+用顶部的「上传目标」为每套站点各建一个配置，每个配置分别填**自己站点**的服务器地址和令牌即可，切换下拉就能互传。
+A 站令牌在 B 站无效（两套库互相独立），填错会 401；各站点令牌都在对应网站「团队设置 → 导入令牌」生成。
+
+> v1.7.0 / v1.8.0 曾把旧域名配置**强制迁移**到新站并清空令牌，导致「旧站」配置错连新站、填旧令牌报 401。
+> v1.8.1 已移除该强制迁移，并在启动时把这类被污染的配置一次性还原回 `https://shilipix.cn`、清空错配令牌。
+> 升级后请在旧站配置里重新粘贴旧站令牌、在新站配置里粘贴新站令牌；两个配置互不干扰。
+> `shejixiezuo-gd7w.vercel.app` 仍属历史废弃地址（不再自动迁移，如仍在用请手动改地址）。
 
 `manifest.json` 的 `allowedDomains: ["*"]` 已允许任意域名（Figma 官方 manifest 文档：`allowedDomains`
 适用于已发布插件，`devAllowedDomains` 只是开发期的附加白名单）。因此**换地址不需要改 manifest**，

@@ -384,9 +384,10 @@
 
   var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   // 与 code.js 的 PLUGIN_VERSION 保持一致；不一致说明 Figma 缓存了旧界面
-  var UI_VERSION = '1.8.0';
-  // 线上后端。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
-  // v1.7.0：旧域名（shejixiezuo-gd7w.vercel.app / shilipix.cn）已停用，统一指向新域名。
+  var UI_VERSION = '1.8.1';
+  // 线上后端默认值。插件开箱即用；本地开发可在「高级设置 → 服务器」改回本机地址。
+  // v1.8.1：双域名并存——旧站 shilipix.cn 仍可用，每个配置独立记各自的 baseUrl+令牌，
+  // 不再强制把旧域名改成新站。DEFAULT_BASE_URL 只是「新建配置」的默认值。
   var DEFAULT_BASE_URL = 'https://sjxz.yundongchangzu.com';
   var RETIRED_BASE_URL_RE = /^(https?:\/\/)?(www\.)?(shejixiezuo-gd7w\.vercel\.app|shilipix\.cn)([\/:]|$)/i;
   var UNASSIGNED_TEAM = 'unassigned';
@@ -1197,12 +1198,37 @@
     state.fallbackTried = false;
     state.targetOpen = false;
   }
+  var OLD_SITE_URL = 'https://shilipix.cn'; // 旧站真实地址，用于还原被污染的配置
+
+  /**
+   * v1.8.1：一次性还原被 v1.7.0/v1.8.0 强制迁移污染的配置。
+   * 污染特征：配置名是「设计协作（旧站）」(suggestProfileName 对旧域名生成)，
+   * 但 baseUrl 却是新域名、令牌被清空 —— 这是强制迁移改了域名却没改名字留下的错配。
+   * 还原：域名改回旧站、清空在新域名下填的无效令牌，打 retiredRestored 标记只做一次。
+   * 注意：正常的新站配置名字是「设计协作（新站）」，不会被误伤；用户改过名的配置也不动。
+   */
+  function restoreRetiredProfile(p) {
+    if (p.retiredRestored) return p;
+    var isRetiredName = p.name === '设计协作（旧站）';
+    var pointsToNewSite = /sjxz\.yundongchangzu\.com/i.test(p.baseUrl || '');
+    if (isRetiredName && pointsToNewSite) {
+      console.warn('[prefs] 还原被强制迁移污染的配置「' + p.name + '」：新站域名 → ' + OLD_SITE_URL);
+      p.baseUrl = OLD_SITE_URL;
+      p.token = '';
+      p.teamId = '';
+      p.projectId = '';
+      p.groupId = '';
+      p.retiredRestored = true;
+    }
+    return p;
+  }
+
   /** v4 → v5 迁移：旧的单配置 prefs 包成第一个 Profile */
   function normalizeProfiles(prefs) {
     if (Array.isArray(prefs.profiles) && prefs.profiles.length) {
-      // 已经是 v5：保留原 id（activeProfileId 依赖它），只补全缺失字段
+      // 已经是 v5：保留原 id（activeProfileId 依赖它），只补全缺失字段；顺带还原被污染的旧站配置
       return prefs.profiles.map(function (p) {
-        return {
+        var fixed = restoreRetiredProfile({
           id: p.id || newProfileId(),
           name: p.name || suggestProfileName(p.baseUrl),
           baseUrl: p.baseUrl || DEFAULT_BASE_URL,
@@ -1211,11 +1237,13 @@
           projectId: p.projectId || '',
           groupId: p.groupId || '',
           newGroupName: p.newGroupName || '',
-        };
+          retiredRestored: !!p.retiredRestored,
+        });
+        return fixed;
       });
     }
     // v4 或更早：把顶层单配置包成默认配置，保留 id 语义由新生成
-    return [makeProfile(
+    return [restoreRetiredProfile(makeProfile(
       suggestProfileName(prefs.baseUrl),
       prefs.baseUrl || DEFAULT_BASE_URL,
       prefs.token || '',
@@ -1223,7 +1251,7 @@
       prefs.projectId,
       prefs.groupId,
       prefs.newGroupName
-    )];
+    ))];
   }
 
   function persistPrefs(immediate) {
@@ -1272,17 +1300,9 @@
       state.baseUrl = 'http://localhost:4000';
       migrated = true;
     }
-    // v1.7.0：旧域名已停用 —— 激活配置若指向旧域名，自动迁移到新域名。
-    // 两套库互相独立，旧令牌在新库无效；一并清空令牌/三级目标，让用户直接在门禁页填新令牌。
-    if (RETIRED_BASE_URL_RE.test(state.baseUrl)) {
-      console.warn('[prefs] 配置「' + found.name + '」旧服务地址 ' + state.baseUrl + ' 已迁移为 ' + DEFAULT_BASE_URL);
-      state.baseUrl = DEFAULT_BASE_URL;
-      state.token = '';
-      state.teamId = '';
-      state.projectId = '';
-      state.groupId = '';
-      migrated = true;
-    }
+    // v1.8.1：不再强制迁移旧域名。双域名并存是合法用法（每个配置独立指向自己的站点+令牌），
+    // 旧域名 shilipix.cn 仍在用，强制改成新站会破坏「旧站」配置。被 v1.7.0/v1.8.0 污染的配置
+    // 由 normalizeProfiles 里的 restoreRetiredProfile 一次性还原。
     // 把可能迁移过的镜像值同步回激活配置，保证 profiles[] 与 state 一致
     syncToProfile();
 
