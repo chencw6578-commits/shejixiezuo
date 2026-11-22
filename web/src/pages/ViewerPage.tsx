@@ -9,7 +9,6 @@ import { useDialogs } from '../components/Dialogs';
 import RowMenu from '../components/RowMenu';
 import { readUnit, saveUnit, unitForPlatform, type Unit } from '../unit';
 import {
-  ArrowLeft,
   ChevronDown,
   CollapseAll,
   ChevronRight,
@@ -20,6 +19,7 @@ import {
   Plus,
   Sip,
   Trash2,
+  X,
 } from '../components/icons';
 
 /** 侧栏树：设计稿 → 编组 → 画板（跨设计稿时都带 file_id） */
@@ -848,8 +848,8 @@ export default function ViewerPage() {
   return (
     <div className="viewer">
       <header className="topbar">
-        <button className="icon-btn" onClick={goBack} title="返回画布" aria-label="返回画布">
-          <ArrowLeft />
+        <button className="icon-btn" onClick={goBack} title="关闭" aria-label="关闭">
+          <X />
         </button>
         <h1><ImageIcon /> {data.frame.name}</h1>
         {readOnly && <span className="readonly-tag">协作者 · 只读</span>}
