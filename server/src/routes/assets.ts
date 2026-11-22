@@ -305,9 +305,10 @@ assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?
   } else {
     // 只导出标记了切图的图层（Figma 里设了导出预设 / exportPresets 非空），
     // 未标记的图层一律跳过——与画布上「切图标记」的判定口径一致。
+    // 文件名主体 = Figma 原图层名，不再拼 @2x/@3x（用户要求导出名与 Figma 图层名一致）。
     for (const n of nodes) {
       if (!(n.props?.exportPresets?.length)) continue;
-      tasks.push({ nodeId: n.node_id, name: n.name, format, scale: s, suffix: s !== 1 ? `@${s}x` : '' });
+      tasks.push({ nodeId: n.node_id, name: n.name, format, scale: s, suffix: '' });
     }
   }
   if (tasks.length === 0) {
