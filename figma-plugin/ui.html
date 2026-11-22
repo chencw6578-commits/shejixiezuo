@@ -1375,6 +1375,32 @@
         setProgress(i + 1, total, '已导入「' + name + '」' + (sliceList.length ? '（含 ' + sliceList.length + ' 张逐图层切图）' : ''));
       }
 
+      // 整板主图补洞：全部画板与切图入库后统一调用一次，用真实切图补回
+      // Figma 整板导出丢失的图层（如实心图标）。服务端幂等且带空白闸门；
+      // 失败只记告警，不影响画板入库结果。
+      if (totals.slices > 0) {
+        try {
+          setProgress(total, total, '修复主图缺失图标…');
+          var rres = await api('/api/plugin/repair-thumbs', {
+            method: 'POST',
+            timeoutMs: STAGE_TIMEOUT_MS.upload,
+            body: { projectId: state.projectId },
+          });
+          if (rres && Number(rres.repaired) > 0) {
+            totals.warnings.push('已用真实切图补齐 ' + rres.repaired + ' 个画板的主图缺失图标');
+          }
+          if (Array.isArray(rres && rres.frames)) {
+            rres.frames.forEach(function (fr) {
+              if (fr.status === 'aborted') totals.warnings.push('画板「' + (fr.frameName || '') + '」主图修复中止：' + (fr.reason || '切图为空'));
+              else if (fr.status === 'failed') totals.warnings.push('画板「' + (fr.frameName || '') + '」主图修复失败：' + (fr.reason || '未知错误'));
+            });
+          }
+        } catch (repairErr) {
+          totals.warnings.push('主图修复失败（不影响画板导入）：' +
+            ((repairErr && repairErr.message) || String(repairErr)));
+        }
+      }
+
       state.exportCache = {};
       await loadGroups();
       hideProgress();

@@ -7,6 +7,7 @@ import { PluginImportError, parsePluginExport } from '../figma/pluginImport.js';
 import { newErrorId, userFacingFailure } from '../jobs/importFile.js';
 import { encodeThumbnail } from '../util/imageEncode.js';
 import { batchInsert } from '../util/batchInsert.js';
+import { repairFileThumbs } from '../util/thumbRepair.js';
 
 export const pluginRouter = Router();
 
@@ -770,6 +771,51 @@ pluginRouter.post('/slices', async (req, res) => {
     const errId = newErrorId();
     console.error(`[plugin-api] slices failed ${errId}:`, err);
     res.status(502).json({ error: userFacingFailure(errId) });
+  }
+});
+
+/**
+ * 整板主图修复：用已上传的真实切图补回 Figma 整板导出时丢失的图层（如实心图标）。
+ * 幂等；已有 @repaired 主图默认跳过，传 force=true 强制重跑。
+ * 空白闸门在 util/thumbRepair 内：目标切图全空则整份中止，不写任何数据。
+ */
+pluginRouter.post('/repair-thumbs', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (!UUID_RE.test(projectId)) return res.status(400).json({ error: '非法的项目 ID' });
+  const force = body.force === true;
+  const frameIdsRaw = Array.isArray(body.frameIds) ? body.frameIds : null;
+  const frameIds = frameIdsRaw
+    ? frameIdsRaw.filter((v): v is string => typeof v === 'string' && UUID_RE.test(v))
+    : undefined;
+
+  try {
+    const access = await projectAccess(projectId, ctxOf(req));
+    if (!access.ok) {
+      if (access.status === 403) return forbidden(res, '项目');
+      return res.status(404).json({ error: '项目不存在' });
+    }
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] repair-thumbs access ${errId}:`, err);
+    return res.status(502).json({ error: userFacingFailure(errId) });
+  }
+
+  try {
+    const fileRow = await pool.query<{ id: string }>(
+      'SELECT id FROM design_files WHERE project_id = $1 AND figma_key = $2 LIMIT 1',
+      [projectId, pluginFileKey(projectId)]
+    );
+    if (!fileRow.rows[0]) {
+      return res.status(404).json({ error: '该项目还没有插件导入的设计稿，请先导入画板' });
+    }
+    const storage = await getStorage();
+    const summary = await repairFileThumbs(fileRow.rows[0].id, storage, { force, frameIds });
+    res.json(summary);
+  } catch (err) {
+    const errId = newErrorId();
+    console.error(`[plugin-api] repair-thumbs failed ${errId}:`, err);
+    return res.status(502).json({ error: userFacingFailure(errId) });
   }
 });
 
