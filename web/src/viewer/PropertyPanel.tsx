@@ -199,7 +199,9 @@ export default function PropertyPanel({ frame, nodeCount, selected, coords, file
         scale: presetScale ?? Number(scale),
       });
       // 等下载真正触发后再提示成功；跨域 / 网络失败会落入下方 catch 显示错误
-      await api.download(r.url, `${selected.name}${presetScale && presetScale !== 1 ? `@${presetScale}x` : Number(scale) !== 1 ? `@${scale}x` : ''}.${(presetFormat ?? format).toLowerCase()}`);
+      // 文件名主体用 Figma 图层名的小写（如 XZ_ICON → xz_icon），保留 @Nx 倍率后缀；
+      // 与批量切图 zip 的命名口径一致：主体取自图层名，倍率单独标注。
+      await api.download(r.url, `${selected.name.toLowerCase()}${presetScale && presetScale !== 1 ? `@${presetScale}x` : Number(scale) !== 1 ? `@${scale}x` : ''}.${(presetFormat ?? format).toLowerCase()}`);
       const from = r.resolvedFrom
         ? `（按 Figma 标记的父级「${r.resolvedFrom.name}」${r.resolvedFrom.format} ${r.resolvedFrom.scale}x 导出）`
         : '';
