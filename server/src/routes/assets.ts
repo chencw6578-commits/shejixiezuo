@@ -23,6 +23,17 @@ const CONTENT_TYPES: Record<string, string> = {
 
 const safeName = (name: string) => name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'asset';
 
+/**
+ * 切图 zip 内的文件名：尽量保留 Figma 原图层名（与 Figma 命名一致）。
+ * 只转义 ZIP 格式必需字符：
+ *   - / 和 \ 是 ZIP 路径分隔符，原样会被 JSZip 当成子目录（图层名含 / 时导出成文件夹而非文件）
+ *   - NUL 在 ZIP/文件系统里非法
+ * 其余字符（含空格、括号、中文、: * ? 等）一律保留，且不做长度截断。
+ * 仅用于导出文件名；存储 key（safeName）与 zip 包名不受影响。
+ */
+const sliceFileName = (name: string) =>
+  String(name ?? '').replace(/[\\/\0]/g, '_').trim() || 'asset';
+
 interface PreferredSlice { id: string; url: string; source: string }
 
 /**
@@ -314,7 +325,7 @@ assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?
   const localOnly = isLocalFile(file.source, file.figma_key);
 
   const addToZip = (t: ZipTask, buf: Buffer, ext: string) => {
-    const base = safeName(t.name);
+    const base = sliceFileName(t.name);
     const n = (usedNames.get(base) ?? 0) + 1;
     usedNames.set(base, n);
     const filename = n > 1 ? `${base} (${n})${t.suffix}.${ext}` : `${base}${t.suffix}.${ext}`;
@@ -452,7 +463,7 @@ assetsRouter.post('/export-zip', requirePrivateAccess('file', (req) => req.body?
           }
           try {
             const buf = await downloadImage(url);
-            const base = safeName(t.name);
+            const base = sliceFileName(t.name);
             const n = (usedNames.get(base) ?? 0) + 1;
             usedNames.set(base, n);
             const filename = n > 1 ? `${base} (${n})${t.suffix}.${ext}` : `${base}${t.suffix}.${ext}`;
